@@ -26,7 +26,7 @@ def validate_test_database_url(
     try:
         test_url = make_url(database_url)
         production_url = make_url(production_database_url)
-    except ArgumentError:
+    except (ArgumentError, ValueError):
         return "KB_DATABASE_URL_TEST must be a valid database URL"
 
     test_target = canonical_postgresql_target(test_url)
@@ -47,14 +47,13 @@ def validate_test_database_url(
     return None
 
 
-def canonical_postgresql_target(url: URL) -> tuple[str, str | None, str | None, int, str] | None:
+def canonical_postgresql_target(url: URL) -> tuple[str, str | None, int, str] | None:
     dialect_family = url.drivername.split("+", maxsplit=1)[0]
     if dialect_family != "postgresql":
         return None
 
     return (
         dialect_family,
-        url.username,
         url.host.lower() if url.host else None,
         url.port or POSTGRESQL_DEFAULT_PORT,
         url.database or "",

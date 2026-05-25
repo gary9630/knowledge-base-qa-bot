@@ -75,3 +75,21 @@ def test_validate_test_database_url_normalizes_postgresql_default_port() -> None
     )
 
     assert reason == "KB_DATABASE_URL_TEST must not equal KB_DATABASE_URL"
+
+
+def test_validate_test_database_url_ignores_credentials_for_same_target() -> None:
+    reason = validate_test_database_url(
+        "postgresql://other:other@localhost/kb_test",
+        production_database_url="postgresql+psycopg://kb:kb@localhost:5432/kb_test",
+    )
+
+    assert reason == "KB_DATABASE_URL_TEST must not equal KB_DATABASE_URL"
+
+
+def test_validate_test_database_url_rejects_malformed_port() -> None:
+    reason = validate_test_database_url(
+        "postgresql://kb:kb@localhost:notaport/kb_test",
+        production_database_url="postgresql+psycopg://kb:kb@localhost:5432/kb",
+    )
+
+    assert reason == "KB_DATABASE_URL_TEST must be a valid database URL"
