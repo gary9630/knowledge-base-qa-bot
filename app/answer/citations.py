@@ -10,8 +10,15 @@ _SOURCE_ID_TOKEN_RE = re.compile(
     r"(?<![\w./%+-])(?P<source_id>[\w%+@=-][\w./%+@=-]*\.md#[\w-]+)(?![\w/%+-])",
     re.UNICODE,
 )
+_RAW_PUNCTUATED_SOURCE_ID_RE = re.compile(
+    r"(?<![\w./%+-])"
+    r"(?P<source_id>[\w./%+@=-]+ [\(\[（【][^\r\n]+?[\)\]）】][\w./%+@=-]*\.md#[\w-]+)"
+    r"(?![\w/%+-])",
+    re.UNICODE,
+)
 _BRACKETED_SOURCE_ID_CONTENT_RE = re.compile(r"^(?P<source_id>.+\.md#[\w-]+)$", re.UNICODE)
 _URL_RE = re.compile(r"^[A-Za-z][A-Za-z0-9+.-]*://")
+_URL_SOURCE_ID_RE = re.compile(r"[A-Za-z][A-Za-z0-9+.-]*://\S*?\.md#[\w-]+", re.UNICODE)
 _BRACKET_PAIRS = {
     "[": "]",
     "(": ")",
@@ -67,11 +74,19 @@ def _extract_cited_source_ids(answer: str, allowed_source_ids: set[str]) -> set[
 def _extract_source_id_tokens(answer: str) -> set[str]:
     bracketed_matches, bracketed_spans = _extract_bracketed_source_ids(answer)
     answer_without_bracketed_citations = _mask_spans(answer, bracketed_spans)
+    answer_without_urls = _mask_spans(
+        answer_without_bracketed_citations,
+        _url_source_id_spans(answer_without_bracketed_citations),
+    )
     token_matches = {
         match.group("source_id").strip()
-        for match in _SOURCE_ID_TOKEN_RE.finditer(answer_without_bracketed_citations)
+        for match in _SOURCE_ID_TOKEN_RE.finditer(answer_without_urls)
     }
-    return token_matches | bracketed_matches
+    punctuated_matches = {
+        match.group("source_id").strip()
+        for match in _RAW_PUNCTUATED_SOURCE_ID_RE.finditer(answer_without_urls)
+    }
+    return token_matches | punctuated_matches | bracketed_matches
 
 
 def _extract_bracketed_source_ids(answer: str) -> tuple[set[str], list[tuple[int, int]]]:
@@ -143,6 +158,10 @@ def _source_id_from_bracket_content(content: str) -> str | None:
 
 def _looks_like_url(content: str) -> bool:
     return bool(_URL_RE.match(content))
+
+
+def _url_source_id_spans(answer: str) -> list[tuple[int, int]]:
+    return [match.span() for match in _URL_SOURCE_ID_RE.finditer(answer)]
 
 
 def _mask_spans(text: str, spans: list[tuple[int, int]]) -> str:
