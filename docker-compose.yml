@@ -1,0 +1,104 @@
+x-app-environment: &app-environment
+  - KB_APP_ENV=production
+  - KB_DATABASE_URL=postgresql+psycopg://kb:kb@postgres:5432/kb
+  - KB_DOCS_DIR=/app/docs
+  - KB_RAW_DIR=/app/raw
+  - KB_KB_DIR=/app/.kb
+
+x-app-volumes: &app-volumes
+  - type: volume
+    source: docs_data
+    target: /app/docs
+  - type: volume
+    source: raw_data
+    target: /app/raw
+  - type: volume
+    source: kb_data
+    target: /app/.kb
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_USER: kb
+      POSTGRES_PASSWORD: kb
+      POSTGRES_DB: kb
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U kb -d kb"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "${KB_POSTGRES_PORT:-5432}:5432"
+
+  migrate:
+    build:
+      context: .
+      target: app
+    environment: *app-environment
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes: *app-volumes
+    command: alembic upgrade head
+
+  app:
+    build:
+      context: .
+      target: app
+    environment: *app-environment
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    ports:
+      - "8000:8000"
+    volumes: *app-volumes
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=2)\"",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+
+  worker:
+    build:
+      context: .
+      target: app
+    profiles:
+      - worker
+    environment: *app-environment
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    volumes: *app-volumes
+    command: >
+      python -c "from pathlib import Path; from app.core.config import Settings; from app.core.database import SessionLocal; from app.indexing.service import IndexingService; from app.retrieval.embeddings import create_embedding_provider; settings=Settings(); session=SessionLocal(); result=IndexingService(session=session, docs_dir=Path(settings.docs_dir), kb_dir=Path(settings.kb_dir), embedding_provider=create_embedding_provider(settings)).rebuild_index(); session.close(); print(f'indexed {result.files_indexed} files, {result.sections_indexed} sections, {result.chunks_indexed} chunks')"
+
+  test:
+    build:
+      context: .
+      target: test
+    profiles:
+      - test
+    environment: *app-environment
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes: *app-volumes
+    command: pytest
+
+volumes:
+  postgres_data:
+  docs_data:
+  raw_data:
+  kb_data:

@@ -1,0 +1,17 @@
+.git
+.mypy_cache
+.pytest_cache
+.ruff_cache
+.venv
+__pycache__
+*.py[cod]
+.coverage
+htmlcov
+.env
+.python-version
+project-ideas.md
+sample-docs
+docs/plans
+.DS_Store
+.kb
+.playwright-mcp
