@@ -10,6 +10,8 @@ from app.api.imports import router as imports_router
 from app.api.indexing import router as indexing_router
 from app.api.search import router as search_router
 from app.api.sources import router as sources_router
+from app.api.ui import mount_ui_static
+from app.api.ui import router as ui_router
 from app.core.config import Settings
 from app.core.database import SessionLocal
 from app.retrieval.embeddings import EmbeddingProvider, create_embedding_provider
@@ -31,6 +33,8 @@ def create_app(
         resolved_settings
     )
 
+    mount_ui_static(app)
+    app.include_router(ui_router)
     app.include_router(health_router)
     app.include_router(indexing_router)
     app.include_router(imports_router)

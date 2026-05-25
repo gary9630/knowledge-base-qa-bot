@@ -206,6 +206,9 @@ tempCodeRunnerFile.py
 # Ruff stuff:
 .ruff_cache/
 
+# Browser MCP / Playwright inspection artifacts
+.playwright-mcp/
+
 # PyPI configuration file
 .pypirc
 

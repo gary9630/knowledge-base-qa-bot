@@ -1,0 +1,170 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Knowledge Base Workbench</title>
+    <link rel="icon" href="data:," />
+    <link rel="stylesheet" href="{{ url_for('static', path='app.css') }}" />
+    <script src="{{ url_for('static', path='app.js') }}" defer></script>
+  </head>
+  <body>
+    <div class="workbench" data-app>
+      <aside class="sidebar" aria-label="Primary workspace">
+        <div class="brand">
+          <span class="brand-mark" aria-hidden="true">KB</span>
+          <div>
+            <h1>Knowledge Workbench</h1>
+            <p id="index-status-pill">Index status unavailable</p>
+          </div>
+        </div>
+
+        <nav class="tabs" aria-label="Workspace tabs" role="tablist">
+          <button class="tab is-active" id="tab-chat" type="button" role="tab" aria-selected="true" aria-controls="panel-chat" tabindex="0" data-tab="chat">
+            <svg aria-hidden="true" viewBox="0 0 24 24">
+              <path d="M5 7.5A4.5 4.5 0 0 1 9.5 3h5A4.5 4.5 0 0 1 19 7.5v3A4.5 4.5 0 0 1 14.5 15H11l-4.5 4v-4.7A4.5 4.5 0 0 1 5 10.5z" />
+            </svg>
+            Chat
+          </button>
+          <button class="tab" id="tab-mindmap" type="button" role="tab" aria-selected="false" aria-controls="panel-mindmap" tabindex="-1" data-tab="mindmap">
+            <svg aria-hidden="true" viewBox="0 0 24 24">
+              <path d="M12 5v4m0 0H8m4 0h4m-4 0v5m-6 5a3 3 0 1 0 0-6 3 3 0 0 0 0 6Zm12 0a3 3 0 1 0 0-6 3 3 0 0 0 0 6ZM12 19a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z" />
+            </svg>
+            Mindmap
+          </button>
+          <button class="tab" id="tab-uploads" type="button" role="tab" aria-selected="false" aria-controls="panel-uploads" tabindex="-1" data-tab="uploads">
+            <svg aria-hidden="true" viewBox="0 0 24 24">
+              <path d="M12 15V4m0 0 4 4m-4-4-4 4M5 15v3a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-3" />
+            </svg>
+            Admin Uploads
+          </button>
+          <button class="tab" id="tab-sources" type="button" role="tab" aria-selected="false" aria-controls="panel-sources" tabindex="-1" data-tab="sources">
+            <svg aria-hidden="true" viewBox="0 0 24 24">
+              <path d="M6 5h12M6 12h12M6 19h12" />
+            </svg>
+            Sources
+          </button>
+        </nav>
+
+        <section class="sidebar-section" aria-labelledby="source-list-heading">
+          <div class="section-heading">
+            <h2 id="source-list-heading">Sources</h2>
+            <button class="text-button" type="button" id="refresh-sources">Refresh</button>
+          </div>
+          <div class="source-list" id="source-list" aria-live="polite">
+            <p class="muted">No sources loaded</p>
+          </div>
+        </section>
+      </aside>
+
+      <main class="workspace" aria-live="polite">
+        <section class="workspace-panel is-active" id="panel-chat" role="tabpanel" tabindex="0" data-panel="chat" aria-labelledby="tab-chat">
+          <header class="workspace-header">
+            <div>
+              <h2>Chat</h2>
+            </div>
+            <label class="inline-control" for="chat-limit">
+              Limit
+              <input id="chat-limit" type="number" min="1" max="20" value="5" />
+            </label>
+          </header>
+
+          <div class="chat-log" id="chat-log" aria-live="polite">
+            <div class="message assistant">
+              <span class="message-label">Assistant</span>
+              <p>Ready.</p>
+            </div>
+          </div>
+
+          <form class="chat-form" id="chat-form">
+            <label class="sr-only" for="chat-query">Question</label>
+            <textarea id="chat-query" name="query" rows="4" placeholder="Ask the knowledge base"></textarea>
+            <div class="form-actions">
+              <select id="chat-strategy" name="strategy" aria-label="Retrieval strategy">
+                <option value="hybrid">Hybrid</option>
+                <option value="lexical">Lexical</option>
+                <option value="vector">Vector</option>
+              </select>
+              <button class="primary-button" type="submit">Send</button>
+            </div>
+          </form>
+        </section>
+
+        <section class="workspace-panel" id="panel-mindmap" role="tabpanel" tabindex="0" data-panel="mindmap" aria-labelledby="tab-mindmap" hidden>
+          <header class="workspace-header">
+            <div>
+              <h2>Mindmap</h2>
+            </div>
+          </header>
+          <div class="mindmap" id="mindmap">
+            <p class="muted">Source graph will appear after sources load.</p>
+          </div>
+        </section>
+
+        <section class="workspace-panel" id="panel-uploads" role="tabpanel" tabindex="0" data-panel="uploads" aria-labelledby="tab-uploads" hidden>
+          <header class="workspace-header">
+            <div>
+              <h2>Admin Uploads</h2>
+            </div>
+            <button class="secondary-button" type="button" id="rebuild-index">Rebuild Index</button>
+          </header>
+
+          <form class="upload-form" id="upload-form">
+            <label for="upload-file">Document</label>
+            <input id="upload-file" name="file" type="file" accept=".md,.txt,.html,.pdf,text/*,application/pdf" />
+            <button class="primary-button" type="submit">Upload</button>
+          </form>
+
+          <pre class="operation-log" id="operation-log" aria-live="polite">No admin operations yet.</pre>
+        </section>
+
+        <section class="workspace-panel" id="panel-sources" role="tabpanel" tabindex="0" data-panel="sources" aria-labelledby="tab-sources" hidden>
+          <header class="workspace-header">
+            <div>
+              <h2>Sources</h2>
+            </div>
+            <button class="secondary-button" type="button" id="refresh-status">Refresh Status</button>
+          </header>
+          <div class="source-table" id="source-table">
+            <p class="muted">No indexed sources found.</p>
+          </div>
+        </section>
+      </main>
+
+      <aside class="inspector" aria-label="Context inspector">
+        <section class="inspector-section">
+          <div class="section-heading">
+            <h2>Selected Sources</h2>
+            <span class="count-pill" id="selected-source-count">0</span>
+          </div>
+          <div class="selected-sources" id="selected-sources">
+            <p class="muted">No selected sources</p>
+          </div>
+        </section>
+
+        <section class="inspector-section">
+          <h2>Source Markdown Preview</h2>
+          <pre class="markdown-preview" id="markdown-preview">Select a source to preview markdown.</pre>
+        </section>
+
+        <section class="inspector-section">
+          <h2>Index Status</h2>
+          <dl class="status-grid" id="index-status">
+            <div>
+              <dt>Status</dt>
+              <dd>Unknown</dd>
+            </div>
+            <div>
+              <dt>Chunks</dt>
+              <dd>--</dd>
+            </div>
+            <div>
+              <dt>Updated</dt>
+              <dd>--</dd>
+            </div>
+          </dl>
+        </section>
+      </aside>
+    </div>
+  </body>
+</html>
