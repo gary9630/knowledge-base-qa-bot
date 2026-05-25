@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import pytest
 
+from app.indexing.markdown_parser import parse_markdown_sections
 from app.ingestion import importers
 from app.ingestion.importers import (
     extract_pdf_text,
@@ -53,7 +54,7 @@ def test_markdown_import_replaces_existing_product_frontmatter() -> None:
     assert markdown.endswith("# FAQ\n\nAnswer\n")
 
 
-def test_markdown_import_keeps_authored_frontmatter_with_non_imported_source_type() -> None:
+def test_markdown_import_converts_authored_frontmatter_to_metadata_section() -> None:
     authored_body = (
         "---\n"
         "title: Vendor Doc\n"
@@ -65,8 +66,20 @@ def test_markdown_import_keeps_authored_frontmatter_with_non_imported_source_typ
 
     markdown = import_markdown_to_markdown("vendor.md", authored_body, imported_at=IMPORTED_AT)
 
-    imported_body = markdown.split("---\n\n", maxsplit=1)[1]
-    assert imported_body == authored_body
+    imported_body = _import_body(markdown)
+    assert not imported_body.startswith("---\n")
+    expected_metadata_section = (
+        "## Original Metadata\n\n"
+        "```yaml\n"
+        "title: Vendor Doc\n"
+        "source_type: vendor\n"
+        "```\n"
+    )
+    assert expected_metadata_section in markdown
+    assert "# Vendor\n\nBody\n" in markdown
+
+    sections = parse_markdown_sections(filename="vendor.md", body=markdown)
+    assert [section.heading for section in sections] == ["Original Metadata", "Vendor"]
 
 
 def test_text_import_uses_filename_stem_heading_and_raw_source_path() -> None:
@@ -87,6 +100,16 @@ def test_text_import_preserves_original_text_whitespace_after_heading() -> None:
     markdown = import_text_to_markdown("notes.txt", body, imported_at=IMPORTED_AT)
 
     assert markdown.endswith(f"# notes\n\n{body}")
+
+
+def test_text_import_sanitizes_filename_stem_to_single_line_heading() -> None:
+    markdown = import_text_to_markdown("bad\n# injected.txt", "Body", imported_at=IMPORTED_AT)
+
+    imported_body = _import_body(markdown)
+    assert imported_body.startswith("# bad # injected\n\nBody\n")
+
+    sections = parse_markdown_sections(filename="bad.md", body=markdown)
+    assert [section.heading for section in sections] == ["bad # injected"]
 
 
 def test_source_original_quotes_yaml_sensitive_filename() -> None:
@@ -185,6 +208,13 @@ def _import_frontmatter(markdown: str) -> str:
     frontmatter, separator, _ = markdown.removeprefix("---\n").partition("\n---\n\n")
     assert separator
     return frontmatter
+
+
+def _import_body(markdown: str) -> str:
+    assert markdown.startswith("---\n")
+    _, separator, body = markdown.removeprefix("---\n").partition("\n---\n\n")
+    assert separator
+    return body
 
 
 def _patch_pdf_reader(monkeypatch: pytest.MonkeyPatch, page_texts: list[str | None]) -> None:

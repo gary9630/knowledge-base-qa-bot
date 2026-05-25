@@ -23,6 +23,7 @@ _PRODUCT_FRONTMATTER_KEYS = frozenset(
     }
 )
 _REQUIRED_IMPORT_FRONTMATTER_KEYS = frozenset({"imported_at", "source_original", "source_type"})
+_CONTROL_WHITESPACE_RE = re.compile(r"[\r\n\t\f\v]+")
 _YAML_PLAIN_SAFE_RE = re.compile(r"^[A-Za-z0-9_./-]+$")
 
 
@@ -32,8 +33,7 @@ def import_markdown_to_markdown(
     *,
     imported_at: str | datetime | None = None,
 ) -> str:
-    body_without_product_frontmatter = _strip_existing_product_frontmatter(body)
-    markdown_body = _ensure_trailing_newline(body_without_product_frontmatter)
+    markdown_body = _ensure_trailing_newline(_normalize_markdown_body(body))
     return _with_product_frontmatter(filename, markdown_body, imported_at)
 
 
@@ -120,7 +120,7 @@ def _format_imported_at(imported_at: str | datetime | None) -> str:
     return imported_at
 
 
-def _strip_existing_product_frontmatter(body: str) -> str:
+def _normalize_markdown_body(body: str) -> str:
     lines = body.splitlines(keepends=True)
     if not lines or lines[0].strip() != "---":
         return body
@@ -133,6 +133,10 @@ def _strip_existing_product_frontmatter(body: str) -> str:
         metadata = _frontmatter_metadata(frontmatter_lines)
         if _is_importer_generated_frontmatter(metadata):
             return "".join(lines[index + 1 :]).lstrip("\n\r")
+        if metadata:
+            frontmatter = "".join(frontmatter_lines)
+            body_without_frontmatter = "".join(lines[index + 1 :]).lstrip("\n\r")
+            return _authored_frontmatter_section(frontmatter, body_without_frontmatter)
         return body
 
     return body
@@ -163,6 +167,16 @@ def _is_importer_generated_frontmatter(metadata: dict[str, str]) -> bool:
     )
 
 
+def _authored_frontmatter_section(frontmatter: str, body: str) -> str:
+    return (
+        "## Original Metadata\n\n"
+        "```yaml\n"
+        f"{_ensure_trailing_newline(frontmatter)}"
+        "```\n\n"
+        f"{body}"
+    )
+
+
 def _yaml_scalar(value: str) -> str:
     if _YAML_PLAIN_SAFE_RE.fullmatch(value):
         return value
@@ -185,7 +199,11 @@ def _unquote_yaml_scalar(value: str) -> str:
 
 def _filename_stem(filename: str) -> str:
     stem = Path(filename).stem
-    return stem or Path(filename).name
+    return _sanitize_heading(stem or Path(filename).name)
+
+
+def _sanitize_heading(value: str) -> str:
+    return _CONTROL_WHITESPACE_RE.sub(" ", value).strip() or "untitled"
 
 
 def _ensure_trailing_newline(body: str) -> str:
