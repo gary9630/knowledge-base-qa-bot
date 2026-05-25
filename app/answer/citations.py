@@ -10,10 +10,14 @@ _SOURCE_ID_TOKEN_RE = re.compile(
     r"(?<![\w./%+-])(?P<source_id>[\w%+@=-][\w./%+@=-]*\.md#[\w-]+)(?![\w/%+-])",
     re.UNICODE,
 )
-_BRACKETED_SOURCE_ID_RE = re.compile(
-    r"[\[\(（【](?P<source_id>[^\]\)）】\n\r]+?\.md#[\w-]+)[\]\)）】]",
-    re.UNICODE,
-)
+_BRACKETED_SOURCE_ID_CONTENT_RE = re.compile(r"^(?P<source_id>.+\.md#[\w-]+)$", re.UNICODE)
+_URL_RE = re.compile(r"^[A-Za-z][A-Za-z0-9+.-]*://")
+_BRACKET_PAIRS = {
+    "[": "]",
+    "(": ")",
+    "（": "）",
+    "【": "】",
+}
 
 
 @dataclass(frozen=True)
@@ -61,18 +65,68 @@ def _extract_cited_source_ids(answer: str, allowed_source_ids: set[str]) -> set[
 
 
 def _extract_source_id_tokens(answer: str) -> set[str]:
-    bracketed_spans: list[tuple[int, int]] = []
-    bracketed_matches: set[str] = set()
-    for match in _BRACKETED_SOURCE_ID_RE.finditer(answer):
-        bracketed_matches.add(match.group("source_id").strip())
-        bracketed_spans.append(match.span())
-
+    bracketed_matches, bracketed_spans = _extract_bracketed_source_ids(answer)
     answer_without_bracketed_citations = _mask_spans(answer, bracketed_spans)
     token_matches = {
         match.group("source_id").strip()
         for match in _SOURCE_ID_TOKEN_RE.finditer(answer_without_bracketed_citations)
     }
     return token_matches | bracketed_matches
+
+
+def _extract_bracketed_source_ids(answer: str) -> tuple[set[str], list[tuple[int, int]]]:
+    source_ids: set[str] = set()
+    spans_to_mask: list[tuple[int, int]] = []
+    index = 0
+
+    while index < len(answer):
+        opener = answer[index]
+        closer = _BRACKET_PAIRS.get(opener)
+        if closer is None:
+            index += 1
+            continue
+
+        end = answer.find(closer, index + 1)
+        if end == -1:
+            index += 1
+            continue
+
+        content = answer[index + 1 : end].strip()
+        span = (index, end + 1)
+        if _looks_like_url(content) or _is_markdown_link_url(answer, index, opener):
+            spans_to_mask.append(span)
+            index = end + 1
+            continue
+
+        source_id = _source_id_from_bracket_content(content)
+        if source_id is not None:
+            source_ids.add(source_id)
+            spans_to_mask.append(span)
+            index = end + 1
+            continue
+
+        index += 1
+
+    return source_ids, spans_to_mask
+
+
+def _source_id_from_bracket_content(content: str) -> str | None:
+    if not content or "\n" in content or "\r" in content:
+        return None
+
+    match = _BRACKETED_SOURCE_ID_CONTENT_RE.match(content)
+    if match is None:
+        return None
+
+    return match.group("source_id")
+
+
+def _looks_like_url(content: str) -> bool:
+    return bool(_URL_RE.match(content))
+
+
+def _is_markdown_link_url(answer: str, index: int, opener: str) -> bool:
+    return opener == "(" and index > 0 and answer[index - 1] == "]"
 
 
 def _mask_spans(text: str, spans: list[tuple[int, int]]) -> str:

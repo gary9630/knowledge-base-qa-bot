@@ -61,6 +61,28 @@ def test_validate_citations_accepts_bracketed_source_id_with_spaces_in_filename(
     assert result.invalid_source_ids == set()
 
 
+def test_validate_citations_rejects_unallowed_bracketed_source_id_with_punctuation() -> None:
+    result = validate_citations(
+        "課程網站在首頁。 [faq.md#intro] 但不是草稿內容。 [release (draft).md#intro]",
+        {"faq.md#intro"},
+    )
+
+    assert not result.valid
+    assert result.cited_source_ids == {"faq.md#intro"}
+    assert result.invalid_source_ids == {"release (draft).md#intro"}
+
+
+def test_validate_citations_ignores_markdown_link_url_anchor_with_valid_citation() -> None:
+    result = validate_citations(
+        "安裝步驟見知識庫。 [faq.md#intro] 可另參考 [docs](https://example.com/guide.md#install)。",
+        {"faq.md#intro"},
+    )
+
+    assert result.valid
+    assert result.cited_source_ids == {"faq.md#intro"}
+    assert result.invalid_source_ids == set()
+
+
 def test_answer_without_sources_returns_cannot_confirm_without_provider_call() -> None:
     provider = FakeAnswerProvider(["課程網站位於學習平台。 [faq.md#course-site]"])
     service = AnswerService(provider)
