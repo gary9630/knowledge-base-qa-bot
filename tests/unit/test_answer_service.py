@@ -196,6 +196,28 @@ def test_validate_citations_rejects_quoted_raw_source_id_bypass(
 @pytest.mark.parametrize(
     ("answer", "invalid_source_id"),
     [
+        ('Valid [faq.md#intro] invalid missing.md#secret"', "missing.md#secret"),
+        ("Valid [faq.md#intro] invalid missing.md#secret'", "missing.md#secret"),
+        ("Valid [faq.md#intro] invalid missing.md#secret`", "missing.md#secret"),
+        ("Valid [faq.md#intro] invalid “missing.md#secret”", "missing.md#secret"),
+        ("Valid [faq.md#intro] invalid ‘missing.md#secret’", "missing.md#secret"),
+        ("Valid [faq.md#intro] invalid missing.md#secret”", "missing.md#secret"),
+    ],
+)
+def test_validate_citations_rejects_quote_boundary_raw_source_id_bypass(
+    answer: str,
+    invalid_source_id: str,
+) -> None:
+    result = validate_citations(answer, {"faq.md#intro"})
+
+    assert not result.valid
+    assert result.cited_source_ids == {"faq.md#intro"}
+    assert any(invalid_source_id in source_id for source_id in result.invalid_source_ids)
+
+
+@pytest.mark.parametrize(
+    ("answer", "invalid_source_id"),
+    [
         ("Valid release,faq.md#intro", "release,faq.md#intro"),
         ("Valid release:faq.md#intro", "release:faq.md#intro"),
         ("Valid release faq.md#intro", "release faq.md#intro"),

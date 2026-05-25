@@ -5,30 +5,34 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 
 CANNOT_CONFIRM_ANSWER = "我無法從知識庫確認這件事。"
-_RAW_SOURCE_ID_END_BOUNDARY = r"(?=$|[\s\]\)\}>,.;:!?，。；：！？、])"
+_RAW_SOURCE_ID_START_BOUNDARY = r"(?<![^\s\"'`“”‘’])"
+_RAW_SOURCE_ID_END_BOUNDARY = r"(?=$|[\s\"'`“”‘’\]\)\}>,.;:!?，。；：！？、])"
 
 _RAW_SOURCE_ID_TOKEN_RE = re.compile(
-    rf"(?<!\S)(?P<source_id>\S+\.md#[\w-]+){_RAW_SOURCE_ID_END_BOUNDARY}",
+    rf"{_RAW_SOURCE_ID_START_BOUNDARY}(?P<source_id>\S+\.md#[\w-]+)"
+    rf"{_RAW_SOURCE_ID_END_BOUNDARY}",
     re.UNICODE,
 )
 _RAW_SPACED_SOURCE_ID_RE = re.compile(
-    rf"(?<!\S)(?P<source_id>[\w./%+@=-]+ +[\w./%+@=-]+\.md#[\w-]+)"
+    rf"{_RAW_SOURCE_ID_START_BOUNDARY}(?P<source_id>[\w./%+@=-]+ +[\w./%+@=-]+\.md#[\w-]+)"
     rf"{_RAW_SOURCE_ID_END_BOUNDARY}",
     re.UNICODE,
 )
 _RAW_PREFIX_PUNCTUATION_SOURCE_ID_RE = re.compile(
-    rf"(?<!\S)(?P<source_id>\S*[^\w\s] +\S+\.md#[\w-]+)"
+    rf"{_RAW_SOURCE_ID_START_BOUNDARY}(?P<source_id>\S*[^\w\s] +\S+\.md#[\w-]+)"
     rf"{_RAW_SOURCE_ID_END_BOUNDARY}",
     re.UNICODE,
 )
 _RAW_PUNCTUATED_SOURCE_ID_RE = re.compile(
-    rf"(?<!\S)"
+    rf"{_RAW_SOURCE_ID_START_BOUNDARY}"
     rf"(?P<source_id>[\w./%+@=-]+ ?[\(\[（【][^\r\n]+?[\)\]）】][\w./%+@=-]*\.md#[\w-]+)"
     rf"{_RAW_SOURCE_ID_END_BOUNDARY}",
     re.UNICODE,
 )
 _QUOTED_SOURCE_ID_RE = re.compile(
-    r"(?P<quote>[\"'`])(?P<source_id>[^\"'`\r\n]+?\.md#[\w-]+)(?P=quote)",
+    r"(?P<quote>[\"'`])(?P<source_id>[^\"'`\r\n]+?\.md#[\w-]+)(?P=quote)"
+    r"|“(?P<double_smart_source_id>[^“”\r\n]+?\.md#[\w-]+)”"
+    r"|‘(?P<single_smart_source_id>[^‘’\r\n]+?\.md#[\w-]+)’",
     re.UNICODE,
 )
 _BRACKETED_SOURCE_ID_CONTENT_RE = re.compile(r"^(?P<source_id>.+\.md#[\w-]+)$", re.UNICODE)
@@ -209,7 +213,7 @@ def _extract_quoted_source_ids(answer: str) -> tuple[set[str], list[tuple[int, i
     source_ids: set[str] = set()
     spans_to_mask: list[tuple[int, int]] = []
     for match in _QUOTED_SOURCE_ID_RE.finditer(answer):
-        source_id = match.group("source_id").strip()
+        source_id = _quoted_source_id(match).strip()
         if _looks_like_url(source_id):
             spans_to_mask.append(match.span())
             continue
@@ -218,6 +222,10 @@ def _extract_quoted_source_ids(answer: str) -> tuple[set[str], list[tuple[int, i
         spans_to_mask.append(match.span())
 
     return source_ids, spans_to_mask
+
+
+def _quoted_source_id(match: re.Match[str]) -> str:
+    return next(group for group in match.groups()[1:] if group is not None)
 
 
 def _markdown_url_link_spans(answer: str) -> list[tuple[int, int]]:
