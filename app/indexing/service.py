@@ -5,14 +5,23 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from hashlib import sha256
 from pathlib import Path
+from typing import Any
+from uuid import UUID
 
 from sqlalchemy import delete, func, select, update
 from sqlalchemy.orm import Session
 
-from app.indexing.export import DocumentExport, SectionExport, write_index_export
+from app.indexing.export import (
+    DocumentExport,
+    SectionExport,
+    build_index_export_payload,
+    write_index_export_payload,
+)
 from app.indexing.markdown_parser import ParsedSection, parse_markdown_sections
 from app.models.tables import Chunk, Document, IndexingJob, Section
 from app.retrieval.embeddings import EmbeddingProvider
+
+DEFAULT_EMBEDDING_DIMENSION = 1536
 
 
 @dataclass(frozen=True)
@@ -31,53 +40,56 @@ class IndexingService:
         docs_dir: Path,
         kb_dir: Path,
         embedding_provider: EmbeddingProvider,
+        embedding_dimension: int = DEFAULT_EMBEDDING_DIMENSION,
     ) -> None:
         self.session = session
         self.docs_dir = docs_dir
         self.kb_dir = kb_dir
         self.embedding_provider = embedding_provider
+        self.embedding_dimension = embedding_dimension
 
     def rebuild_index(self) -> IndexingResult:
-        with self._transaction():
-            job = IndexingJob(
-                kind="rebuild",
-                status="running",
-                input_path=str(self.docs_dir),
-                stats_json={},
-            )
-            self.session.add(job)
-            self.session.flush()
+        stats = _initial_stats()
+        job_id: UUID | None = None
+        try:
+            self._validate_docs_dir()
+            with self._transaction():
+                job = self._add_running_job(stats)
+                job_id = job.id
 
-            markdown_files = tuple(sorted(self.docs_dir.rglob("*.md")))
-            indexed_filenames: set[str] = set()
-            document_exports: list[DocumentExport] = []
-            sections_indexed = 0
-            chunks_indexed = 0
+                markdown_files = tuple(sorted(self.docs_dir.rglob("*.md")))
+                stats["files_discovered"] = len(markdown_files)
+                indexed_filenames: set[str] = set()
+                document_exports: list[DocumentExport] = []
 
-            self._delete_stale_documents(markdown_files)
+                self._delete_stale_documents(markdown_files)
 
-            for path in markdown_files:
-                document_export, section_count, chunk_count = self._index_file(path)
-                indexed_filenames.add(document_export.filename)
-                document_exports.append(document_export)
-                sections_indexed += section_count
-                chunks_indexed += chunk_count
+                for path in markdown_files:
+                    document_export, section_count, chunk_count = self._index_file(path)
+                    indexed_filenames.add(document_export.filename)
+                    document_exports.append(document_export)
+                    stats["files_indexed"] = len(indexed_filenames)
+                    stats["sections_indexed"] += section_count
+                    stats["chunks_indexed"] += chunk_count
 
-            export_path = write_index_export(self.kb_dir, document_exports)
+                export_payload = build_index_export_payload(document_exports)
+                export_path = self.kb_dir / "index.json"
+                stats["export_path"] = str(export_path)
+                job.status = "indexed"
+                job.stats_json = dict(stats)
+
             result = IndexingResult(
                 files_indexed=len(indexed_filenames),
-                sections_indexed=sections_indexed,
-                chunks_indexed=chunks_indexed,
+                sections_indexed=stats["sections_indexed"],
+                chunks_indexed=stats["chunks_indexed"],
                 export_path=export_path,
             )
-            job.status = "succeeded"
-            job.stats_json = {
-                "files_indexed": result.files_indexed,
-                "sections_indexed": result.sections_indexed,
-                "chunks_indexed": result.chunks_indexed,
-                "export_path": str(result.export_path),
-            }
+            write_index_export_payload(self.kb_dir, export_payload)
+            self._mark_job_succeeded(job_id, stats)
             return result
+        except Exception as error:
+            self._persist_failed_job(error, stats, job_id=job_id)
+            raise
 
     def _index_file(self, path: Path) -> tuple[DocumentExport, int, int]:
         filename = _relative_filename(self.docs_dir, path)
@@ -146,7 +158,7 @@ class IndexingService:
         parsed_sections: list[ParsedSection],
     ) -> Document:
         content_hash = _content_hash(body)
-        document = self.session.scalar(select(Document).where(Document.filename == filename))
+        document = self._get_canonical_document(filename)
         title = parsed_sections[0].heading if parsed_sections else None
 
         if document is None:
@@ -171,16 +183,38 @@ class IndexingService:
         if not body_md.strip():
             return 0
 
+        embedding = self.embedding_provider.embed_text(body_md)
+        if len(embedding) != self.embedding_dimension:
+            raise ValueError(
+                f"embedding provider returned {len(embedding)} dimensions; "
+                f"expected {self.embedding_dimension} dimensions"
+            )
+
         chunk = Chunk(
             section_id=section.id,
             chunk_index=0,
             body_text=body_md,
             token_count=_token_count(body_md),
-            embedding=self.embedding_provider.embed_text(body_md),
+            embedding=embedding,
             content_hash=content_hash,
         )
         self.session.add(chunk)
         return 1
+
+    def _get_canonical_document(self, filename: str) -> Document | None:
+        documents = self.session.scalars(
+            select(Document)
+            .where(Document.filename == filename)
+            .order_by(Document.created_at.asc(), Document.id.asc())
+        ).all()
+        if not documents:
+            return None
+
+        canonical_document = documents[0]
+        for duplicate_document in documents[1:]:
+            self.session.delete(duplicate_document)
+        self.session.flush()
+        return canonical_document
 
     def _delete_stale_documents(self, markdown_files: tuple[Path, ...]) -> None:
         filenames = {_relative_filename(self.docs_dir, path) for path in markdown_files}
@@ -189,6 +223,61 @@ class IndexingService:
             if document.filename not in filenames:
                 self.session.delete(document)
         self.session.flush()
+
+    def _validate_docs_dir(self) -> None:
+        if not self.docs_dir.exists():
+            raise FileNotFoundError(f"docs_dir does not exist: {self.docs_dir}")
+        if not self.docs_dir.is_dir():
+            raise NotADirectoryError(f"docs_dir is not a directory: {self.docs_dir}")
+
+    def _add_running_job(self, stats: dict[str, Any]) -> IndexingJob:
+        job = IndexingJob(
+            kind="rebuild",
+            status="running",
+            input_path=str(self.docs_dir),
+            stats_json=dict(stats),
+        )
+        self.session.add(job)
+        self.session.flush()
+        return job
+
+    def _mark_job_succeeded(self, job_id: UUID | None, stats: dict[str, Any]) -> None:
+        if job_id is None:
+            return
+
+        with self._transaction():
+            job = self.session.get(IndexingJob, job_id)
+            if job is None:
+                return
+            job.status = "succeeded"
+            job.error = None
+            job.stats_json = dict(stats)
+
+    def _persist_failed_job(
+        self,
+        error: Exception,
+        stats: dict[str, Any],
+        *,
+        job_id: UUID | None = None,
+    ) -> None:
+        failure_stats = {
+            **stats,
+            "error_type": type(error).__name__,
+        }
+        with self._transaction():
+            job = self.session.get(IndexingJob, job_id) if job_id is not None else None
+            if job is None:
+                job = IndexingJob(
+                    kind="rebuild",
+                    status="failed",
+                    input_path=str(self.docs_dir),
+                    stats_json=failure_stats,
+                )
+                self.session.add(job)
+            else:
+                job.status = "failed"
+                job.stats_json = failure_stats
+            job.error = str(error)
 
     @contextmanager
     def _transaction(self) -> Iterator[None]:
@@ -211,3 +300,12 @@ def _content_hash(body: str) -> str:
 
 def _token_count(body: str) -> int:
     return len(body.split())
+
+
+def _initial_stats() -> dict[str, Any]:
+    return {
+        "files_discovered": 0,
+        "files_indexed": 0,
+        "sections_indexed": 0,
+        "chunks_indexed": 0,
+    }
