@@ -56,6 +56,14 @@ def test_text_import_uses_filename_stem_heading_and_raw_source_path() -> None:
     assert "Question\n\nAnswer" in markdown
 
 
+def test_text_import_preserves_original_text_whitespace_after_heading() -> None:
+    body = "\n\n    indented first line\nbody line\n  trailing spaces  \n\n"
+
+    markdown = import_text_to_markdown("notes.txt", body, imported_at=IMPORTED_AT)
+
+    assert markdown.endswith(f"# notes\n\n{body}")
+
+
 def test_html_import_converts_readable_headings_and_body_to_markdown() -> None:
     markdown = import_html_to_markdown(
         "policy.html",

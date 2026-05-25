@@ -42,7 +42,7 @@ def import_text_to_markdown(
     imported_at: str | datetime | None = None,
 ) -> str:
     title = _filename_stem(filename)
-    markdown_body = f"# {title}\n\n{body.strip()}\n"
+    markdown_body = f"# {title}\n\n{_ensure_trailing_newline(body)}"
     return _with_product_frontmatter(filename, markdown_body, imported_at)
 
 
