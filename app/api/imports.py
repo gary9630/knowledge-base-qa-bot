@@ -4,11 +4,11 @@ from datetime import UTC, datetime
 from pathlib import Path, PurePath
 from typing import Annotated
 
-from fastapi import APIRouter, File, HTTPException, Request, UploadFile
+from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
 from pydantic import BaseModel
 from pypdf.errors import PdfReadError
 
-from app.api.dependencies import get_app_settings
+from app.api.dependencies import get_app_settings, require_admin_access
 from app.ingestion.service import import_file_to_markdown
 
 router = APIRouter()
@@ -24,11 +24,12 @@ class ImportResponse(BaseModel):
 async def import_upload(
     request: Request,
     file: Annotated[UploadFile, File()],
+    _: Annotated[None, Depends(require_admin_access)] = None,
 ) -> ImportResponse:
     filename = _safe_filename(file.filename)
-    body = await file.read()
 
     settings = get_app_settings(request)
+    body = await _read_upload_bytes(file, max_bytes=settings.max_upload_bytes)
     raw_dir = Path(settings.raw_dir)
     docs_dir = Path(settings.docs_dir)
     raw_dir.mkdir(parents=True, exist_ok=True)
@@ -70,3 +71,22 @@ def _safe_filename(filename: str | None) -> str:
     if not name or name in {".", ".."}:
         raise HTTPException(status_code=400, detail="Upload filename is required.")
     return name
+
+
+async def _read_upload_bytes(file: UploadFile, *, max_bytes: int) -> bytes:
+    if max_bytes <= 0:
+        raise HTTPException(status_code=500, detail="Upload limit is misconfigured.")
+
+    chunks: list[bytes] = []
+    total_size = 0
+    while True:
+        chunk = await file.read(min(1024 * 1024, max_bytes + 1))
+        if not chunk:
+            break
+
+        total_size += len(chunk)
+        if total_size > max_bytes:
+            raise HTTPException(status_code=413, detail="Upload exceeds configured size limit.")
+        chunks.append(chunk)
+
+    return b"".join(chunks)

@@ -6,7 +6,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy import select
-from sqlalchemy.orm import Session, selectinload
+from sqlalchemy.orm import Session, load_only, selectinload
 
 from app.api.dependencies import get_request_db_session
 from app.models.tables import Document, Section
@@ -59,7 +59,18 @@ def list_sources(
 ) -> SourcesResponse:
     documents = session.scalars(
         select(Document)
-        .options(selectinload(Document.sections))
+        .options(
+            load_only(
+                Document.id,
+                Document.filename,
+                Document.title,
+                Document.source_type,
+                Document.imported_from,
+                Document.created_at,
+                Document.updated_at,
+            ),
+            selectinload(Document.sections).load_only(Section.id),
+        )
         .order_by(Document.filename.asc(), Document.id.asc())
     ).all()
     return SourcesResponse(documents=[document_summary(document) for document in documents])
@@ -72,7 +83,16 @@ def get_source(
 ) -> DocumentResponse:
     document = session.scalar(
         select(Document)
-        .options(selectinload(Document.sections))
+        .options(
+            selectinload(Document.sections).load_only(
+                Section.id,
+                Section.source_id,
+                Section.heading,
+                Section.heading_slug,
+                Section.level,
+                Section.created_at,
+            )
+        )
         .where(Document.id == document_id)
     )
     if document is None:

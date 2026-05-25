@@ -36,6 +36,7 @@
     statusPill: $("#index-status-pill"),
     statusGrid: $("#index-status"),
     uploadForm: $("#upload-form"),
+    adminKey: $("#admin-key"),
     uploadFile: $("#upload-file"),
     rebuildIndex: $("#rebuild-index"),
     operationLog: $("#operation-log"),
@@ -148,6 +149,12 @@
       if (event.event === "token") {
         answerNode.textContent += event.data;
         elements.chatLog.scrollTop = elements.chatLog.scrollHeight;
+        return;
+      }
+
+      if (event.event === "error") {
+        const payload = safeJson(event.data);
+        answerNode.textContent = payload.detail || event.data || "Chat stream failed.";
       }
     });
   }
@@ -546,6 +553,7 @@
       appendOperation(`Uploading ${file.name}...`);
       const response = await fetch("/imports", {
         method: "POST",
+        headers: adminHeaders(),
         body: formData,
       });
       if (!response.ok) {
@@ -567,6 +575,7 @@
       appendOperation("Rebuilding index...");
       const response = await fetch("/index", {
         method: "POST",
+        headers: adminHeaders(),
       });
       if (!response.ok) {
         throw new Error(await responseError(response));
@@ -657,6 +666,11 @@
     const nextLine = `[${timestamp}] ${message}`;
     elements.operationLog.textContent =
       current && current !== "No admin operations yet." ? `${current}\n${nextLine}` : nextLine;
+  }
+
+  function adminHeaders() {
+    const adminKey = elements.adminKey.value.trim();
+    return adminKey ? { "X-KB-Admin-Key": adminKey } : {};
   }
 
   function emptyText(text) {

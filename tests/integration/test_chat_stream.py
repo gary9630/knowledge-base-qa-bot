@@ -70,6 +70,27 @@ def test_chat_stream_validates_request_payload() -> None:
     assert response.status_code == 422
 
 
+def test_chat_stream_missing_conversation_returns_404(db_session: Session) -> None:
+    app = create_app(
+        settings=Settings(
+            embedding_provider="fake",
+            answer_provider="fake",
+        ),
+        session_factory=_session_factory(db_session),
+    )
+    client = TestClient(app)
+
+    response = client.post(
+        "/chat/stream",
+        json={
+            "query": "課程網站在哪？",
+            "conversation_id": "00000000-0000-0000-0000-000000000001",
+        },
+    )
+
+    assert response.status_code == 404
+
+
 def test_chat_stream_sends_sources_tokens_and_done(
     app_with_indexed_sample_docs: IndexedSampleDocsApp,
 ) -> None:
@@ -88,7 +109,7 @@ def test_chat_stream_sends_sources_tokens_and_done(
     assert all(name == "token" for name in event_names[1:-1])
 
     sources_payload = json.loads(events[0]["data"])
-    assert sources_payload["sources"][0]["source_id"] == "常見問題FAQ.md#課程網站"
+    assert sources_payload["sources"] == []
     assert sources_payload["selected_sources"][0]["source_id"] == "常見問題FAQ.md#課程網站"
 
     token_data = [event["data"] for event in events[1:-1]]

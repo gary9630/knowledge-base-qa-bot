@@ -41,8 +41,10 @@ docker compose --profile test run --rm test
 
 `docs`, `raw`, `.kb`, and Postgres data are stored in named Docker volumes. For local
 sample data, seed `docs/` before local indexing, or upload files through the UI/API when
-running the Compose app. Docker Compose configuration is covered by tests; this README does
-not claim a full Docker image build was verified in this environment.
+running the Compose app. The Compose default admin key is `local-admin-key`; override it
+with `KB_ADMIN_API_KEY` before using anything beyond local development. Docker Compose
+configuration is covered by tests; this README does not claim a full Docker image build was
+verified in this environment.
 
 ## Environment
 
@@ -55,6 +57,8 @@ Settings use the `KB_` prefix unless noted.
 | `KB_DOCS_DIR` | `docs` | Canonical Markdown source directory. |
 | `KB_RAW_DIR` | `raw` | Uploaded original-file directory. |
 | `KB_KB_DIR` | `.kb` | Local index/export artifacts. |
+| `KB_ADMIN_API_KEY` | unset | Optional admin key required for upload/index endpoints; production requires it. |
+| `KB_MAX_UPLOAD_BYTES` | `10000000` | Maximum upload size accepted by `/imports`. |
 | `KB_EMBEDDING_PROVIDER` | `fake` | Use `fake` for deterministic dev/test or `openai` for real embeddings. |
 | `KB_ANSWER_PROVIDER` | `fake` | Use `fake` for deterministic dev/test or `openai` for generated answers. |
 | `OPENAI_API_KEY` | unset | Required by OpenAI providers. |
@@ -75,13 +79,15 @@ uv run --python 3.12 python -m scripts.seed_sample_docs
 Upload PDF, Markdown, text, or HTML and convert it to canonical Markdown:
 
 ```bash
-curl -F "file=@notes.pdf" http://localhost:8000/imports
+curl -H "X-KB-Admin-Key: $KB_ADMIN_API_KEY" \
+  -F "file=@notes.pdf" http://localhost:8000/imports
 ```
 
 Rebuild the DB index from `docs/`:
 
 ```bash
-curl -X POST http://localhost:8000/index
+curl -H "X-KB-Admin-Key: $KB_ADMIN_API_KEY" \
+  -X POST http://localhost:8000/index
 curl http://localhost:8000/index/status
 ```
 
@@ -121,7 +127,9 @@ docker compose --profile worker --profile test config
 ## Production Notes
 
 Use managed Postgres with pgvector enabled, real credentials, backups, and a migration step
-that runs once per deploy. Store raw uploads and canonical Markdown in durable storage or
+that runs once per deploy. Set `KB_ADMIN_API_KEY` and enforce it on upload/index operations;
+do not expose admin endpoints publicly without an authenticated gateway. Store raw uploads
+and canonical Markdown in durable storage or
 mounted volumes. Use OpenAI or another production embedding provider with a stable vector
 dimension before indexing production data. Add authentication, upload limits, observability,
 rate limits, and source-level access control before exposing the app publicly.

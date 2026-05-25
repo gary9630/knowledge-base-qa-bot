@@ -3,6 +3,7 @@ from pathlib import Path
 import pytest
 
 from app.core.config import Settings
+from app.main import create_app
 
 _SETTINGS_ENV_KEYS = (
     "KB_DOCS_DIR",
@@ -10,6 +11,8 @@ _SETTINGS_ENV_KEYS = (
     "KB_OPENAI_API_KEY",
     "KB_OPENAI_EMBEDDING_MODEL",
     "KB_OPENAI_CHAT_MODEL",
+    "KB_ADMIN_API_KEY",
+    "KB_MAX_UPLOAD_BYTES",
 )
 
 
@@ -86,3 +89,10 @@ def test_settings_openai_api_key_can_be_set_by_constructor() -> None:
     settings = Settings(openai_api_key="constructor-key")
 
     assert settings.openai_api_key == "constructor-key"
+
+
+def test_app_rejects_embedding_dimension_that_does_not_match_schema() -> None:
+    settings = Settings(embedding_dimension=768)
+
+    with pytest.raises(ValueError, match="embedding_dimension must match database schema"):
+        create_app(settings=settings)

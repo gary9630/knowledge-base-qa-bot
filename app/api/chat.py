@@ -11,6 +11,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 from sse_starlette.sse import EventSourceResponse
 
+from app.answer.citations import CANNOT_CONFIRM_ANSWER
 from app.answer.providers import AnswerProvider
 from app.answer.service import AnswerResult, AnswerService
 from app.api.dependencies import (
@@ -66,8 +67,10 @@ def chat_stream(
     request: Request,
     session: Annotated[Session, Depends(get_request_db_session)],
 ) -> EventSourceResponse:
-    response = _build_chat_response(payload=payload, request=request, session=session)
-    return EventSourceResponse(_chat_response_events(response))
+    _validate_stream_request(payload=payload, session=session)
+    return EventSourceResponse(
+        _chat_stream_response_events(payload=payload, request=request, session=session)
+    )
 
 
 def _build_chat_response(
@@ -129,7 +132,7 @@ def _build_chat_response(
         query=payload.query,
         strategy=payload.strategy,
         answer=answer_result.answer,
-        decision=retrieval_result.decision,
+        decision=_chat_decision(retrieval_result.decision, answer_result),
         selected_candidates=retrieval_result.candidates,
         cited_candidates=cited_candidates,
         latency_ms=_elapsed_ms(started_at),
@@ -148,19 +151,149 @@ def _answer_provider_error_response(
         raise HTTPException(status_code=502, detail="Answer provider failed.") from error
 
 
+def _chat_decision(
+    retrieval_decision: RetrievalDecision,
+    answer_result: AnswerResult,
+) -> RetrievalDecision:
+    if (
+        retrieval_decision != "can_answer"
+        or not answer_result.valid
+        or not answer_result.sources
+        or answer_result.answer == CANNOT_CONFIRM_ANSWER
+    ):
+        return "cannot_confirm"
+    return "can_answer"
+
+
+def _chat_stream_response_events(
+    *,
+    payload: ChatRequest,
+    request: Request,
+    session: Session,
+) -> Iterator[dict[str, str]]:
+    try:
+        yield from _unsafe_chat_stream_response_events(
+            payload=payload,
+            request=request,
+            session=session,
+        )
+    except HTTPException as error:
+        session.rollback()
+        yield {"event": "error", "data": _event_json({"detail": error.detail})}
+    except Exception:
+        session.rollback()
+        yield {"event": "error", "data": _event_json({"detail": "Chat stream failed."})}
+
+
+def _unsafe_chat_stream_response_events(
+    *,
+    payload: ChatRequest,
+    request: Request,
+    session: Session,
+) -> Iterator[dict[str, str]]:
+    started_at = perf_counter()
+    conversation = _conversation_for_request(payload, session)
+    user_message = Message(
+        conversation=conversation,
+        role="user",
+        content=payload.query,
+    )
+    session.add(user_message)
+    session.flush()
+
+    if not index_is_ready(session):
+        response = _persist_chat_response(
+            session=session,
+            conversation=conversation,
+            user_message=user_message,
+            query=payload.query,
+            strategy=payload.strategy,
+            answer=NOT_INDEXED_ANSWER,
+            decision="cannot_confirm",
+            selected_candidates=[],
+            cited_candidates=[],
+            latency_ms=_elapsed_ms(started_at),
+        )
+        yield from _chat_response_events(response)
+        return
+
+    retriever = HybridRetriever(
+        session=session,
+        embedding_provider=get_embedding_provider(request),
+        score_threshold=API_RETRIEVAL_SCORE_THRESHOLD,
+    )
+    retrieval_result = retriever.search(
+        payload.query,
+        strategy=payload.strategy,
+        limit=payload.limit,
+    )
+    selected_source_responses = [
+        candidate_response(candidate) for candidate in retrieval_result.candidates
+    ]
+    yield _sources_event(sources=[], selected_sources=selected_source_responses)
+
+    answer_result = _answer_provider_error_response(
+        provider=get_answer_provider(request),
+        payload=payload,
+        candidates=retrieval_result.candidates,
+    )
+
+    cited_source_ids = {source.source_id for source in answer_result.sources}
+    cited_candidates = [
+        candidate
+        for candidate in retrieval_result.candidates
+        if candidate.source_id in cited_source_ids
+    ]
+    response = _persist_chat_response(
+        session=session,
+        conversation=conversation,
+        user_message=user_message,
+        query=payload.query,
+        strategy=payload.strategy,
+        answer=answer_result.answer,
+        decision=_chat_decision(retrieval_result.decision, answer_result),
+        selected_candidates=retrieval_result.candidates,
+        cited_candidates=cited_candidates,
+        latency_ms=_elapsed_ms(started_at),
+    )
+
+    for token in _answer_token_chunks(response.answer):
+        yield {"event": "token", "data": token}
+    yield _done_event(response)
+
+
+def _validate_stream_request(*, payload: ChatRequest, session: Session) -> None:
+    if payload.conversation_id is None:
+        return
+    if session.get(Conversation, payload.conversation_id) is None:
+        raise HTTPException(status_code=404, detail="Conversation not found.")
+
+
 def _chat_response_events(response: ChatResponse) -> Iterator[dict[str, str]]:
-    yield {
+    yield _sources_event(sources=response.sources, selected_sources=response.selected_sources)
+    for token in _answer_token_chunks(response.answer):
+        yield {"event": "token", "data": token}
+    yield _done_event(response)
+
+
+def _sources_event(
+    *,
+    sources: list[CandidateResponse],
+    selected_sources: list[CandidateResponse],
+) -> dict[str, str]:
+    return {
         "event": "sources",
         "data": _event_json(
             {
-                "sources": _responses_to_json(response.sources),
-                "selected_sources": _responses_to_json(response.selected_sources),
+                "sources": _responses_to_json(sources),
+                "selected_sources": _responses_to_json(selected_sources),
             }
         ),
     }
-    for token in _answer_token_chunks(response.answer):
-        yield {"event": "token", "data": token}
-    yield {
+
+
+def _done_event(response: ChatResponse) -> dict[str, str]:
+    return {
         "event": "done",
         "data": _event_json(
             {

@@ -19,6 +19,7 @@ from app.core.database import SessionLocal
 from app.retrieval.embeddings import EmbeddingProvider, create_embedding_provider
 
 SessionFactory = Callable[[], Session]
+SCHEMA_EMBEDDING_DIMENSION = 1536
 
 
 def create_app(
@@ -29,6 +30,11 @@ def create_app(
     answer_provider: AnswerProvider | None = None,
 ) -> FastAPI:
     resolved_settings = settings or Settings()
+    if resolved_settings.embedding_dimension != SCHEMA_EMBEDDING_DIMENSION:
+        raise ValueError(
+            "embedding_dimension must match database schema "
+            f"({SCHEMA_EMBEDDING_DIMENSION})"
+        )
     app = FastAPI(title="Knowledge Base Q&A Bot")
     app.state.settings = resolved_settings
     app.state.session_factory = session_factory or SessionLocal

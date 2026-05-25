@@ -22,8 +22,10 @@ def test_ui_serves_three_column_workbench() -> None:
     assert css_response.status_code == 200
     assert js_response.status_code == 200
     assert "fetch(\"/chat/stream\"" in js_response.text
+    assert "event.event === \"error\"" in js_response.text
     assert "fetch(\"/imports\"" in js_response.text
     assert "fetch(\"/index\"" in js_response.text
+    assert "X-KB-Admin-Key" in js_response.text
     assert "getJson(\"/index/status\"" in js_response.text
     assert "getJson(\"/sources\"" in js_response.text
     assert "parseSseDataLine" in js_response.text

@@ -42,6 +42,7 @@ def test_compose_defines_app_postgres_and_worker_contracts() -> None:
     assert "pgvector/pgvector" in compose
     assert '"${KB_POSTGRES_PORT:-5432}:5432"' in compose
     assert "KB_DATABASE_URL=postgresql+psycopg://kb:kb@postgres:5432/kb" in compose
+    assert "KB_ADMIN_API_KEY=${KB_ADMIN_API_KEY:-local-admin-key}" in compose
     assert compose.count("alembic upgrade head") == 1
     assert "uvicorn app.main:app" in compose
     assert re.search(r"depends_on:\s*\n\s+postgres:", compose)

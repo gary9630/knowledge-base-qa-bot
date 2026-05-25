@@ -14,6 +14,7 @@ from app.api.dependencies import (
     get_embedding_provider,
     get_indexing_session_factory,
     get_request_db_session,
+    require_admin_access,
 )
 from app.indexing.service import IndexingService
 from app.models.tables import Chunk, IndexingJob
@@ -54,7 +55,10 @@ def ready(session: Annotated[Session, Depends(get_request_db_session)]) -> Ready
 
 
 @router.post("/index", response_model=IndexRebuildResponse)
-def rebuild_index(request: Request) -> IndexRebuildResponse:
+def rebuild_index(
+    request: Request,
+    _: Annotated[None, Depends(require_admin_access)] = None,
+) -> IndexRebuildResponse:
     settings = get_app_settings(request)
     session_factory = get_indexing_session_factory(request)
     with session_factory() as session:

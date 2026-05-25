@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections.abc import Callable, Iterator
 from typing import cast
 
-from fastapi import Request
+from fastapi import Header, HTTPException, Request
 from sqlalchemy.orm import Session
 
 from app.answer.providers import AnswerProvider, create_answer_provider
@@ -55,3 +55,20 @@ def get_answer_provider(request: Request) -> AnswerProvider:
     answer_provider = create_answer_provider(get_app_settings(request))
     request.app.state.answer_provider = answer_provider
     return answer_provider
+
+
+def require_admin_access(
+    request: Request,
+    admin_key: str | None = Header(default=None, alias="X-KB-Admin-Key"),
+) -> None:
+    settings = get_app_settings(request)
+    if settings.admin_api_key:
+        if admin_key != settings.admin_api_key:
+            raise HTTPException(status_code=401, detail="Admin API key is required.")
+        return
+
+    if settings.app_env.lower() in {"production", "staging"}:
+        raise HTTPException(
+            status_code=503,
+            detail="KB_ADMIN_API_KEY is required for admin endpoints.",
+        )
