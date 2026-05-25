@@ -116,6 +116,17 @@ def test_validate_citations_rejects_raw_source_id_with_parentheses_in_filename()
     assert result.invalid_source_ids == {"release (draft).md#intro"}
 
 
+def test_validate_citations_rejects_raw_source_id_with_no_space_parentheses_in_filename() -> None:
+    result = validate_citations(
+        "Valid [faq.md#intro] invalid release(draft).md#intro",
+        {"faq.md#intro"},
+    )
+
+    assert not result.valid
+    assert result.cited_source_ids == {"faq.md#intro"}
+    assert result.invalid_source_ids == {"release(draft).md#intro"}
+
+
 def test_validate_citations_rejects_raw_source_id_with_brackets_in_filename() -> None:
     result = validate_citations(
         "Valid [faq.md#intro] invalid release [draft].md#intro",
@@ -125,6 +136,17 @@ def test_validate_citations_rejects_raw_source_id_with_brackets_in_filename() ->
     assert not result.valid
     assert result.cited_source_ids == {"faq.md#intro"}
     assert result.invalid_source_ids == {"release [draft].md#intro"}
+
+
+def test_validate_citations_rejects_raw_source_id_with_no_space_brackets_in_filename() -> None:
+    result = validate_citations(
+        "Valid [faq.md#intro] invalid release[draft].md#intro",
+        {"faq.md#intro"},
+    )
+
+    assert not result.valid
+    assert result.cited_source_ids == {"faq.md#intro"}
+    assert result.invalid_source_ids == {"release[draft].md#intro"}
 
 
 def test_answer_without_sources_returns_cannot_confirm_without_provider_call() -> None:

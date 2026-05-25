@@ -12,7 +12,7 @@ _SOURCE_ID_TOKEN_RE = re.compile(
 )
 _RAW_PUNCTUATED_SOURCE_ID_RE = re.compile(
     r"(?<![\w./%+-])"
-    r"(?P<source_id>[\w./%+@=-]+ [\(\[（【][^\r\n]+?[\)\]）】][\w./%+@=-]*\.md#[\w-]+)"
+    r"(?P<source_id>[\w./%+@=-]+ ?[\(\[（【][^\r\n]+?[\)\]）】][\w./%+@=-]*\.md#[\w-]+)"
     r"(?![\w/%+-])",
     re.UNICODE,
 )
