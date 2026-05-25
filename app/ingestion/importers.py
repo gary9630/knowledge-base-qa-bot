@@ -41,7 +41,8 @@ _AUTHORED_FRONTMATTER_KEYS = _PRODUCT_FRONTMATTER_KEYS | frozenset(
         "tags",
     }
 )
-_CONTROL_WHITESPACE_RE = re.compile(r"[\r\n\t\f\v\u0085\u2028\u2029]+")
+_CONTROL_WHITESPACE_RE = re.compile(r"[\r\n\v\f\x1c\x1d\x1e\x85\u2028\u2029]+")
+_MARKDOWN_HEADING_RE = re.compile(r"^[ \t]{0,3}#{1,6}(?:[ \t]+|$)")
 _YAML_KEY_RE = re.compile(r"^([A-Za-z_][A-Za-z0-9_-]*)\s*:(.*)$")
 _YAML_PLAIN_SAFE_RE = re.compile(r"^[A-Za-z0-9_./:+-]+$")
 _BACKTICK_SEQUENCE_RE = re.compile(r"`+")
@@ -59,7 +60,7 @@ def import_markdown_to_markdown(
     *,
     imported_at: str | datetime | None = None,
 ) -> str:
-    markdown_body = _ensure_trailing_newline(_normalize_markdown_body(body))
+    markdown_body = _ensure_trailing_newline(_normalize_markdown_body(filename, body))
     return _with_product_frontmatter(filename, markdown_body, imported_at)
 
 
@@ -146,7 +147,7 @@ def _format_imported_at(imported_at: str | datetime | None) -> str:
     return imported_at
 
 
-def _normalize_markdown_body(body: str) -> str:
+def _normalize_markdown_body(filename: str, body: str) -> str:
     lines = body.splitlines(keepends=True)
     if not lines or not _is_frontmatter_delimiter(lines[0]):
         return body
@@ -164,7 +165,10 @@ def _normalize_markdown_body(body: str) -> str:
         if _is_plausible_yaml_frontmatter(metadata):
             frontmatter = "".join(frontmatter_lines)
             body_without_frontmatter = "".join(lines[index + 1 :]).lstrip("\n\r")
-            return _authored_frontmatter_section(frontmatter, body_without_frontmatter)
+            return _authored_frontmatter_section(
+                frontmatter,
+                _ensure_content_heading(filename, body_without_frontmatter),
+            )
         return body
 
     return body
@@ -227,6 +231,22 @@ def _authored_frontmatter_section(frontmatter: str, body: str) -> str:
         f"{fence}\n\n"
         f"{body}"
     )
+
+
+def _ensure_content_heading(filename: str, body: str) -> str:
+    if not body.strip() or _body_starts_with_heading(body):
+        return body
+
+    return f"# {_filename_stem(filename)}\n\n{body}"
+
+
+def _body_starts_with_heading(body: str) -> bool:
+    for line in body.splitlines():
+        if not line.strip():
+            continue
+        return _MARKDOWN_HEADING_RE.match(line) is not None
+
+    return False
 
 
 def _metadata_fence(content: str) -> str:

@@ -163,6 +163,29 @@ def test_markdown_import_keeps_prose_thematic_break_content() -> None:
     assert [section.heading for section in sections] == ["policy", "Policy"]
 
 
+def test_markdown_import_separates_headingless_body_from_original_metadata() -> None:
+    authored_body = "---\ntitle: Vendor Doc\n---\n\nIntro body with no heading."
+
+    markdown = import_markdown_to_markdown("vendor.md", authored_body, imported_at=IMPORTED_AT)
+
+    sections = parse_markdown_sections(filename="vendor.md", body=markdown)
+    assert [section.heading for section in sections] == ["Original Metadata", "vendor"]
+    assert "Intro body with no heading." not in sections[0].body_md
+    assert "Intro body with no heading." in sections[1].body_md
+
+
+def test_markdown_import_separates_intro_prose_before_first_heading() -> None:
+    authored_body = "---\ntitle: Vendor Doc\n---\n\nIntro prose\n\n# Policy\nBody\n"
+
+    markdown = import_markdown_to_markdown("source.md", authored_body, imported_at=IMPORTED_AT)
+
+    sections = parse_markdown_sections(filename="source.md", body=markdown)
+    assert [section.heading for section in sections] == ["Original Metadata", "source", "Policy"]
+    assert "Intro prose" not in sections[0].body_md
+    assert "Intro prose" in sections[1].body_md
+    assert "Body" in sections[2].body_md
+
+
 def test_text_import_uses_filename_stem_heading_and_raw_source_path() -> None:
     markdown = import_text_to_markdown(
         "faq.txt",
@@ -185,6 +208,16 @@ def test_text_import_preserves_original_text_whitespace_after_heading() -> None:
 
 def test_text_import_sanitizes_filename_stem_to_single_line_heading() -> None:
     markdown = import_text_to_markdown("bad\n# injected.txt", "Body", imported_at=IMPORTED_AT)
+
+    imported_body = _import_body(markdown)
+    assert imported_body.startswith("# bad # injected\n\nBody\n")
+
+    sections = parse_markdown_sections(filename="bad.md", body=markdown)
+    assert [section.heading for section in sections] == ["bad # injected"]
+
+
+def test_text_import_sanitizes_ascii_file_separator_in_filename_heading() -> None:
+    markdown = import_text_to_markdown("bad\x1c# injected.txt", "Body", imported_at=IMPORTED_AT)
 
     imported_body = _import_body(markdown)
     assert imported_body.startswith("# bad # injected\n\nBody\n")
