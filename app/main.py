@@ -1,11 +1,43 @@
+from collections.abc import Callable
+
 from fastapi import FastAPI
+from sqlalchemy.orm import Session
 
+from app.api.chat import router as chat_router
+from app.api.feedback import router as feedback_router
 from app.api.health import router as health_router
+from app.api.imports import router as imports_router
+from app.api.indexing import router as indexing_router
+from app.api.search import router as search_router
+from app.api.sources import router as sources_router
+from app.core.config import Settings
+from app.core.database import SessionLocal
+from app.retrieval.embeddings import EmbeddingProvider, create_embedding_provider
+
+SessionFactory = Callable[[], Session]
 
 
-def create_app() -> FastAPI:
+def create_app(
+    *,
+    settings: Settings | None = None,
+    session_factory: SessionFactory | None = None,
+    embedding_provider: EmbeddingProvider | None = None,
+) -> FastAPI:
+    resolved_settings = settings or Settings()
     app = FastAPI(title="Knowledge Base Q&A Bot")
+    app.state.settings = resolved_settings
+    app.state.session_factory = session_factory or SessionLocal
+    app.state.embedding_provider = embedding_provider or create_embedding_provider(
+        resolved_settings
+    )
+
     app.include_router(health_router)
+    app.include_router(indexing_router)
+    app.include_router(imports_router)
+    app.include_router(search_router)
+    app.include_router(chat_router)
+    app.include_router(sources_router)
+    app.include_router(feedback_router)
     return app
 
 

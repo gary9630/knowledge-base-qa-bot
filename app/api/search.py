@@ -1,0 +1,79 @@
+from __future__ import annotations
+
+from typing import Annotated
+from uuid import UUID
+
+from fastapi import APIRouter, Depends, Request
+from pydantic import BaseModel, Field
+from sqlalchemy.orm import Session
+
+from app.api.dependencies import get_embedding_provider, get_request_db_session
+from app.retrieval.hybrid import HybridRetriever
+from app.retrieval.models import RetrievalDecision, RetrievalStrategy, RetrievedCandidate
+
+router = APIRouter()
+
+API_RETRIEVAL_SCORE_THRESHOLD = 0.05
+
+
+class CandidateResponse(BaseModel):
+    section_id: UUID
+    source_id: str
+    filename: str
+    heading: str
+    body_md: str
+    score: float
+    strategy: str
+    debug_scores: dict[str, float] = Field(default_factory=dict)
+
+
+class SearchRequest(BaseModel):
+    query: str = Field(min_length=1)
+    strategy: RetrievalStrategy = "hybrid"
+    limit: int = Field(default=5, ge=1, le=20)
+    debug: bool = False
+
+
+class SearchResponse(BaseModel):
+    decision: RetrievalDecision
+    candidates: list[CandidateResponse]
+    rejected_candidates: list[CandidateResponse] = Field(default_factory=list)
+
+
+@router.post("/search", response_model=SearchResponse)
+def search(
+    payload: SearchRequest,
+    request: Request,
+    session: Annotated[Session, Depends(get_request_db_session)],
+) -> SearchResponse:
+    retriever = HybridRetriever(
+        session=session,
+        embedding_provider=get_embedding_provider(request),
+        score_threshold=API_RETRIEVAL_SCORE_THRESHOLD,
+    )
+    result = retriever.search(
+        payload.query,
+        strategy=payload.strategy,
+        limit=payload.limit,
+        debug=payload.debug,
+    )
+    return SearchResponse(
+        decision=result.decision,
+        candidates=[candidate_response(candidate) for candidate in result.candidates],
+        rejected_candidates=[
+            candidate_response(candidate) for candidate in result.rejected_candidates
+        ],
+    )
+
+
+def candidate_response(candidate: RetrievedCandidate) -> CandidateResponse:
+    return CandidateResponse(
+        section_id=candidate.section_id,
+        source_id=candidate.source_id,
+        filename=candidate.filename,
+        heading=candidate.heading,
+        body_md=candidate.body_md,
+        score=candidate.score,
+        strategy=candidate.strategy,
+        debug_scores=dict(candidate.debug_scores),
+    )
