@@ -27,6 +27,10 @@ _RAW_PUNCTUATED_SOURCE_ID_RE = re.compile(
     rf"{_RAW_SOURCE_ID_END_BOUNDARY}",
     re.UNICODE,
 )
+_QUOTED_SOURCE_ID_RE = re.compile(
+    r"(?P<quote>[\"'`])(?P<source_id>[^\"'`\r\n]+?\.md#[\w-]+)(?P=quote)",
+    re.UNICODE,
+)
 _BRACKETED_SOURCE_ID_CONTENT_RE = re.compile(r"^(?P<source_id>.+\.md#[\w-]+)$", re.UNICODE)
 _URL_RE = re.compile(r"^[A-Za-z][A-Za-z0-9+.-]*://")
 _URL_SOURCE_ID_RE = re.compile(r"[A-Za-z][A-Za-z0-9+.-]*://\S*?\.md#[\w-]+", re.UNICODE)
@@ -89,6 +93,7 @@ def _extract_source_id_tokens(answer: str) -> set[str]:
         answer_without_bracketed_citations,
         _url_source_id_spans(answer_without_bracketed_citations),
     )
+    quoted_matches, quoted_spans = _extract_quoted_source_ids(answer_without_urls)
     spaced_match_spans = list(_RAW_SPACED_SOURCE_ID_RE.finditer(answer_without_urls))
     spaced_matches = {match.group("source_id").strip() for match in spaced_match_spans}
     prefix_punctuation_match_spans = list(
@@ -101,16 +106,15 @@ def _extract_source_id_tokens(answer: str) -> set[str]:
     punctuated_matches = {
         match.group("source_id").strip() for match in punctuated_match_spans
     }
+    nonstandard_raw_spans = [
+        match.span()
+        for match in (
+            spaced_match_spans + prefix_punctuation_match_spans + punctuated_match_spans
+        )
+    ] + quoted_spans
     answer_without_nonstandard_raw_citations = _mask_spans(
         answer_without_urls,
-        [
-            match.span()
-            for match in (
-                spaced_match_spans
-                + prefix_punctuation_match_spans
-                + punctuated_match_spans
-            )
-        ],
+        nonstandard_raw_spans,
     )
     token_matches = {
         match.group("source_id").strip()
@@ -121,6 +125,7 @@ def _extract_source_id_tokens(answer: str) -> set[str]:
         | spaced_matches
         | prefix_punctuation_matches
         | punctuated_matches
+        | quoted_matches
         | bracketed_matches
     )
 
@@ -198,6 +203,21 @@ def _looks_like_url(content: str) -> bool:
 
 def _url_source_id_spans(answer: str) -> list[tuple[int, int]]:
     return [match.span() for match in _URL_SOURCE_ID_RE.finditer(answer)]
+
+
+def _extract_quoted_source_ids(answer: str) -> tuple[set[str], list[tuple[int, int]]]:
+    source_ids: set[str] = set()
+    spans_to_mask: list[tuple[int, int]] = []
+    for match in _QUOTED_SOURCE_ID_RE.finditer(answer):
+        source_id = match.group("source_id").strip()
+        if _looks_like_url(source_id):
+            spans_to_mask.append(match.span())
+            continue
+
+        source_ids.add(source_id)
+        spans_to_mask.append(match.span())
+
+    return source_ids, spans_to_mask
 
 
 def _markdown_url_link_spans(answer: str) -> list[tuple[int, int]]:
