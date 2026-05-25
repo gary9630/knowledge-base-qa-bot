@@ -23,6 +23,10 @@ _RAW_PUNCTUATED_SOURCE_ID_RE = re.compile(
 _BRACKETED_SOURCE_ID_CONTENT_RE = re.compile(r"^(?P<source_id>.+\.md#[\w-]+)$", re.UNICODE)
 _URL_RE = re.compile(r"^[A-Za-z][A-Za-z0-9+.-]*://")
 _URL_SOURCE_ID_RE = re.compile(r"[A-Za-z][A-Za-z0-9+.-]*://\S*?\.md#[\w-]+", re.UNICODE)
+_MARKDOWN_URL_LINK_RE = re.compile(
+    r"\[[^\]\r\n]*\]\([A-Za-z][A-Za-z0-9+.-]*://[^\s)]*\)",
+    re.UNICODE,
+)
 _BRACKET_PAIRS = {
     "[": "]",
     "(": ")",
@@ -69,7 +73,10 @@ def _extract_cited_source_ids(answer: str, allowed_source_ids: set[str]) -> set[
 
 
 def _extract_source_id_tokens(answer: str) -> set[str]:
-    bracketed_matches, bracketed_spans = _extract_bracketed_source_ids(answer)
+    answer_without_markdown_url_links = _mask_spans(answer, _markdown_url_link_spans(answer))
+    bracketed_matches, bracketed_spans = _extract_bracketed_source_ids(
+        answer_without_markdown_url_links,
+    )
     answer_without_bracketed_citations = _mask_spans(answer, bracketed_spans)
     answer_without_urls = _mask_spans(
         answer_without_bracketed_citations,
@@ -165,6 +172,10 @@ def _looks_like_url(content: str) -> bool:
 
 def _url_source_id_spans(answer: str) -> list[tuple[int, int]]:
     return [match.span() for match in _URL_SOURCE_ID_RE.finditer(answer)]
+
+
+def _markdown_url_link_spans(answer: str) -> list[tuple[int, int]]:
+    return [match.span() for match in _MARKDOWN_URL_LINK_RE.finditer(answer)]
 
 
 def _mask_spans(text: str, spans: list[tuple[int, int]]) -> str:

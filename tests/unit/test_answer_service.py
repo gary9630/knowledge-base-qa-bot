@@ -96,6 +96,17 @@ def test_validate_citations_ignores_markdown_link_url_anchor_with_valid_citation
     assert result.invalid_source_ids == set()
 
 
+def test_validate_citations_ignores_markdown_link_url_anchor_before_valid_citation() -> None:
+    result = validate_citations(
+        "[docs](https://example.com/guide.md#install) [faq.md#intro]",
+        {"faq.md#intro"},
+    )
+
+    assert result.valid
+    assert result.cited_source_ids == {"faq.md#intro"}
+    assert result.invalid_source_ids == set()
+
+
 def test_validate_citations_rejects_relative_markdown_link_target_source_id() -> None:
     result = validate_citations(
         "Valid [faq.md#intro] see [draft](release.md#intro)",
