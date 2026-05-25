@@ -126,6 +126,30 @@ def test_markdown_import_uses_collision_safe_metadata_fence() -> None:
     assert "  ```\n" in sections[0].body_md
 
 
+def test_markdown_import_keeps_indented_yaml_delimiter_inside_metadata() -> None:
+    authored_body = (
+        "---\n"
+        "title: Vendor Doc\n"
+        "notes: |\n"
+        "  before\n"
+        "  ---\n"
+        "  after\n"
+        "---\n\n"
+        "# Policy\n"
+        "Body\n"
+    )
+
+    markdown = import_markdown_to_markdown("policy.md", authored_body, imported_at=IMPORTED_AT)
+
+    imported_body = _import_body(markdown)
+    assert "## Original Metadata\n\n```yaml\n" in imported_body
+    assert "notes: |\n  before\n  ---\n  after\n" in imported_body
+    assert "# Policy\nBody\n" in imported_body
+
+    sections = parse_markdown_sections(filename="policy.md", body=markdown)
+    assert [section.heading for section in sections] == ["Original Metadata", "Policy"]
+
+
 def test_markdown_import_keeps_prose_thematic_break_content() -> None:
     authored_body = "---\nNote: this is real content.\n---\n\n# Policy\nBody\n"
 
@@ -193,6 +217,29 @@ def test_frontmatter_escapes_raw_control_characters() -> None:
     assert 'source_original: "raw/bad\\x0cdoc.txt"' in frontmatter
     assert 'imported_at: "2026-05-25T10:30:00+00:00\\x0cextra: injected"' in frontmatter
     assert all(not line.startswith("extra:") for line in frontmatter.splitlines())
+
+
+def test_frontmatter_and_title_escape_unicode_line_separators() -> None:
+    markdown = import_text_to_markdown(
+        "bad\u2028# injected.txt",
+        "Body",
+        imported_at="2026-05-25T10:30:00+00:00\u2029extra: injected",
+    )
+    frontmatter = _import_frontmatter(markdown)
+
+    assert "\u2028" not in frontmatter
+    assert "\u2029" not in frontmatter
+    assert frontmatter.count("source_original:") == 1
+    assert frontmatter.count("imported_at:") == 1
+    assert 'source_original: "raw/bad\\u2028# injected.txt"' in frontmatter
+    assert 'imported_at: "2026-05-25T10:30:00+00:00\\u2029extra: injected"' in frontmatter
+    assert all(not line.startswith("extra:") for line in frontmatter.splitlines())
+
+    imported_body = _import_body(markdown)
+    assert imported_body.startswith("# bad # injected\n\nBody\n")
+
+    sections = parse_markdown_sections(filename="bad.md", body=markdown)
+    assert [section.heading for section in sections] == ["bad # injected"]
 
 
 def test_html_import_converts_readable_headings_and_body_to_markdown() -> None:

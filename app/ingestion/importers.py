@@ -41,7 +41,7 @@ _AUTHORED_FRONTMATTER_KEYS = _PRODUCT_FRONTMATTER_KEYS | frozenset(
         "tags",
     }
 )
-_CONTROL_WHITESPACE_RE = re.compile(r"[\r\n\t\f\v]+")
+_CONTROL_WHITESPACE_RE = re.compile(r"[\r\n\t\f\v\u0085\u2028\u2029]+")
 _YAML_KEY_RE = re.compile(r"^([A-Za-z_][A-Za-z0-9_-]*)\s*:(.*)$")
 _YAML_PLAIN_SAFE_RE = re.compile(r"^[A-Za-z0-9_./:+-]+$")
 _BACKTICK_SEQUENCE_RE = re.compile(r"`+")
@@ -148,11 +148,11 @@ def _format_imported_at(imported_at: str | datetime | None) -> str:
 
 def _normalize_markdown_body(body: str) -> str:
     lines = body.splitlines(keepends=True)
-    if not lines or lines[0].strip() != "---":
+    if not lines or not _is_frontmatter_delimiter(lines[0]):
         return body
 
     for index, line in enumerate(lines[1:], start=1):
-        if line.strip() != "---":
+        if not _is_frontmatter_delimiter(line):
             continue
 
         frontmatter_lines = lines[1:index]
@@ -168,6 +168,10 @@ def _normalize_markdown_body(body: str) -> str:
         return body
 
     return body
+
+
+def _is_frontmatter_delimiter(line: str) -> bool:
+    return line.rstrip("\n\r") == "---"
 
 
 def _parse_frontmatter_metadata(lines: list[str]) -> _FrontmatterMetadata | None:
@@ -254,6 +258,10 @@ def _escape_yaml_double_quoted_char(char: str) -> str:
         return "\\t"
     if ord(char) < 0x20 or ord(char) == 0x7F:
         return f"\\x{ord(char):02x}"
+    if 0x80 <= ord(char) <= 0x9F:
+        return f"\\u{ord(char):04x}"
+    if char in {"\u2028", "\u2029"}:
+        return f"\\u{ord(char):04x}"
     return char
 
 
