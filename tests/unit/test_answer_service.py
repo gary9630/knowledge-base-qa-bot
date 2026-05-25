@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from uuid import UUID, uuid4
 
+import pytest
+
 from app.answer.citations import CANNOT_CONFIRM_ANSWER, validate_citations
 from app.answer.providers import FakeAnswerProvider
 from app.answer.service import AnswerService
@@ -58,6 +60,17 @@ def test_validate_citations_accepts_bracketed_source_id_with_spaces_in_filename(
 
     assert result.valid
     assert result.cited_source_ids == allowed_source_ids
+    assert result.invalid_source_ids == set()
+
+
+def test_validate_citations_accepts_bare_source_id_token() -> None:
+    result = validate_citations(
+        "faq.md#intro",
+        {"faq.md#intro"},
+    )
+
+    assert result.valid
+    assert result.cited_source_ids == {"faq.md#intro"}
     assert result.invalid_source_ids == set()
 
 
@@ -147,6 +160,26 @@ def test_validate_citations_rejects_raw_source_id_with_no_space_brackets_in_file
     assert not result.valid
     assert result.cited_source_ids == {"faq.md#intro"}
     assert result.invalid_source_ids == {"release[draft].md#intro"}
+
+
+@pytest.mark.parametrize(
+    ("answer", "invalid_source_id"),
+    [
+        ("Valid release,faq.md#intro", "release,faq.md#intro"),
+        ("Valid release:faq.md#intro", "release:faq.md#intro"),
+        ("Valid release faq.md#intro", "release faq.md#intro"),
+        ("Valid release&faq.md#intro", "release&faq.md#intro"),
+    ],
+)
+def test_validate_citations_rejects_raw_source_id_suffix_bypass(
+    answer: str,
+    invalid_source_id: str,
+) -> None:
+    result = validate_citations(answer, {"faq.md#intro"})
+
+    assert not result.valid
+    assert result.cited_source_ids == set()
+    assert result.invalid_source_ids == {invalid_source_id}
 
 
 def test_answer_without_sources_returns_cannot_confirm_without_provider_call() -> None:

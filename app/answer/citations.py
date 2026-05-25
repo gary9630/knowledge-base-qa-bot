@@ -7,7 +7,13 @@ from dataclasses import dataclass
 CANNOT_CONFIRM_ANSWER = "我無法從知識庫確認這件事。"
 
 _SOURCE_ID_TOKEN_RE = re.compile(
-    r"(?<![\w./%+-])(?P<source_id>[\w%+@=-][\w./%+@=-]*\.md#[\w-]+)(?![\w/%+-])",
+    r"(?<![\w./%+@=,&:-])(?P<source_id>[\w%+@=-][\w./%+@=-]*\.md#[\w-]+)(?![\w/%+-])",
+    re.UNICODE,
+)
+_RAW_SEPARATOR_SOURCE_ID_RE = re.compile(
+    r"(?<![\w./%+@=,&:-])"
+    r"(?P<source_id>[\w./%+@=-]+(?:[,:&]| +)[\w./%+@=-]+\.md#[\w-]+)"
+    r"(?![\w/%+-])",
     re.UNICODE,
 )
 _RAW_PUNCTUATED_SOURCE_ID_RE = re.compile(
@@ -61,14 +67,7 @@ def validate_citations(
 
 
 def _extract_cited_source_ids(answer: str, allowed_source_ids: set[str]) -> set[str]:
-    detected_tokens = _extract_source_id_tokens(answer)
-    cited_source_ids = detected_tokens & allowed_source_ids
-
-    for source_id in allowed_source_ids:
-        if _contains_source_id(answer, source_id):
-            cited_source_ids.add(source_id)
-
-    return cited_source_ids
+    return _extract_source_id_tokens(answer) & allowed_source_ids
 
 
 def _extract_source_id_tokens(answer: str) -> set[str]:
@@ -78,15 +77,21 @@ def _extract_source_id_tokens(answer: str) -> set[str]:
         answer_without_bracketed_citations,
         _url_source_id_spans(answer_without_bracketed_citations),
     )
+    separator_match_spans = list(_RAW_SEPARATOR_SOURCE_ID_RE.finditer(answer_without_urls))
+    separator_matches = {match.group("source_id").strip() for match in separator_match_spans}
+    answer_without_separator_citations = _mask_spans(
+        answer_without_urls,
+        [match.span() for match in separator_match_spans],
+    )
     token_matches = {
         match.group("source_id").strip()
-        for match in _SOURCE_ID_TOKEN_RE.finditer(answer_without_urls)
+        for match in _SOURCE_ID_TOKEN_RE.finditer(answer_without_separator_citations)
     }
     punctuated_matches = {
         match.group("source_id").strip()
-        for match in _RAW_PUNCTUATED_SOURCE_ID_RE.finditer(answer_without_urls)
+        for match in _RAW_PUNCTUATED_SOURCE_ID_RE.finditer(answer_without_separator_citations)
     }
-    return token_matches | punctuated_matches | bracketed_matches
+    return token_matches | separator_matches | punctuated_matches | bracketed_matches
 
 
 def _extract_bracketed_source_ids(answer: str) -> tuple[set[str], list[tuple[int, int]]]:
@@ -173,16 +178,3 @@ def _mask_spans(text: str, spans: list[tuple[int, int]]) -> str:
         for index in range(start, end):
             characters[index] = " "
     return "".join(characters)
-
-
-def _contains_source_id(answer: str, source_id: str) -> bool:
-    for match in re.finditer(re.escape(source_id), answer):
-        before = answer[match.start() - 1] if match.start() > 0 else ""
-        after = answer[match.end()] if match.end() < len(answer) else ""
-        if not _is_source_id_character(before) and not _is_source_id_character(after):
-            return True
-    return False
-
-
-def _is_source_id_character(character: str) -> bool:
-    return bool(character) and (character.isalnum() or character in "._/#%+-=@")
