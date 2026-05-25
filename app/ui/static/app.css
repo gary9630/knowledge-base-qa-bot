@@ -168,7 +168,8 @@ button {
 .primary-button:focus-visible,
 .secondary-button:focus-visible,
 .source-row:focus-visible,
-.selected-source:focus-visible {
+.selected-source:focus-visible,
+.mindmap-node:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
@@ -463,15 +464,56 @@ select {
 
 .mindmap-tree {
   display: grid;
-  gap: 10px;
+  gap: 14px;
   max-width: 760px;
 }
 
-.mindmap-node {
+.mindmap-stats {
+  display: inline-grid;
+  min-height: 32px;
+  align-items: center;
   border: 1px solid var(--border);
   border-radius: 8px;
   background: rgb(255 255 255 / 92%);
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+  margin-bottom: 14px;
+  padding: 4px 10px;
+}
+
+.mindmap-group {
+  display: grid;
+  gap: 8px;
+}
+
+.mindmap-sections {
+  display: grid;
+  gap: 6px;
+  border-left: 2px solid var(--border-strong);
+  margin-left: 18px;
+  padding-left: 12px;
+}
+
+.mindmap-node {
+  display: grid;
+  gap: 4px;
+  width: 100%;
+  min-height: 44px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: rgb(255 255 255 / 92%);
+  color: inherit;
   padding: 10px 12px;
+  text-align: left;
+}
+
+.mindmap-node:hover {
+  background: var(--surface-muted);
+}
+
+.mindmap-node.is-document {
+  border-color: #b7d2e8;
 }
 
 .mindmap-node strong {

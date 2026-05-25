@@ -1,6 +1,15 @@
 (function () {
   const state = {
     documents: [],
+    mindmap: {
+      nodes: [],
+      edges: [],
+      stats: {
+        documents: 0,
+        sections: 0,
+      },
+    },
+    mindmapLoaded: false,
     selectedSources: [],
   };
 
@@ -21,6 +30,7 @@
     sourceList: $("#source-list"),
     sourceTable: $("#source-table"),
     mindmap: $("#mindmap"),
+    loadMindmap: $("#load-mindmap"),
     refreshSources: $("#refresh-sources"),
     refreshStatus: $("#refresh-status"),
     statusPill: $("#index-status-pill"),
@@ -35,6 +45,7 @@
     bindTabs();
     bindChat();
     bindSources();
+    bindMindmap();
     bindAdmin();
   }
 
@@ -268,12 +279,10 @@
       const payload = await getJson("/sources");
       state.documents = payload.documents || [];
       renderSources();
-      renderMindmap();
     } catch (error) {
       state.documents = [];
       elements.sourceList.replaceChildren(emptyText(`Sources unavailable: ${errorMessage(error)}`));
       elements.sourceTable.replaceChildren(emptyText("No indexed sources found."));
-      elements.mindmap.replaceChildren(emptyText("Source graph unavailable."));
     }
   }
 
@@ -370,29 +379,150 @@
     return clampedLimit;
   }
 
+  function bindMindmap() {
+    elements.loadMindmap.addEventListener("click", loadMindmap);
+  }
+
+  async function loadMindmap() {
+    elements.loadMindmap.disabled = true;
+    elements.mindmap.replaceChildren(emptyText("Loading source graph..."));
+
+    try {
+      state.mindmap = await getJson("/mindmap");
+      state.mindmapLoaded = true;
+      renderMindmap();
+    } catch (error) {
+      state.mindmapLoaded = false;
+      elements.mindmap.replaceChildren(
+        emptyText(`Source graph unavailable: ${errorMessage(error)}`),
+      );
+    } finally {
+      elements.loadMindmap.disabled = false;
+    }
+  }
+
   function renderMindmap() {
     elements.mindmap.replaceChildren();
-    if (state.documents.length === 0) {
-      elements.mindmap.append(emptyText("Source graph will appear after sources load."));
+    if (!state.mindmapLoaded) {
+      elements.mindmap.append(emptyText("Load the graph to inspect indexed documents and sections."));
       return;
     }
 
+    const nodes = Array.isArray(state.mindmap.nodes) ? state.mindmap.nodes : [];
+    const edges = Array.isArray(state.mindmap.edges) ? state.mindmap.edges : [];
+    if (nodes.length === 0) {
+      elements.mindmap.append(emptyText("No indexed documents found."));
+      return;
+    }
+
+    const stats = document.createElement("div");
+    stats.className = "mindmap-stats";
+    stats.textContent = `${state.mindmap.stats.documents} documents · ${state.mindmap.stats.sections} sections`;
+    elements.mindmap.append(stats);
+
     const tree = document.createElement("div");
     tree.className = "mindmap-tree";
-    state.documents.forEach((documentItem) => {
-      const node = document.createElement("button");
-      node.type = "button";
-      node.className = "mindmap-node";
-      node.addEventListener("click", () => previewDocument(documentItem));
+    const nodeById = new Map(nodes.map((node) => [node.id, node]));
+    const sectionIdsByDocumentId = new Map();
+    edges.forEach((edge) => {
+      if (edge.relation !== "contains") {
+        return;
+      }
+      const sectionIds = sectionIdsByDocumentId.get(edge.source) || [];
+      sectionIds.push(edge.target);
+      sectionIdsByDocumentId.set(edge.source, sectionIds);
+    });
 
-      const title = document.createElement("strong");
-      title.textContent = documentItem.title || documentItem.filename;
-      const meta = document.createElement("span");
-      meta.textContent = `${documentItem.section_count} indexed sections`;
-      node.append(title, meta);
-      tree.append(node);
+    nodes
+      .filter((node) => node.type === "document")
+      .forEach((documentNode) => {
+        const group = document.createElement("section");
+        group.className = "mindmap-group";
+        group.append(mindmapNodeButton(documentNode));
+
+        const sectionList = document.createElement("div");
+        sectionList.className = "mindmap-sections";
+        (sectionIdsByDocumentId.get(documentNode.id) || []).forEach((sectionNodeId) => {
+          const sectionNode = nodeById.get(sectionNodeId);
+          if (sectionNode) {
+            sectionList.append(mindmapNodeButton(sectionNode));
+          }
+        });
+        group.append(sectionList);
+        tree.append(group);
     });
     elements.mindmap.append(tree);
+  }
+
+  function mindmapNodeButton(node) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = `mindmap-node is-${node.type}`;
+    button.addEventListener("click", () => previewMindmapNode(node));
+
+    const title = document.createElement("strong");
+    title.textContent = node.label || "Untitled node";
+    const meta = document.createElement("span");
+    meta.textContent = mindmapNodeMeta(node);
+
+    button.append(title, meta);
+    return button;
+  }
+
+  function mindmapNodeMeta(node) {
+    const metadata = node.metadata || {};
+    if (node.type === "document") {
+      return `${metadata.section_count || 0} sections · ${metadata.source_type || "source"}`;
+    }
+
+    return [metadata.source_id, `level ${metadata.level || "--"}`].filter(Boolean).join(" · ");
+  }
+
+  async function previewMindmapNode(node) {
+    const metadata = node.metadata || {};
+    if (node.type === "document" && metadata.document_id) {
+      await previewDocument({
+        id: metadata.document_id,
+        filename: metadata.filename || node.label,
+        title: metadata.title || node.label,
+        source_type: metadata.source_type || "source",
+        section_count: metadata.section_count || 0,
+      });
+      return;
+    }
+
+    if (node.type === "section" && metadata.document_id && metadata.section_id) {
+      setSelectedSources([
+        {
+          source_id: metadata.source_id || node.label,
+          heading: metadata.heading || node.label,
+          body_md: "Loading source section...",
+        },
+      ]);
+      elements.markdownPreview.textContent = "Loading source section...";
+      try {
+        const section = await getJson(
+          `/sources/${metadata.document_id}/sections/${metadata.section_id}`,
+        );
+        setSelectedSources([
+          {
+            source_id: section.source_id,
+            heading: section.heading,
+            body_md: section.body_md,
+          },
+        ]);
+      } catch (error) {
+        elements.markdownPreview.textContent = `Source preview unavailable: ${errorMessage(error)}`;
+      }
+    }
+  }
+
+  async function refreshMindmapAfterContentChange() {
+    if (!state.mindmapLoaded) {
+      return;
+    }
+
+    await loadMindmap();
   }
 
   function bindAdmin() {
@@ -425,6 +555,7 @@
       appendOperation(`Imported ${payload.filename} -> ${payload.canonical_path}`);
       elements.uploadForm.reset();
       await refreshSources();
+      await refreshMindmapAfterContentChange();
     } catch (error) {
       appendOperation(`Upload failed: ${errorMessage(error)}`);
     }
@@ -446,6 +577,7 @@
       );
       await refreshStatus();
       await refreshSources();
+      await refreshMindmapAfterContentChange();
     } catch (error) {
       appendOperation(`Index rebuild failed: ${errorMessage(error)}`);
     } finally {
