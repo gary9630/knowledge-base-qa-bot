@@ -83,6 +83,28 @@ def test_validate_citations_ignores_markdown_link_url_anchor_with_valid_citation
     assert result.invalid_source_ids == set()
 
 
+def test_validate_citations_rejects_relative_markdown_link_target_source_id() -> None:
+    result = validate_citations(
+        "Valid [faq.md#intro] see [draft](release.md#intro)",
+        {"faq.md#intro"},
+    )
+
+    assert not result.valid
+    assert result.cited_source_ids == {"faq.md#intro"}
+    assert result.invalid_source_ids == {"release.md#intro"}
+
+
+def test_validate_citations_rejects_bracketed_source_id_with_closing_bracket_in_filename() -> None:
+    result = validate_citations(
+        "Valid [faq.md#intro] invalid [release [draft].md#intro]",
+        {"faq.md#intro"},
+    )
+
+    assert not result.valid
+    assert result.cited_source_ids == {"faq.md#intro"}
+    assert result.invalid_source_ids == {"release [draft].md#intro"}
+
+
 def test_answer_without_sources_returns_cannot_confirm_without_provider_call() -> None:
     provider = FakeAnswerProvider(["課程網站位於學習平台。 [faq.md#course-site]"])
     service = AnswerService(provider)

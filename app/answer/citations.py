@@ -86,28 +86,48 @@ def _extract_bracketed_source_ids(answer: str) -> tuple[set[str], list[tuple[int
             index += 1
             continue
 
-        end = answer.find(closer, index + 1)
-        if end == -1:
+        candidate = _bracket_content_candidate(answer, index, closer)
+        if candidate is None:
             index += 1
             continue
 
-        content = answer[index + 1 : end].strip()
-        span = (index, end + 1)
-        if _looks_like_url(content) or _is_markdown_link_url(answer, index, opener):
+        source_id, is_url, span = candidate
+        if is_url:
             spans_to_mask.append(span)
-            index = end + 1
+            index = span[1]
             continue
 
-        source_id = _source_id_from_bracket_content(content)
         if source_id is not None:
             source_ids.add(source_id)
             spans_to_mask.append(span)
-            index = end + 1
+            index = span[1]
             continue
 
         index += 1
 
     return source_ids, spans_to_mask
+
+
+def _bracket_content_candidate(
+    answer: str,
+    start: int,
+    closer: str,
+) -> tuple[str | None, bool, tuple[int, int]] | None:
+    search_start = start + 1
+    while search_start < len(answer):
+        end = answer.find(closer, search_start)
+        if end == -1:
+            return None
+
+        content = answer[start + 1 : end].strip()
+        is_url = _looks_like_url(content)
+        source_id = None if is_url else _source_id_from_bracket_content(content)
+        if is_url or source_id is not None:
+            return source_id, is_url, (start, end + 1)
+
+        search_start = end + 1
+
+    return None
 
 
 def _source_id_from_bracket_content(content: str) -> str | None:
@@ -123,10 +143,6 @@ def _source_id_from_bracket_content(content: str) -> str | None:
 
 def _looks_like_url(content: str) -> bool:
     return bool(_URL_RE.match(content))
-
-
-def _is_markdown_link_url(answer: str, index: int, opener: str) -> bool:
-    return opener == "(" and index > 0 and answer[index - 1] == "]"
 
 
 def _mask_spans(text: str, spans: list[tuple[int, int]]) -> str:
