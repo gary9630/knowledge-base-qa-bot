@@ -48,3 +48,30 @@ def test_validate_test_database_url_rejects_configured_app_database_url() -> Non
     reason = validate_test_database_url(database_url, production_database_url=database_url)
 
     assert reason == "KB_DATABASE_URL_TEST must not equal KB_DATABASE_URL"
+
+
+def test_validate_test_database_url_rejects_same_target_with_different_driver() -> None:
+    reason = validate_test_database_url(
+        "postgresql://kb:kb@localhost:5432/kb_test",
+        production_database_url="postgresql+psycopg://kb:kb@localhost:5432/kb_test",
+    )
+
+    assert reason == "KB_DATABASE_URL_TEST must not equal KB_DATABASE_URL"
+
+
+def test_validate_test_database_url_rejects_unsupported_test_database_dialect() -> None:
+    reason = validate_test_database_url(
+        "sqlite:///kb_test.db",
+        production_database_url="postgresql+psycopg://kb:kb@localhost:5432/kb",
+    )
+
+    assert reason == "KB_DATABASE_URL_TEST must use a PostgreSQL database URL"
+
+
+def test_validate_test_database_url_normalizes_postgresql_default_port() -> None:
+    reason = validate_test_database_url(
+        "postgresql://kb:kb@localhost/kb_test",
+        production_database_url="postgresql+psycopg://kb:kb@localhost:5432/kb_test",
+    )
+
+    assert reason == "KB_DATABASE_URL_TEST must not equal KB_DATABASE_URL"

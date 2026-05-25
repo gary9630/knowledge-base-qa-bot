@@ -1,7 +1,10 @@
 from sqlalchemy.engine import make_url
+from sqlalchemy.engine.url import URL
 from sqlalchemy.exc import ArgumentError
 
 from app.core.config import Settings
+
+POSTGRESQL_DEFAULT_PORT = 5432
 
 
 def resolve_alembic_database_url(
@@ -26,9 +29,15 @@ def validate_test_database_url(
     except ArgumentError:
         return "KB_DATABASE_URL_TEST must be a valid database URL"
 
-    if test_url.render_as_string(hide_password=False) == production_url.render_as_string(
-        hide_password=False
-    ):
+    test_target = canonical_postgresql_target(test_url)
+    production_target = canonical_postgresql_target(production_url)
+    if test_target is None:
+        return "KB_DATABASE_URL_TEST must use a PostgreSQL database URL"
+
+    if production_target is None:
+        return "KB_DATABASE_URL must use a PostgreSQL database URL"
+
+    if test_target == production_target:
         return "KB_DATABASE_URL_TEST must not equal KB_DATABASE_URL"
 
     database_name = test_url.database or ""
@@ -36,3 +45,17 @@ def validate_test_database_url(
         return "KB_DATABASE_URL_TEST must point to an obvious test database"
 
     return None
+
+
+def canonical_postgresql_target(url: URL) -> tuple[str, str | None, str | None, int, str] | None:
+    dialect_family = url.drivername.split("+", maxsplit=1)[0]
+    if dialect_family != "postgresql":
+        return None
+
+    return (
+        dialect_family,
+        url.username,
+        url.host.lower() if url.host else None,
+        url.port or POSTGRESQL_DEFAULT_PORT,
+        url.database or "",
+    )
