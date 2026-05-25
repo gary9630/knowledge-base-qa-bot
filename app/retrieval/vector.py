@@ -7,7 +7,9 @@ from sqlalchemy.orm import Session
 
 from app.models.tables import Chunk, Document, Section
 from app.retrieval.embeddings import EmbeddingProvider
-from app.retrieval.models import RetrievedCandidate, expanded_query_text
+from app.retrieval.models import RetrievedCandidate
+
+PGVECTOR_EMBEDDING_DIMENSION = 1536
 
 
 class VectorRetriever:
@@ -19,7 +21,12 @@ class VectorRetriever:
         if limit <= 0 or not query.strip():
             return []
 
-        query_embedding = self.embedding_provider.embed_text(expanded_query_text(query))
+        query_embedding = self.embedding_provider.embed_text(query.strip())
+        if len(query_embedding) != PGVECTOR_EMBEDDING_DIMENSION:
+            raise ValueError(
+                f"embedding provider returned {len(query_embedding)} dimensions; "
+                f"expected {PGVECTOR_EMBEDDING_DIMENSION} dimensions"
+            )
         if not any(value != 0.0 for value in query_embedding):
             return []
 
