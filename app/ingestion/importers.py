@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import re
 from collections.abc import Callable
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from io import BytesIO
 from pathlib import Path
@@ -23,8 +24,32 @@ _PRODUCT_FRONTMATTER_KEYS = frozenset(
     }
 )
 _REQUIRED_IMPORT_FRONTMATTER_KEYS = frozenset({"imported_at", "source_original", "source_type"})
+_AUTHORED_FRONTMATTER_KEYS = _PRODUCT_FRONTMATTER_KEYS | frozenset(
+    {
+        "aliases",
+        "author",
+        "authors",
+        "categories",
+        "category",
+        "date",
+        "description",
+        "draft",
+        "lang",
+        "language",
+        "summary",
+        "tag",
+        "tags",
+    }
+)
 _CONTROL_WHITESPACE_RE = re.compile(r"[\r\n\t\f\v]+")
+_YAML_KEY_RE = re.compile(r"^([A-Za-z_][A-Za-z0-9_-]*)\s*:(.*)$")
 _YAML_PLAIN_SAFE_RE = re.compile(r"^[A-Za-z0-9_./-]+$")
+
+
+@dataclass(frozen=True)
+class _FrontmatterMetadata:
+    values: dict[str, str]
+    has_nested_values: bool
 
 
 def import_markdown_to_markdown(
@@ -130,10 +155,12 @@ def _normalize_markdown_body(body: str) -> str:
             continue
 
         frontmatter_lines = lines[1:index]
-        metadata = _frontmatter_metadata(frontmatter_lines)
+        metadata = _parse_frontmatter_metadata(frontmatter_lines)
+        if metadata is None:
+            return body
         if _is_importer_generated_frontmatter(metadata):
             return "".join(lines[index + 1 :]).lstrip("\n\r")
-        if metadata:
+        if _is_plausible_yaml_frontmatter(metadata):
             frontmatter = "".join(frontmatter_lines)
             body_without_frontmatter = "".join(lines[index + 1 :]).lstrip("\n\r")
             return _authored_frontmatter_section(frontmatter, body_without_frontmatter)
@@ -142,28 +169,47 @@ def _normalize_markdown_body(body: str) -> str:
     return body
 
 
-def _frontmatter_metadata(lines: list[str]) -> dict[str, str]:
+def _parse_frontmatter_metadata(lines: list[str]) -> _FrontmatterMetadata | None:
     metadata: dict[str, str] = {}
+    has_nested_values = False
 
     for line in lines:
-        if not line.strip():
+        raw_line = line.rstrip("\n\r")
+        if not raw_line.strip() or raw_line.lstrip().startswith("#"):
             continue
 
-        key, separator, value = line.strip().partition(":")
-        if not separator:
-            return {}
+        if raw_line[0].isspace():
+            if not metadata:
+                return None
+            has_nested_values = True
+            continue
 
-        metadata[key.strip().lower()] = _unquote_yaml_scalar(value.strip())
+        key_match = _YAML_KEY_RE.match(raw_line)
+        if key_match is None:
+            return None
 
-    return metadata
+        key, value = key_match.groups()
+        metadata[key.lower()] = _unquote_yaml_scalar(value.strip())
+
+    if not metadata:
+        return None
+
+    return _FrontmatterMetadata(values=metadata, has_nested_values=has_nested_values)
 
 
-def _is_importer_generated_frontmatter(metadata: dict[str, str]) -> bool:
+def _is_importer_generated_frontmatter(metadata: _FrontmatterMetadata) -> bool:
     return (
-        bool(metadata)
-        and _REQUIRED_IMPORT_FRONTMATTER_KEYS.issubset(metadata)
-        and all(key in _PRODUCT_FRONTMATTER_KEYS for key in metadata)
-        and metadata["source_type"] == "imported"
+        _REQUIRED_IMPORT_FRONTMATTER_KEYS.issubset(metadata.values)
+        and all(key in _PRODUCT_FRONTMATTER_KEYS for key in metadata.values)
+        and metadata.values["source_type"] == "imported"
+    )
+
+
+def _is_plausible_yaml_frontmatter(metadata: _FrontmatterMetadata) -> bool:
+    return (
+        metadata.has_nested_values
+        or len(metadata.values) > 1
+        or any(key in _AUTHORED_FRONTMATTER_KEYS for key in metadata.values)
     )
 
 

@@ -82,6 +82,43 @@ def test_markdown_import_converts_authored_frontmatter_to_metadata_section() -> 
     assert [section.heading for section in sections] == ["Original Metadata", "Vendor"]
 
 
+def test_markdown_import_converts_nested_authored_frontmatter_to_metadata_section() -> None:
+    authored_body = (
+        "---\n"
+        "title: Vendor Doc\n"
+        "tags:\n"
+        "  - policy\n"
+        "---\n\n"
+        "# Policy\n"
+        "Body\n"
+    )
+
+    markdown = import_markdown_to_markdown("policy.md", authored_body, imported_at=IMPORTED_AT)
+
+    imported_body = _import_body(markdown)
+    assert not imported_body.startswith("---\n")
+    assert "## Original Metadata\n\n```yaml\n" in imported_body
+    assert "title: Vendor Doc\n" in imported_body
+    assert "tags:\n  - policy\n" in imported_body
+    assert "# Policy\nBody\n" in imported_body
+
+    sections = parse_markdown_sections(filename="policy.md", body=markdown)
+    assert [section.heading for section in sections] == ["Original Metadata", "Policy"]
+
+
+def test_markdown_import_keeps_prose_thematic_break_content() -> None:
+    authored_body = "---\nNote: this is real content.\n---\n\n# Policy\nBody\n"
+
+    markdown = import_markdown_to_markdown("policy.md", authored_body, imported_at=IMPORTED_AT)
+
+    imported_body = _import_body(markdown)
+    assert imported_body.startswith(authored_body)
+    assert "## Original Metadata" not in imported_body
+
+    sections = parse_markdown_sections(filename="policy.md", body=markdown)
+    assert [section.heading for section in sections] == ["policy", "Policy"]
+
+
 def test_text_import_uses_filename_stem_heading_and_raw_source_path() -> None:
     markdown = import_text_to_markdown(
         "faq.txt",
