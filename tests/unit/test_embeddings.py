@@ -151,8 +151,38 @@ def test_embedding_provider_factory_rejects_unsupported_provider() -> None:
         create_embedding_provider(settings)
 
 
-def test_openai_embedding_provider_placeholder_mentions_task_16() -> None:
-    provider = OpenAIEmbeddingProvider(api_key="test-key", model="text-embedding-test", dimension=8)
+def test_openai_embedding_provider_uses_batch_endpoint_for_single_text() -> None:
+    class EmbeddingsEndpoint:
+        def __init__(self) -> None:
+            self.calls: list[dict[str, object]] = []
 
-    with pytest.raises(NotImplementedError, match="Task 16"):
-        provider.embed_text("not yet implemented")
+        def create(
+            self,
+            *,
+            model: str,
+            input: list[str],  # noqa: A002
+            dimensions: int,
+        ) -> object:
+            self.calls.append({"model": model, "input": input, "dimensions": dimensions})
+
+            class Response:
+                data = [type("Embedding", (), {"embedding": [0.1] * 8})()]
+
+            return Response()
+
+    class Client:
+        def __init__(self) -> None:
+            self.embeddings = EmbeddingsEndpoint()
+
+    client = Client()
+    provider = OpenAIEmbeddingProvider(
+        api_key=None,
+        model="text-embedding-test",
+        dimension=8,
+        client=client,
+    )
+
+    assert provider.embed_text("implemented adapter") == [0.1] * 8
+    assert client.embeddings.calls == [
+        {"model": "text-embedding-test", "input": ["implemented adapter"], "dimensions": 8}
+    ]

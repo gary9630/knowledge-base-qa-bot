@@ -3,6 +3,7 @@ from collections.abc import Callable
 from fastapi import FastAPI
 from sqlalchemy.orm import Session
 
+from app.answer.providers import AnswerProvider, create_answer_provider
 from app.api.chat import router as chat_router
 from app.api.feedback import router as feedback_router
 from app.api.health import router as health_router
@@ -25,6 +26,7 @@ def create_app(
     settings: Settings | None = None,
     session_factory: SessionFactory | None = None,
     embedding_provider: EmbeddingProvider | None = None,
+    answer_provider: AnswerProvider | None = None,
 ) -> FastAPI:
     resolved_settings = settings or Settings()
     app = FastAPI(title="Knowledge Base Q&A Bot")
@@ -33,6 +35,7 @@ def create_app(
     app.state.embedding_provider = embedding_provider or create_embedding_provider(
         resolved_settings
     )
+    app.state.answer_provider = answer_provider or create_answer_provider(resolved_settings)
 
     mount_ui_static(app)
     app.include_router(ui_router)

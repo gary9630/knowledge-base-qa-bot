@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from collections.abc import Iterator, Sequence
+from collections.abc import Iterator
 from time import perf_counter
 from typing import Annotated, Any
 from uuid import UUID
@@ -11,9 +11,13 @@ from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 from sse_starlette.sse import EventSourceResponse
 
-from app.answer.providers import AnswerSource
-from app.answer.service import AnswerService
-from app.api.dependencies import get_embedding_provider, get_request_db_session
+from app.answer.providers import AnswerProvider
+from app.answer.service import AnswerResult, AnswerService
+from app.api.dependencies import (
+    get_answer_provider,
+    get_embedding_provider,
+    get_request_db_session,
+)
 from app.api.indexing import index_is_ready
 from app.api.search import (
     API_RETRIEVAL_SCORE_THRESHOLD,
@@ -106,9 +110,10 @@ def _build_chat_response(
         strategy=payload.strategy,
         limit=payload.limit,
     )
-    answer_result = AnswerService(_TopSourceAnswerProvider()).answer(
-        payload.query,
-        retrieval_result.candidates,
+    answer_result = _answer_provider_error_response(
+        provider=get_answer_provider(request),
+        payload=payload,
+        candidates=retrieval_result.candidates,
     )
     cited_source_ids = {source.source_id for source in answer_result.sources}
     cited_candidates = [
@@ -129,6 +134,18 @@ def _build_chat_response(
         cited_candidates=cited_candidates,
         latency_ms=_elapsed_ms(started_at),
     )
+
+
+def _answer_provider_error_response(
+    *,
+    provider: AnswerProvider,
+    payload: ChatRequest,
+    candidates: list[RetrievedCandidate],
+) -> AnswerResult:
+    try:
+        return AnswerService(provider).answer(payload.query, candidates)
+    except Exception as error:
+        raise HTTPException(status_code=502, detail="Answer provider failed.") from error
 
 
 def _chat_response_events(response: ChatResponse) -> Iterator[dict[str, str]]:
@@ -168,22 +185,6 @@ def _answer_token_chunks(answer: str, *, chunk_size: int = 12) -> Iterator[str]:
 
 def _event_json(payload: dict[str, Any]) -> str:
     return json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
-
-
-class _TopSourceAnswerProvider:
-    def generate_answer(
-        self,
-        query: str,
-        sources: Sequence[AnswerSource],
-        *,
-        strict: bool = False,
-    ) -> str:
-        if not sources:
-            raise ValueError("sources are required")
-
-        source = sources[0]
-        excerpt = _first_content_line(source.body_md) or source.heading
-        return f"{excerpt} [{source.source_id}]"
 
 
 def _conversation_for_request(payload: ChatRequest, session: Session) -> Conversation:
@@ -254,14 +255,6 @@ def _persist_chat_response(
 
 def _responses_to_json(responses: list[CandidateResponse]) -> list[dict[str, Any]]:
     return [response.model_dump(mode="json") for response in responses]
-
-
-def _first_content_line(body_md: str) -> str:
-    for line in body_md.splitlines():
-        stripped = line.strip()
-        if stripped and not stripped.startswith("#"):
-            return stripped
-    return ""
 
 
 def _elapsed_ms(started_at: float) -> int:

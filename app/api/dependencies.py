@@ -6,6 +6,7 @@ from typing import cast
 from fastapi import Request
 from sqlalchemy.orm import Session
 
+from app.answer.providers import AnswerProvider, create_answer_provider
 from app.core.config import Settings
 from app.core.database import SessionLocal
 from app.retrieval.embeddings import EmbeddingProvider, create_embedding_provider
@@ -44,3 +45,13 @@ def get_embedding_provider(request: Request) -> EmbeddingProvider:
     embedding_provider = create_embedding_provider(get_app_settings(request))
     request.app.state.embedding_provider = embedding_provider
     return embedding_provider
+
+
+def get_answer_provider(request: Request) -> AnswerProvider:
+    answer_provider = getattr(request.app.state, "answer_provider", None)
+    if answer_provider is not None:
+        return cast(AnswerProvider, answer_provider)
+
+    answer_provider = create_answer_provider(get_app_settings(request))
+    request.app.state.answer_provider = answer_provider
+    return answer_provider

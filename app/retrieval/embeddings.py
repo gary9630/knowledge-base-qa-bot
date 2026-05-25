@@ -2,10 +2,11 @@ import re
 from collections.abc import Sequence
 from hashlib import sha256
 from math import sqrt
-from typing import Protocol
+from typing import Any, Protocol
 
 from app.core.config import Settings
 
+DEFAULT_OPENAI_EMBEDDING_MODEL = "text-embedding-3-small"
 _BUCKETS_PER_TOKEN = 4
 _TOKEN_RE = re.compile(r"[\w]+", re.UNICODE)
 
@@ -52,17 +53,49 @@ class FakeEmbeddingProvider(EmbeddingProvider):
 
 
 class OpenAIEmbeddingProvider(EmbeddingProvider):
-    def __init__(self, api_key: str | None, model: str | None, dimension: int = 1536) -> None:
+    def __init__(
+        self,
+        api_key: str | None,
+        model: str | None,
+        dimension: int = 1536,
+        *,
+        client: object | None = None,
+    ) -> None:
         if dimension <= 0:
             raise ValueError("dimension must be positive")
-        self.api_key = api_key
-        self.model = model
+        if client is None and not api_key:
+            raise ValueError("OPENAI_API_KEY is required for OpenAI embedding provider")
+
+        self.model = model or DEFAULT_OPENAI_EMBEDDING_MODEL
         self.dimension = dimension
+        self._client: Any = client if client is not None else _openai_client(api_key)
 
     def embed_text(self, text: str) -> list[float]:
-        raise NotImplementedError(
-            "OpenAI embeddings are intentionally deferred; Task 16 implements this adapter "
-            "after checking the official OpenAI documentation."
+        return self.embed_texts([text])[0]
+
+    def embed_texts(self, texts: Sequence[str]) -> list[list[float]]:
+        if isinstance(texts, str):
+            raise TypeError("embed_texts expects a sequence of text strings, not a single str")
+
+        batch = list(texts)
+        if not batch:
+            raise ValueError("texts must not be empty")
+
+        for index, text in enumerate(batch):
+            if not isinstance(text, str):
+                raise TypeError(f"text at index {index} must be a string")
+            if not text.strip():
+                raise ValueError(f"text at index {index} must not be empty")
+
+        response = self._client.embeddings.create(
+            model=self.model,
+            input=batch,
+            dimensions=self.dimension,
+        )
+        return _extract_embedding_vectors(
+            response=response,
+            expected_count=len(batch),
+            expected_dimension=self.dimension,
         )
 
 
@@ -84,3 +117,39 @@ def create_embedding_provider(settings: Settings) -> EmbeddingProvider:
 
 def _tokenize(text: str) -> list[str]:
     return _TOKEN_RE.findall(text.casefold())
+
+
+def _openai_client(api_key: str | None) -> Any:
+    from openai import OpenAI
+
+    return OpenAI(api_key=api_key)
+
+
+def _extract_embedding_vectors(
+    *,
+    response: object,
+    expected_count: int,
+    expected_dimension: int,
+) -> list[list[float]]:
+    data = getattr(response, "data", None)
+    if not isinstance(data, Sequence) or isinstance(data, (str, bytes)):
+        raise ValueError("OpenAI embedding response did not include data")
+    if len(data) != expected_count:
+        raise ValueError(
+            f"OpenAI embedding response returned {len(data)} vectors for {expected_count} inputs"
+        )
+
+    vectors: list[list[float]] = []
+    for index, item in enumerate(data):
+        embedding = getattr(item, "embedding", None)
+        if not isinstance(embedding, Sequence) or isinstance(embedding, (str, bytes)):
+            raise ValueError(f"OpenAI embedding response item {index} did not include embedding")
+        vector = [float(value) for value in embedding]
+        if len(vector) != expected_dimension:
+            raise ValueError(
+                f"OpenAI embedding response item {index} expected embedding dimension "
+                f"{expected_dimension}, got {len(vector)}"
+            )
+        vectors.append(vector)
+
+    return vectors
