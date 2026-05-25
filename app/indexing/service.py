@@ -21,7 +21,7 @@ from app.indexing.markdown_parser import ParsedSection, parse_markdown_sections
 from app.models.tables import Chunk, Document, IndexingJob, Section
 from app.retrieval.embeddings import EmbeddingProvider
 
-DEFAULT_EMBEDDING_DIMENSION = 1536
+PGVECTOR_EMBEDDING_DIMENSION = 1536
 
 
 @dataclass(frozen=True)
@@ -40,13 +40,11 @@ class IndexingService:
         docs_dir: Path,
         kb_dir: Path,
         embedding_provider: EmbeddingProvider,
-        embedding_dimension: int = DEFAULT_EMBEDDING_DIMENSION,
     ) -> None:
         self.session = session
         self.docs_dir = docs_dir
         self.kb_dir = kb_dir
         self.embedding_provider = embedding_provider
-        self.embedding_dimension = embedding_dimension
 
     def rebuild_index(self) -> IndexingResult:
         stats = _initial_stats()
@@ -184,10 +182,10 @@ class IndexingService:
             return 0
 
         embedding = self.embedding_provider.embed_text(body_md)
-        if len(embedding) != self.embedding_dimension:
+        if len(embedding) != PGVECTOR_EMBEDDING_DIMENSION:
             raise ValueError(
                 f"embedding provider returned {len(embedding)} dimensions; "
-                f"expected {self.embedding_dimension} dimensions"
+                f"expected {PGVECTOR_EMBEDDING_DIMENSION} dimensions"
             )
 
         chunk = Chunk(

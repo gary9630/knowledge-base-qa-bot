@@ -40,7 +40,14 @@ def db_engine() -> Iterator[Engine]:
 def db_session(db_engine: Engine) -> Iterator[Session]:
     connection = db_engine.connect()
     transaction = connection.begin()
-    session = Session(bind=connection, autoflush=False, expire_on_commit=False)
+    session = Session(
+        bind=connection,
+        autoflush=False,
+        expire_on_commit=False,
+        # Keep app-level commit/rollback inside a SAVEPOINT so fixture rollback
+        # still isolates DB-backed integration tests.
+        join_transaction_mode="create_savepoint",
+    )
     try:
         yield session
     finally:
