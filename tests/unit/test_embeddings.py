@@ -60,6 +60,15 @@ def test_fake_embedding_provider_non_whitespace_text_without_word_tokens_is_non_
     assert _dot(vector, vector) == pytest.approx(1.0)
 
 
+def test_fake_embedding_provider_whitespace_only_text_is_non_zero() -> None:
+    provider = FakeEmbeddingProvider(dimension=1)
+
+    vector = provider.embed_text("   ")
+
+    assert vector != [0.0]
+    assert _dot(vector, vector) == pytest.approx(1.0)
+
+
 def test_fake_embedding_provider_has_lexical_locality() -> None:
     provider = FakeEmbeddingProvider(dimension=256)
 

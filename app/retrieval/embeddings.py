@@ -29,8 +29,8 @@ class FakeEmbeddingProvider(EmbeddingProvider):
     def embed_text(self, text: str) -> list[float]:
         values = [0.0] * self.dimension
         tokens = _tokenize(text)
-        if not tokens and text.strip():
-            tokens = [text.casefold().strip()]
+        if not tokens and text != "":
+            tokens = [text.casefold()]
 
         for token in tokens:
             for bucket_offset in range(_BUCKETS_PER_TOKEN):
