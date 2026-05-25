@@ -6,20 +6,18 @@ from dataclasses import dataclass
 
 CANNOT_CONFIRM_ANSWER = "我無法從知識庫確認這件事。"
 
-_SOURCE_ID_TOKEN_RE = re.compile(
-    r"(?<![\w./%+@=,&:-])(?P<source_id>[\w%+@=-][\w./%+@=-]*\.md#[\w-]+)(?![\w/%+-])",
+_RAW_SOURCE_ID_TOKEN_RE = re.compile(
+    r"(?<!\S)(?P<source_id>\S+\.md#[\w-]+)(?!\S)",
     re.UNICODE,
 )
-_RAW_SEPARATOR_SOURCE_ID_RE = re.compile(
-    r"(?<![\w./%+@=,&:-])"
-    r"(?P<source_id>[\w./%+@=-]+(?:[,:&]| +)[\w./%+@=-]+\.md#[\w-]+)"
-    r"(?![\w/%+-])",
+_RAW_SPACED_SOURCE_ID_RE = re.compile(
+    r"(?<!\S)(?P<source_id>[\w./%+@=-]+ +[\w./%+@=-]+\.md#[\w-]+)(?!\S)",
     re.UNICODE,
 )
 _RAW_PUNCTUATED_SOURCE_ID_RE = re.compile(
-    r"(?<![\w./%+-])"
+    r"(?<!\S)"
     r"(?P<source_id>[\w./%+@=-]+ ?[\(\[（【][^\r\n]+?[\)\]）】][\w./%+@=-]*\.md#[\w-]+)"
-    r"(?![\w/%+-])",
+    r"(?!\S)",
     re.UNICODE,
 )
 _BRACKETED_SOURCE_ID_CONTENT_RE = re.compile(r"^(?P<source_id>.+\.md#[\w-]+)$", re.UNICODE)
@@ -77,21 +75,21 @@ def _extract_source_id_tokens(answer: str) -> set[str]:
         answer_without_bracketed_citations,
         _url_source_id_spans(answer_without_bracketed_citations),
     )
-    separator_match_spans = list(_RAW_SEPARATOR_SOURCE_ID_RE.finditer(answer_without_urls))
-    separator_matches = {match.group("source_id").strip() for match in separator_match_spans}
-    answer_without_separator_citations = _mask_spans(
+    spaced_match_spans = list(_RAW_SPACED_SOURCE_ID_RE.finditer(answer_without_urls))
+    spaced_matches = {match.group("source_id").strip() for match in spaced_match_spans}
+    punctuated_match_spans = list(_RAW_PUNCTUATED_SOURCE_ID_RE.finditer(answer_without_urls))
+    punctuated_matches = {
+        match.group("source_id").strip() for match in punctuated_match_spans
+    }
+    answer_without_nonstandard_raw_citations = _mask_spans(
         answer_without_urls,
-        [match.span() for match in separator_match_spans],
+        [match.span() for match in spaced_match_spans + punctuated_match_spans],
     )
     token_matches = {
         match.group("source_id").strip()
-        for match in _SOURCE_ID_TOKEN_RE.finditer(answer_without_separator_citations)
+        for match in _RAW_SOURCE_ID_TOKEN_RE.finditer(answer_without_nonstandard_raw_citations)
     }
-    punctuated_matches = {
-        match.group("source_id").strip()
-        for match in _RAW_PUNCTUATED_SOURCE_ID_RE.finditer(answer_without_separator_citations)
-    }
-    return token_matches | separator_matches | punctuated_matches | bracketed_matches
+    return token_matches | spaced_matches | punctuated_matches | bracketed_matches
 
 
 def _extract_bracketed_source_ids(answer: str) -> tuple[set[str], list[tuple[int, int]]]:
