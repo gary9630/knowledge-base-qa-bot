@@ -5,8 +5,12 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 
 CANNOT_CONFIRM_ANSWER = "我無法從知識庫確認這件事。"
-_RAW_SOURCE_ID_START_BOUNDARY = r"(?<![^\s\"'`“”‘’])"
-_RAW_SOURCE_ID_END_BOUNDARY = r"(?=$|[\s\"'`“”‘’\]\)\}>,.;:!?，。；：！？、])"
+_SOURCE_ID_BOUNDARY_CHARS = (
+    r"\s\"'`“”‘’「」『』《》〈〉（）【】［］〔〕｛｝"
+    r"\[\]\(\)\{\}<>,.;:!?，。；：！？、…—–"
+)
+_RAW_SOURCE_ID_START_BOUNDARY = rf"(?<![^{_SOURCE_ID_BOUNDARY_CHARS}])"
+_RAW_SOURCE_ID_END_BOUNDARY = rf"(?=$|[{_SOURCE_ID_BOUNDARY_CHARS}])"
 
 _RAW_SOURCE_ID_TOKEN_RE = re.compile(
     rf"{_RAW_SOURCE_ID_START_BOUNDARY}(?P<source_id>\S+\.md#[\w-]+)"
@@ -47,6 +51,13 @@ _BRACKET_PAIRS = {
     "(": ")",
     "（": "）",
     "【": "】",
+    "「": "」",
+    "『": "』",
+    "《": "》",
+    "〈": "〉",
+    "［": "］",
+    "〔": "〕",
+    "｛": "｝",
 }
 
 
