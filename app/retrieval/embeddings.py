@@ -1,8 +1,13 @@
+import re
 from collections.abc import Sequence
 from hashlib import sha256
+from math import sqrt
 from typing import Protocol
 
 from app.core.config import Settings
+
+_BUCKETS_PER_TOKEN = 4
+_TOKEN_RE = re.compile(r"[\w]+", re.UNICODE)
 
 
 class EmbeddingProvider(Protocol):
@@ -10,6 +15,8 @@ class EmbeddingProvider(Protocol):
         raise NotImplementedError
 
     def embed_texts(self, texts: Sequence[str]) -> list[list[float]]:
+        if isinstance(texts, str):
+            raise TypeError("embed_texts expects a sequence of text strings, not a single str")
         return [self.embed_text(text) for text in texts]
 
 
@@ -20,16 +27,20 @@ class FakeEmbeddingProvider(EmbeddingProvider):
         self.dimension = dimension
 
     def embed_text(self, text: str) -> list[float]:
-        encoded = text.encode("utf-8")
-        values: list[float] = []
-        counter = 0
+        values = [0.0] * self.dimension
 
-        while len(values) < self.dimension:
-            digest = sha256(encoded + counter.to_bytes(4, "big")).digest()
-            values.extend((byte / 127.5) - 1.0 for byte in digest)
-            counter += 1
+        for token in _tokenize(text):
+            for bucket_offset in range(_BUCKETS_PER_TOKEN):
+                digest = sha256(f"{bucket_offset}:{token}".encode()).digest()
+                bucket = int.from_bytes(digest[:8], "big") % self.dimension
+                sign = 1.0 if digest[8] & 1 else -1.0
+                values[bucket] += sign
 
-        return values[: self.dimension]
+        norm = sqrt(sum(value * value for value in values))
+        if norm == 0.0:
+            return values
+
+        return [value / norm for value in values]
 
 
 class OpenAIEmbeddingProvider(EmbeddingProvider):
@@ -61,3 +72,7 @@ def create_embedding_provider(settings: Settings) -> EmbeddingProvider:
         )
 
     raise ValueError(f"unsupported embedding provider: {settings.embedding_provider}")
+
+
+def _tokenize(text: str) -> list[str]:
+    return _TOKEN_RE.findall(text.casefold())
