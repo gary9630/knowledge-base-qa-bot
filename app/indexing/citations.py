@@ -34,5 +34,5 @@ def slugify_heading(heading: str) -> str:
     return slug or "section"
 
 
-def citation_for(filename: str, heading: str) -> str:
-    return f"{filename}#{slugify_heading(heading)}"
+def citation_for(filename: str, heading: str, *, slug: str | None = None) -> str:
+    return f"{filename}#{slug or slugify_heading(heading)}"

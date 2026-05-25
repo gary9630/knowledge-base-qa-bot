@@ -29,3 +29,76 @@ def test_parse_markdown_sections_creates_synthetic_section_without_heading() -> 
     assert sections[0].source_id == "about-us.md#about-us"
     assert sections[0].body_md.startswith("# about-us\n\n")
     assert "Intro without" in sections[0].body_md
+
+
+def test_parse_markdown_sections_disambiguates_repeated_same_level_headings() -> None:
+    markdown = "## FAQ\n\nFirst answer.\n\n## FAQ\n\nSecond answer.\n"
+
+    sections = parse_markdown_sections(filename="doc.md", body=markdown)
+
+    assert [section.source_id for section in sections] == ["doc.md#faq", "doc.md#faq-2"]
+
+
+def test_parse_markdown_sections_uses_parent_slug_for_repeated_child_headings() -> None:
+    markdown = "# Week 1\n\n## FAQ\n\nFirst.\n\n# Week 2\n\n## FAQ\n\nSecond.\n"
+
+    sections = parse_markdown_sections(filename="doc.md", body=markdown)
+
+    assert [section.source_id for section in sections] == [
+        "doc.md#week-1",
+        "doc.md#week-1-faq",
+        "doc.md#week-2",
+        "doc.md#week-2-faq",
+    ]
+
+
+def test_parse_markdown_sections_ignores_yaml_frontmatter_before_heading() -> None:
+    markdown = "---\nsource_original: raw/a.txt\n---\n\n# Title\n\nBody.\n"
+
+    sections = parse_markdown_sections(filename="doc.md", body=markdown)
+
+    assert [section.heading for section in sections] == ["Title"]
+    assert sections[0].source_id == "doc.md#title"
+    assert "source_original" not in sections[0].body_md
+
+
+def test_parse_markdown_sections_returns_no_sections_for_frontmatter_only_doc() -> None:
+    markdown = "---\nsource_original: raw/a.txt\n---\n"
+
+    assert parse_markdown_sections(filename="doc.md", body=markdown) == []
+
+
+def test_parse_markdown_sections_ignores_headings_inside_backtick_fences() -> None:
+    markdown = "# Title\n\n```python\n# Not a heading\n```\n\nAfter.\n"
+
+    sections = parse_markdown_sections(filename="doc.md", body=markdown)
+
+    assert [section.heading for section in sections] == ["Title"]
+    assert "# Not a heading" in sections[0].body_md
+
+
+def test_parse_markdown_sections_ignores_headings_inside_tilde_fences() -> None:
+    markdown = "# Title\n\n~~~\n## Not a heading\n~~~\n"
+
+    sections = parse_markdown_sections(filename="doc.md", body=markdown)
+
+    assert [section.heading for section in sections] == ["Title"]
+    assert "## Not a heading" in sections[0].body_md
+
+
+def test_parse_markdown_sections_preserves_hash_without_closing_space() -> None:
+    markdown = "# C#\n\nLanguage content.\n"
+
+    sections = parse_markdown_sections(filename="doc.md", body=markdown)
+
+    assert sections[0].heading == "C#"
+    assert sections[0].source_id == "doc.md#c"
+
+
+def test_parse_markdown_sections_strips_atx_closing_hashes_after_space() -> None:
+    markdown = "# Title ###\n\nBody.\n"
+
+    sections = parse_markdown_sections(filename="doc.md", body=markdown)
+
+    assert sections[0].heading == "Title"
+    assert sections[0].source_id == "doc.md#title"
