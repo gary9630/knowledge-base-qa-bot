@@ -4,6 +4,7 @@ import pytest
 
 from app.ingestion import importers
 from app.ingestion.importers import (
+    extract_pdf_text,
     import_html_to_markdown,
     import_markdown_to_markdown,
     import_pdf_to_markdown,
@@ -34,7 +35,15 @@ def test_markdown_import_prepends_product_frontmatter() -> None:
 def test_markdown_import_replaces_existing_product_frontmatter() -> None:
     markdown = import_markdown_to_markdown(
         "faq.md",
-        "---\nsource_original: raw/old.md\nsource_type: imported\n---\n\n# FAQ\n\nAnswer",
+        (
+            "---\n"
+            "source_original: raw/old.md\n"
+            "source_type: imported\n"
+            "imported_at: 2026-05-20T00:00:00+00:00\n"
+            "---\n\n"
+            "# FAQ\n\n"
+            "Answer"
+        ),
         imported_at=IMPORTED_AT,
     )
 
@@ -42,6 +51,22 @@ def test_markdown_import_replaces_existing_product_frontmatter() -> None:
     assert "source_original: raw/faq.md" in markdown
     assert "raw/old.md" not in markdown
     assert markdown.endswith("# FAQ\n\nAnswer\n")
+
+
+def test_markdown_import_keeps_authored_frontmatter_with_non_imported_source_type() -> None:
+    authored_body = (
+        "---\n"
+        "title: Vendor Doc\n"
+        "source_type: vendor\n"
+        "---\n\n"
+        "# Vendor\n\n"
+        "Body\n"
+    )
+
+    markdown = import_markdown_to_markdown("vendor.md", authored_body, imported_at=IMPORTED_AT)
+
+    imported_body = markdown.split("---\n\n", maxsplit=1)[1]
+    assert imported_body == authored_body
 
 
 def test_text_import_uses_filename_stem_heading_and_raw_source_path() -> None:
@@ -62,6 +87,18 @@ def test_text_import_preserves_original_text_whitespace_after_heading() -> None:
     markdown = import_text_to_markdown("notes.txt", body, imported_at=IMPORTED_AT)
 
     assert markdown.endswith(f"# notes\n\n{body}")
+
+
+def test_source_original_quotes_yaml_sensitive_filename() -> None:
+    markdown = import_text_to_markdown("bad: name\nextra.txt", "Body", imported_at=IMPORTED_AT)
+    frontmatter = _import_frontmatter(markdown)
+
+    assert frontmatter.splitlines()[0] == 'source_original: "raw/bad: name\\nextra.txt"'
+    assert frontmatter.count("source_original:") == 1
+
+    hash_markdown = import_text_to_markdown("policy #1.txt", "Body", imported_at=IMPORTED_AT)
+    hash_frontmatter = _import_frontmatter(hash_markdown)
+    assert hash_frontmatter.splitlines()[0] == 'source_original: "raw/policy #1.txt"'
 
 
 def test_html_import_converts_readable_headings_and_body_to_markdown() -> None:
@@ -95,6 +132,30 @@ def test_pdf_import_uses_extractor_and_stem_heading(monkeypatch: pytest.MonkeyPa
     assert "PDF Question\n\nPDF Answer" in markdown
 
 
+def test_extract_pdf_text_marks_unextractable_pages(monkeypatch: pytest.MonkeyPatch) -> None:
+    _patch_pdf_reader(monkeypatch, ["First page", None, " Third page "])
+
+    text = extract_pdf_text(b"%PDF tiny fixture")
+
+    assert text == (
+        "[Page 1]\n"
+        "First page\n\n"
+        "[Page 2: no extractable text]\n\n"
+        "[Page 3]\n"
+        "Third page"
+    )
+
+
+def test_extract_pdf_text_marks_pdf_with_no_extractable_text(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _patch_pdf_reader(monkeypatch, [None, "   "])
+
+    text = extract_pdf_text(b"%PDF tiny fixture")
+
+    assert text == "[Page 1: no extractable text]\n\n[Page 2: no extractable text]"
+
+
 def test_import_file_dispatches_by_extension() -> None:
     markdown = import_file_to_markdown(
         "notes.txt",
@@ -107,6 +168,35 @@ def test_import_file_dispatches_by_extension() -> None:
     assert "Line one\n\nLine two" in markdown
 
 
+def test_import_file_decodes_utf8_sig_text_without_bom() -> None:
+    markdown = import_file_to_markdown("bom.txt", b"\xef\xbb\xbfBody", imported_at=IMPORTED_AT)
+
+    assert "\ufeff" not in markdown
+    assert markdown.endswith("# bom\n\nBody\n")
+
+
 def test_import_file_rejects_unsupported_extension() -> None:
     with pytest.raises(ValueError, match="Unsupported import file type"):
         import_file_to_markdown("archive.zip", b"data", imported_at=IMPORTED_AT)
+
+
+def _import_frontmatter(markdown: str) -> str:
+    assert markdown.startswith("---\n")
+    frontmatter, separator, _ = markdown.removeprefix("---\n").partition("\n---\n\n")
+    assert separator
+    return frontmatter
+
+
+def _patch_pdf_reader(monkeypatch: pytest.MonkeyPatch, page_texts: list[str | None]) -> None:
+    class FakePage:
+        def __init__(self, text: str | None) -> None:
+            self.text = text
+
+        def extract_text(self) -> str | None:
+            return self.text
+
+    class FakeReader:
+        def __init__(self, _source: object) -> None:
+            self.pages = [FakePage(text) for text in page_texts]
+
+    monkeypatch.setattr(importers, "PdfReader", FakeReader)
