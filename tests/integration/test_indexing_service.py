@@ -61,6 +61,7 @@ def test_indexing_service_writes_documents_sections_chunks_and_export(
     assert jobs[0].kind == "rebuild"
     assert jobs[0].status == "succeeded"
     assert jobs[0].stats_json["files_indexed"] == 1
+    db_session.commit()
 
     second_result = service.rebuild_index()
 
@@ -104,6 +105,27 @@ def test_indexing_service_persists_failed_job_without_partial_rows(
     assert jobs[0].input_path == str(docs_dir)
     assert "embedding failed" in (jobs[0].error or "")
     assert jobs[0].stats_json["files_discovered"] == 1
+
+
+def test_indexing_service_rejects_active_session_transaction(
+    db_session: Session,
+    tmp_path: Path,
+) -> None:
+    docs_dir = _docs_dir_with_file(tmp_path, "active.md", "# Active\n")
+    service = IndexingService(
+        session=db_session,
+        docs_dir=docs_dir,
+        kb_dir=tmp_path / ".kb",
+        embedding_provider=FakeEmbeddingProvider(dimension=1536),
+    )
+
+    db_session.execute(select(Document))
+
+    with pytest.raises(
+        RuntimeError,
+        match="IndexingService.rebuild_index requires a session with no active transaction",
+    ):
+        service.rebuild_index()
 
 
 def test_indexing_service_rejects_wrong_embedding_dimension_before_export(
@@ -158,6 +180,7 @@ def test_indexing_service_repairs_duplicate_documents_by_filename(
         ]
     )
     db_session.flush()
+    db_session.commit()
 
     service = IndexingService(
         session=db_session,
@@ -176,6 +199,40 @@ def test_indexing_service_repairs_duplicate_documents_by_filename(
     assert documents[0].title == "Duplicate"
     assert db_session.scalar(select(func.count()).select_from(Section)) == 1
     assert db_session.scalar(select(func.count()).select_from(Chunk)) == 1
+
+
+def test_indexing_service_persists_imported_document_provenance(
+    db_session: Session,
+    tmp_path: Path,
+) -> None:
+    docs_dir = _docs_dir_with_file(
+        tmp_path,
+        "imported.md",
+        "---\n"
+        'source_original: "raw/source guide.pdf"\n'
+        "source_type: imported\n"
+        "imported_at: 2026-05-26T12:00:00+00:00\n"
+        "---\n\n"
+        "# Imported Guide\n\nBody\n",
+    )
+    service = IndexingService(
+        session=db_session,
+        docs_dir=docs_dir,
+        kb_dir=tmp_path / ".kb",
+        embedding_provider=FakeEmbeddingProvider(dimension=1536),
+    )
+
+    service.rebuild_index()
+
+    document = db_session.scalar(select(Document).where(Document.filename == "imported.md"))
+    assert document is not None
+    assert document.source_type == "imported"
+    assert document.imported_from == "raw/source guide.pdf"
+    assert document.metadata_json == {
+        "source_original": "raw/source guide.pdf",
+        "source_type": "imported",
+        "imported_at": "2026-05-26T12:00:00+00:00",
+    }
 
 
 def test_indexing_service_missing_docs_dir_does_not_delete_existing_state(
@@ -197,6 +254,7 @@ def test_indexing_service_missing_docs_dir_does_not_delete_existing_state(
         )
     )
     db_session.flush()
+    db_session.commit()
 
     service = IndexingService(
         session=db_session,

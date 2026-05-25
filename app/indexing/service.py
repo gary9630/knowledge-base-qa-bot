@@ -17,6 +17,7 @@ from app.indexing.export import (
     build_index_export_payload,
     write_index_export_payload,
 )
+from app.indexing.frontmatter import parse_product_frontmatter
 from app.indexing.markdown_parser import ParsedSection, parse_markdown_sections
 from app.models.tables import Chunk, Document, IndexingJob, Section
 from app.retrieval.embeddings import EmbeddingProvider
@@ -47,6 +48,11 @@ class IndexingService:
         self.embedding_provider = embedding_provider
 
     def rebuild_index(self) -> IndexingResult:
+        if self.session.in_transaction():
+            raise RuntimeError(
+                "IndexingService.rebuild_index requires a session with no active transaction"
+            )
+
         stats = _initial_stats()
         job_id: UUID | None = None
         try:
@@ -92,8 +98,9 @@ class IndexingService:
     def _index_file(self, path: Path) -> tuple[DocumentExport, int, int]:
         filename = _relative_filename(self.docs_dir, path)
         body = path.read_text(encoding="utf-8")
+        provenance = parse_product_frontmatter(body)
         parsed_sections = parse_markdown_sections(filename, body)
-        document = self._upsert_document(path, filename, body, parsed_sections)
+        document = self._upsert_document(path, filename, body, parsed_sections, provenance)
         self.session.flush()
 
         self.session.execute(delete(Section).where(Section.document_id == document.id))
@@ -154,26 +161,33 @@ class IndexingService:
         filename: str,
         body: str,
         parsed_sections: list[ParsedSection],
+        provenance: dict[str, str],
     ) -> Document:
         content_hash = _content_hash(body)
         document = self._get_canonical_document(filename)
         title = parsed_sections[0].heading if parsed_sections else None
+        source_type = provenance.get("source_type", "markdown")
+        imported_from = provenance.get("source_original") if source_type == "imported" else None
+        metadata = dict(provenance) if source_type == "imported" else {}
 
         if document is None:
             document = Document(
                 filename=filename,
                 canonical_path=str(path),
-                source_type="markdown",
+                source_type=source_type,
                 title=title,
                 content_hash=content_hash,
-                imported_from=None,
+                imported_from=imported_from,
+                metadata_json=metadata,
             )
             self.session.add(document)
         else:
             document.canonical_path = str(path)
-            document.source_type = "markdown"
+            document.source_type = source_type
             document.title = title
             document.content_hash = content_hash
+            document.imported_from = imported_from
+            document.metadata_json = metadata
 
         return document
 
@@ -280,9 +294,7 @@ class IndexingService:
     @contextmanager
     def _transaction(self) -> Iterator[None]:
         if self.session.in_transaction():
-            with self.session.begin_nested():
-                yield
-            return
+            raise RuntimeError("IndexingService transaction requires an inactive session")
 
         with self.session.begin():
             yield
