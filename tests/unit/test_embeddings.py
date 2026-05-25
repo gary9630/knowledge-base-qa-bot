@@ -42,6 +42,24 @@ def test_fake_embedding_provider_normalizes_vectors() -> None:
     assert _dot(vector, vector) == pytest.approx(1.0)
 
 
+def test_fake_embedding_provider_non_empty_text_is_non_zero_when_buckets_cancel() -> None:
+    provider = FakeEmbeddingProvider(dimension=1)
+
+    vector = provider.embed_text("e")
+
+    assert vector != [0.0]
+    assert _dot(vector, vector) == pytest.approx(1.0)
+
+
+def test_fake_embedding_provider_non_whitespace_text_without_word_tokens_is_non_zero() -> None:
+    provider = FakeEmbeddingProvider(dimension=8)
+
+    vector = provider.embed_text("!!!")
+
+    assert any(value != 0.0 for value in vector)
+    assert _dot(vector, vector) == pytest.approx(1.0)
+
+
 def test_fake_embedding_provider_has_lexical_locality() -> None:
     provider = FakeEmbeddingProvider(dimension=256)
 

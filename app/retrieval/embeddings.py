@@ -28,8 +28,11 @@ class FakeEmbeddingProvider(EmbeddingProvider):
 
     def embed_text(self, text: str) -> list[float]:
         values = [0.0] * self.dimension
+        tokens = _tokenize(text)
+        if not tokens and text.strip():
+            tokens = [text.casefold().strip()]
 
-        for token in _tokenize(text):
+        for token in tokens:
             for bucket_offset in range(_BUCKETS_PER_TOKEN):
                 digest = sha256(f"{bucket_offset}:{token}".encode()).digest()
                 bucket = int.from_bytes(digest[:8], "big") % self.dimension
@@ -38,6 +41,11 @@ class FakeEmbeddingProvider(EmbeddingProvider):
 
         norm = sqrt(sum(value * value for value in values))
         if norm == 0.0:
+            if tokens:
+                digest = sha256(f"fallback:{' '.join(tokens)}".encode()).digest()
+                bucket = int.from_bytes(digest[:8], "big") % self.dimension
+                values[bucket] = 1.0
+                return values
             return values
 
         return [value / norm for value in values]
