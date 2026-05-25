@@ -106,6 +106,26 @@ def test_markdown_import_converts_nested_authored_frontmatter_to_metadata_sectio
     assert [section.heading for section in sections] == ["Original Metadata", "Policy"]
 
 
+def test_markdown_import_uses_collision_safe_metadata_fence() -> None:
+    authored_body = (
+        "---\n"
+        "title: Vendor Doc\n"
+        "description: |\n"
+        "  sample fence:\n"
+        "  ```\n"
+        "---\n\n"
+        "# Policy\n"
+        "Body\n"
+    )
+
+    markdown = import_markdown_to_markdown("policy.md", authored_body, imported_at=IMPORTED_AT)
+
+    assert "````yaml\n" in markdown
+    sections = parse_markdown_sections(filename="policy.md", body=markdown)
+    assert [section.heading for section in sections] == ["Original Metadata", "Policy"]
+    assert "  ```\n" in sections[0].body_md
+
+
 def test_markdown_import_keeps_prose_thematic_break_content() -> None:
     authored_body = "---\nNote: this is real content.\n---\n\n# Policy\nBody\n"
 
@@ -159,6 +179,20 @@ def test_source_original_quotes_yaml_sensitive_filename() -> None:
     hash_markdown = import_text_to_markdown("policy #1.txt", "Body", imported_at=IMPORTED_AT)
     hash_frontmatter = _import_frontmatter(hash_markdown)
     assert hash_frontmatter.splitlines()[0] == 'source_original: "raw/policy #1.txt"'
+
+
+def test_frontmatter_escapes_raw_control_characters() -> None:
+    markdown = import_text_to_markdown(
+        "bad\fdoc.txt",
+        "Body",
+        imported_at="2026-05-25T10:30:00+00:00\fextra: injected",
+    )
+    frontmatter = _import_frontmatter(markdown)
+
+    assert "\f" not in frontmatter
+    assert 'source_original: "raw/bad\\x0cdoc.txt"' in frontmatter
+    assert 'imported_at: "2026-05-25T10:30:00+00:00\\x0cextra: injected"' in frontmatter
+    assert all(not line.startswith("extra:") for line in frontmatter.splitlines())
 
 
 def test_html_import_converts_readable_headings_and_body_to_markdown() -> None:

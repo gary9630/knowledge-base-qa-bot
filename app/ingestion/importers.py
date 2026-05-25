@@ -43,7 +43,8 @@ _AUTHORED_FRONTMATTER_KEYS = _PRODUCT_FRONTMATTER_KEYS | frozenset(
 )
 _CONTROL_WHITESPACE_RE = re.compile(r"[\r\n\t\f\v]+")
 _YAML_KEY_RE = re.compile(r"^([A-Za-z_][A-Za-z0-9_-]*)\s*:(.*)$")
-_YAML_PLAIN_SAFE_RE = re.compile(r"^[A-Za-z0-9_./-]+$")
+_YAML_PLAIN_SAFE_RE = re.compile(r"^[A-Za-z0-9_./:+-]+$")
+_BACKTICK_SEQUENCE_RE = re.compile(r"`+")
 
 
 @dataclass(frozen=True)
@@ -131,7 +132,7 @@ def _with_product_frontmatter(
         "---\n"
         f"source_original: {_yaml_scalar(f'raw/{Path(filename).name}')}\n"
         "source_type: imported\n"
-        f"imported_at: {_format_imported_at(imported_at)}\n"
+        f"imported_at: {_yaml_scalar(_format_imported_at(imported_at))}\n"
         "---\n\n"
         f"{body}"
     )
@@ -214,27 +215,46 @@ def _is_plausible_yaml_frontmatter(metadata: _FrontmatterMetadata) -> bool:
 
 
 def _authored_frontmatter_section(frontmatter: str, body: str) -> str:
+    fence = _metadata_fence(frontmatter)
     return (
         "## Original Metadata\n\n"
-        "```yaml\n"
+        f"{fence}yaml\n"
         f"{_ensure_trailing_newline(frontmatter)}"
-        "```\n\n"
+        f"{fence}\n\n"
         f"{body}"
     )
+
+
+def _metadata_fence(content: str) -> str:
+    max_backtick_run = max(
+        (len(match.group(0)) for match in _BACKTICK_SEQUENCE_RE.finditer(content)),
+        default=0,
+    )
+    return "`" * max(3, max_backtick_run + 1)
 
 
 def _yaml_scalar(value: str) -> str:
     if _YAML_PLAIN_SAFE_RE.fullmatch(value):
         return value
 
-    escaped = (
-        value.replace("\\", "\\\\")
-        .replace('"', '\\"')
-        .replace("\n", "\\n")
-        .replace("\r", "\\r")
-        .replace("\t", "\\t")
-    )
+    escaped = "".join(_escape_yaml_double_quoted_char(char) for char in value)
     return f'"{escaped}"'
+
+
+def _escape_yaml_double_quoted_char(char: str) -> str:
+    if char == "\\":
+        return "\\\\"
+    if char == '"':
+        return '\\"'
+    if char == "\n":
+        return "\\n"
+    if char == "\r":
+        return "\\r"
+    if char == "\t":
+        return "\\t"
+    if ord(char) < 0x20 or ord(char) == 0x7F:
+        return f"\\x{ord(char):02x}"
+    return char
 
 
 def _unquote_yaml_scalar(value: str) -> str:
