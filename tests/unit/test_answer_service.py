@@ -189,6 +189,9 @@ def test_validate_citations_rejects_raw_source_id_with_no_space_brackets_in_file
         ("Valid release， faq.md#intro", "release， faq.md#intro"),
         ("Valid release: faq.md#intro", "release: faq.md#intro"),
         ("Valid release, faq.md#intro", "release, faq.md#intro"),
+        ("Valid release, faq.md#intro.", "release, faq.md#intro"),
+        ("Valid release; faq.md#intro.", "release; faq.md#intro"),
+        ("Valid release(draft).md#intro.", "release(draft).md#intro"),
     ],
 )
 def test_validate_citations_rejects_raw_source_id_suffix_bypass(

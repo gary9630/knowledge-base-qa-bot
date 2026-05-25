@@ -5,23 +5,26 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 
 CANNOT_CONFIRM_ANSWER = "我無法從知識庫確認這件事。"
+_RAW_SOURCE_ID_END_BOUNDARY = r"(?=$|[\s\]\)\}>,.;:!?，。；：！？、])"
 
 _RAW_SOURCE_ID_TOKEN_RE = re.compile(
-    r"(?<!\S)(?P<source_id>\S+\.md#[\w-]+)(?!\S)",
+    rf"(?<!\S)(?P<source_id>\S+\.md#[\w-]+){_RAW_SOURCE_ID_END_BOUNDARY}",
     re.UNICODE,
 )
 _RAW_SPACED_SOURCE_ID_RE = re.compile(
-    r"(?<!\S)(?P<source_id>[\w./%+@=-]+ +[\w./%+@=-]+\.md#[\w-]+)(?!\S)",
+    rf"(?<!\S)(?P<source_id>[\w./%+@=-]+ +[\w./%+@=-]+\.md#[\w-]+)"
+    rf"{_RAW_SOURCE_ID_END_BOUNDARY}",
     re.UNICODE,
 )
 _RAW_PREFIX_PUNCTUATION_SOURCE_ID_RE = re.compile(
-    r"(?<!\S)(?P<source_id>\S*[^\w\s] +\S+\.md#[\w-]+)(?!\S)",
+    rf"(?<!\S)(?P<source_id>\S*[^\w\s] +\S+\.md#[\w-]+)"
+    rf"{_RAW_SOURCE_ID_END_BOUNDARY}",
     re.UNICODE,
 )
 _RAW_PUNCTUATED_SOURCE_ID_RE = re.compile(
-    r"(?<!\S)"
-    r"(?P<source_id>[\w./%+@=-]+ ?[\(\[（【][^\r\n]+?[\)\]）】][\w./%+@=-]*\.md#[\w-]+)"
-    r"(?!\S)",
+    rf"(?<!\S)"
+    rf"(?P<source_id>[\w./%+@=-]+ ?[\(\[（【][^\r\n]+?[\)\]）】][\w./%+@=-]*\.md#[\w-]+)"
+    rf"{_RAW_SOURCE_ID_END_BOUNDARY}",
     re.UNICODE,
 )
 _BRACKETED_SOURCE_ID_CONTENT_RE = re.compile(r"^(?P<source_id>.+\.md#[\w-]+)$", re.UNICODE)
