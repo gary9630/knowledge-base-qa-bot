@@ -1,0 +1,165 @@
+from __future__ import annotations
+
+from uuid import UUID, uuid4
+
+from app.answer.citations import CANNOT_CONFIRM_ANSWER, validate_citations
+from app.answer.providers import FakeAnswerProvider
+from app.answer.service import AnswerService
+from app.retrieval.models import RetrievedCandidate
+
+
+def test_validate_citations_rejects_missing_and_unallowed_source_id() -> None:
+    allowed_source_ids = {"常見問題FAQ.md#課程網站"}
+
+    missing = validate_citations("課程網站位於學習平台。", allowed_source_ids)
+    unallowed = validate_citations(
+        "課程網站位於學習平台。 [missing.md#課程網站]",
+        allowed_source_ids,
+    )
+
+    assert not missing.valid
+    assert missing.missing_citations
+    assert missing.cited_source_ids == set()
+    assert not unallowed.valid
+    assert unallowed.invalid_source_ids == {"missing.md#課程網站"}
+
+
+def test_validate_citations_accepts_cjk_source_id_with_surrounding_punctuation() -> None:
+    allowed_source_ids = {"docs/常見問題FAQ.md#課程網站"}
+
+    result = validate_citations(
+        "課程網站位於學習平台首頁（docs/常見問題FAQ.md#課程網站）。",
+        allowed_source_ids,
+    )
+
+    assert result.valid
+    assert result.cited_source_ids == allowed_source_ids
+    assert result.invalid_source_ids == set()
+
+
+def test_validate_citations_does_not_treat_markdown_url_anchor_as_source_id() -> None:
+    result = validate_citations(
+        "更多背景可參考 https://example.md#anchor",
+        {"faq.md#course-site"},
+    )
+
+    assert not result.valid
+    assert result.missing_citations
+    assert result.invalid_source_ids == set()
+
+
+def test_validate_citations_accepts_bracketed_source_id_with_spaces_in_filename() -> None:
+    allowed_source_ids = {"release notes.md#課程網站"}
+
+    result = validate_citations(
+        "課程網站位於學習平台首頁。 [release notes.md#課程網站]",
+        allowed_source_ids,
+    )
+
+    assert result.valid
+    assert result.cited_source_ids == allowed_source_ids
+    assert result.invalid_source_ids == set()
+
+
+def test_answer_without_sources_returns_cannot_confirm_without_provider_call() -> None:
+    provider = FakeAnswerProvider(["課程網站位於學習平台。 [faq.md#course-site]"])
+    service = AnswerService(provider)
+
+    result = service.answer("課程網站在哪裡？", [])
+
+    assert result.answer == CANNOT_CONFIRM_ANSWER
+    assert result.sources == []
+    assert result.valid
+    assert result.citation_errors == []
+    assert provider.calls == []
+
+
+def test_answer_with_valid_fake_provider_answer_returns_selected_sources() -> None:
+    source = _candidate(
+        source_id="常見問題FAQ.md#課程網站",
+        filename="常見問題FAQ.md",
+        heading="課程網站",
+        body_md="## 課程網站\n\n課程網站位於學習平台首頁。",
+    )
+    provider = FakeAnswerProvider(["課程網站位於學習平台首頁。 [常見問題FAQ.md#課程網站]"])
+    service = AnswerService(provider)
+
+    result = service.answer("課程網站在哪裡？", [source])
+
+    assert result.answer == "課程網站位於學習平台首頁。 [常見問題FAQ.md#課程網站]"
+    assert result.valid
+    assert result.citation_errors == []
+    assert [answer_source.source_id for answer_source in result.sources] == [source.source_id]
+    assert [call.strict for call in provider.calls] == [False]
+
+
+def test_answer_retries_once_after_invalid_citation_and_returns_retry_answer() -> None:
+    source = _candidate(source_id="faq.md#course-site")
+    provider = FakeAnswerProvider(
+        [
+            "課程網站在平台首頁。 [other.md#course-site]",
+            "課程網站在平台首頁。 [faq.md#course-site]",
+        ]
+    )
+    service = AnswerService(provider)
+
+    result = service.answer("課程網站在哪裡？", [source])
+
+    assert result.answer == "課程網站在平台首頁。 [faq.md#course-site]"
+    assert result.valid
+    assert result.citation_errors == []
+    assert [call.strict for call in provider.calls] == [False, True]
+
+
+def test_answer_falls_back_when_retry_still_has_invalid_citation() -> None:
+    source = _candidate(source_id="faq.md#course-site")
+    provider = FakeAnswerProvider(
+        [
+            "課程網站在平台首頁。 [other.md#course-site]",
+            "課程網站在平台首頁。 [missing.md#course-site]",
+        ]
+    )
+    service = AnswerService(provider)
+
+    result = service.answer("課程網站在哪裡？", [source])
+
+    assert result.answer == CANNOT_CONFIRM_ANSWER
+    assert result.sources == []
+    assert not result.valid
+    assert result.citation_errors
+    assert [call.strict for call in provider.calls] == [False, True]
+
+
+def test_cannot_confirm_answer_with_no_citations_is_valid_with_sources_available() -> None:
+    source = _candidate(source_id="faq.md#course-site")
+    provider = FakeAnswerProvider([CANNOT_CONFIRM_ANSWER])
+    service = AnswerService(provider)
+
+    result = service.answer("這個產品支援火星部署嗎？", [source])
+
+    assert result.answer == CANNOT_CONFIRM_ANSWER
+    assert result.sources == []
+    assert result.valid
+    assert result.citation_errors == []
+    assert [call.strict for call in provider.calls] == [False]
+
+
+def _candidate(
+    *,
+    source_id: str,
+    section_id: UUID | None = None,
+    filename: str = "faq.md",
+    heading: str = "Course Site",
+    body_md: str = "## Course Site\n\nThe course site is on the platform homepage.",
+    score: float = 0.82,
+    strategy: str = "hybrid",
+) -> RetrievedCandidate:
+    return RetrievedCandidate(
+        section_id=section_id or uuid4(),
+        source_id=source_id,
+        filename=filename,
+        heading=heading,
+        body_md=body_md,
+        score=score,
+        strategy=strategy,
+    )
