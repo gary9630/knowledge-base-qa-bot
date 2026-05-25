@@ -52,6 +52,19 @@ def test_parse_markdown_sections_uses_parent_slug_for_repeated_child_headings() 
     ]
 
 
+def test_parse_markdown_sections_uses_disambiguated_parent_slug_for_children() -> None:
+    markdown = "# Week\n\n## FAQ\n\nFirst.\n\n# Week\n\n## FAQ\n\nSecond.\n"
+
+    sections = parse_markdown_sections(filename="course.md", body=markdown)
+
+    assert [section.source_id for section in sections] == [
+        "course.md#week",
+        "course.md#week-faq",
+        "course.md#week-2",
+        "course.md#week-2-faq",
+    ]
+
+
 def test_parse_markdown_sections_ignores_yaml_frontmatter_before_heading() -> None:
     markdown = "---\nsource_original: raw/a.txt\n---\n\n# Title\n\nBody.\n"
 
@@ -66,6 +79,26 @@ def test_parse_markdown_sections_returns_no_sections_for_frontmatter_only_doc() 
     markdown = "---\nsource_original: raw/a.txt\n---\n"
 
     assert parse_markdown_sections(filename="doc.md", body=markdown) == []
+
+
+def test_parse_markdown_sections_keeps_thematic_break_content_before_heading() -> None:
+    markdown = "---\nIntro paragraph that is real content.\n---\n\n# Title\n\nBody.\n"
+
+    sections = parse_markdown_sections(filename="doc.md", body=markdown)
+
+    assert [section.heading for section in sections] == ["doc", "Title"]
+    assert sections[0].source_id == "doc.md#doc"
+    assert "Intro paragraph that is real content." in sections[0].body_md
+    assert sections[1].source_id == "doc.md#title"
+
+
+def test_parse_markdown_sections_ignores_leading_blank_lines_before_heading() -> None:
+    markdown = "\n\n# Title\nBody.\n"
+
+    sections = parse_markdown_sections(filename="doc.md", body=markdown)
+
+    assert [section.heading for section in sections] == ["Title"]
+    assert sections[0].source_id == "doc.md#title"
 
 
 def test_parse_markdown_sections_ignores_headings_inside_backtick_fences() -> None:

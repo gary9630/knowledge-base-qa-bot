@@ -10,6 +10,7 @@ from app.indexing.citations import citation_for, slugify_heading
 _HEADING_RE = re.compile(r"^(#{1,6})(?:[ \t]+|$)(.*)$")
 _CLOSING_HASHES_RE = re.compile(r"[ \t]+#+[ \t]*$")
 _FENCE_RE = re.compile(r"^[ \t]{0,3}(`{3,}|~{3,})")
+_METADATA_KEY_RE = re.compile(r"^[A-Za-z_][\w.-]*\s*:")
 
 
 @dataclass(frozen=True)
@@ -27,7 +28,6 @@ class _RawSection:
     filename: str
     heading: str
     heading_slug: str
-    parent_slugs: tuple[str, ...]
     level: int
     body_md: str
 
@@ -40,7 +40,6 @@ def parse_markdown_sections(filename: str, body: str) -> list[ParsedSection]:
     raw_sections: list[_RawSection] = []
     preamble_lines: list[str] = []
     current_heading: str | None = None
-    current_parent_slugs: tuple[str, ...] = ()
     current_level = 1
     current_lines: list[str] = []
     heading_stack: list[tuple[int, str]] = []
@@ -69,7 +68,7 @@ def parse_markdown_sections(filename: str, body: str) -> list[ParsedSection]:
         heading_match = _match_heading(line)
         if heading_match is not None:
             if current_heading is None:
-                if preamble_lines:
+                if _has_nonblank_content(preamble_lines):
                     raw_sections.append(_synthetic_section(filename, "".join(preamble_lines)))
                     preamble_lines = []
             else:
@@ -77,7 +76,6 @@ def parse_markdown_sections(filename: str, body: str) -> list[ParsedSection]:
                     _section_from_parts(
                         filename,
                         current_heading,
-                        current_parent_slugs,
                         current_level,
                         current_lines,
                     )
@@ -88,7 +86,6 @@ def parse_markdown_sections(filename: str, body: str) -> list[ParsedSection]:
             while heading_stack and heading_stack[-1][0] >= current_level:
                 heading_stack.pop()
 
-            current_parent_slugs = tuple(slug for _, slug in heading_stack)
             heading_stack.append((current_level, current_heading_slug))
             current_lines = [line]
             continue
@@ -103,12 +100,11 @@ def parse_markdown_sections(filename: str, body: str) -> list[ParsedSection]:
             _section_from_parts(
                 filename,
                 current_heading,
-                current_parent_slugs,
                 current_level,
                 current_lines,
             )
         )
-    elif preamble_lines or body_without_frontmatter == "":
+    elif _has_nonblank_content(preamble_lines) or body_without_frontmatter == "":
         raw_sections.append(_synthetic_section(filename, "".join(preamble_lines)))
 
     return _assign_unique_source_ids(raw_sections)
@@ -146,9 +142,20 @@ def _strip_yaml_frontmatter(body: str) -> tuple[str, bool]:
 
     for index, line in enumerate(lines[1:], start=1):
         if line.strip() == "---":
-            return "".join(lines[index + 1 :]).lstrip("\n\r"), True
+            frontmatter_lines = lines[1:index]
+            if _looks_like_yaml_metadata(frontmatter_lines):
+                return "".join(lines[index + 1 :]).lstrip("\n\r"), True
+            return body, False
 
     return body, False
+
+
+def _looks_like_yaml_metadata(lines: list[str]) -> bool:
+    return any(_METADATA_KEY_RE.match(line.strip()) for line in lines)
+
+
+def _has_nonblank_content(lines: list[str]) -> bool:
+    return any(line.strip() for line in lines)
 
 
 def _synthetic_heading(filename: str) -> str:
@@ -158,13 +165,12 @@ def _synthetic_heading(filename: str) -> str:
 
 def _synthetic_section(filename: str, body: str) -> _RawSection:
     heading = _synthetic_heading(filename)
-    return _section_from_parts(filename, heading, (), 1, [f"# {heading}\n", "\n", body])
+    return _section_from_parts(filename, heading, 1, [f"# {heading}\n", "\n", body])
 
 
 def _section_from_parts(
     filename: str,
     heading: str,
-    parent_slugs: tuple[str, ...],
     level: int,
     lines: list[str],
 ) -> _RawSection:
@@ -172,7 +178,6 @@ def _section_from_parts(
         filename=filename,
         heading=heading,
         heading_slug=slugify_heading(heading),
-        parent_slugs=parent_slugs,
         level=level,
         body_md="".join(lines),
     )
@@ -182,11 +187,16 @@ def _assign_unique_source_ids(raw_sections: list[_RawSection]) -> list[ParsedSec
     slug_counts = Counter(section.heading_slug for section in raw_sections)
     used_slugs: set[str] = set()
     parsed_sections: list[ParsedSection] = []
+    unique_heading_stack: list[tuple[int, str]] = []
 
     for section in raw_sections:
+        while unique_heading_stack and unique_heading_stack[-1][0] >= section.level:
+            unique_heading_stack.pop()
+
         slug = section.heading_slug
-        if slug_counts[slug] > 1 and section.parent_slugs:
-            slug = "-".join((*section.parent_slugs, section.heading_slug))
+        if slug_counts[slug] > 1 and unique_heading_stack:
+            parent_slugs = tuple(parent_slug for _, parent_slug in unique_heading_stack)
+            slug = "-".join((*parent_slugs, slug))
 
         unique_slug = _unique_slug(slug, used_slugs)
         parsed_sections.append(
@@ -199,6 +209,7 @@ def _assign_unique_source_ids(raw_sections: list[_RawSection]) -> list[ParsedSec
                 body_md=section.body_md,
             )
         )
+        unique_heading_stack.append((section.level, unique_slug))
 
     return parsed_sections
 
