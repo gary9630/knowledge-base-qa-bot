@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from collections.abc import Sequence
+import json
+from collections.abc import Iterator, Sequence
 from time import perf_counter
 from typing import Annotated, Any
 from uuid import UUID
@@ -8,6 +9,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
+from sse_starlette.sse import EventSourceResponse
 
 from app.answer.providers import AnswerSource
 from app.answer.service import AnswerService
@@ -50,6 +52,25 @@ def chat(
     payload: ChatRequest,
     request: Request,
     session: Annotated[Session, Depends(get_request_db_session)],
+) -> ChatResponse:
+    return _build_chat_response(payload=payload, request=request, session=session)
+
+
+@router.post("/chat/stream")
+def chat_stream(
+    payload: ChatRequest,
+    request: Request,
+    session: Annotated[Session, Depends(get_request_db_session)],
+) -> EventSourceResponse:
+    response = _build_chat_response(payload=payload, request=request, session=session)
+    return EventSourceResponse(_chat_response_events(response))
+
+
+def _build_chat_response(
+    *,
+    payload: ChatRequest,
+    request: Request,
+    session: Session,
 ) -> ChatResponse:
     started_at = perf_counter()
     conversation = _conversation_for_request(payload, session)
@@ -108,6 +129,45 @@ def chat(
         cited_candidates=cited_candidates,
         latency_ms=_elapsed_ms(started_at),
     )
+
+
+def _chat_response_events(response: ChatResponse) -> Iterator[dict[str, str]]:
+    yield {
+        "event": "sources",
+        "data": _event_json(
+            {
+                "sources": _responses_to_json(response.sources),
+                "selected_sources": _responses_to_json(response.selected_sources),
+            }
+        ),
+    }
+    for token in _answer_token_chunks(response.answer):
+        yield {"event": "token", "data": token}
+    yield {
+        "event": "done",
+        "data": _event_json(
+            {
+                "conversation_id": str(response.conversation_id),
+                "user_message_id": str(response.user_message_id),
+                "assistant_message_id": str(response.assistant_message_id),
+                "retrieval_event_id": str(response.retrieval_event_id),
+                "decision": response.decision,
+            }
+        ),
+    }
+
+
+def _answer_token_chunks(answer: str, *, chunk_size: int = 12) -> Iterator[str]:
+    if not answer:
+        yield ""
+        return
+
+    for start in range(0, len(answer), chunk_size):
+        yield answer[start : start + chunk_size]
+
+
+def _event_json(payload: dict[str, Any]) -> str:
+    return json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
 
 
 class _TopSourceAnswerProvider:
