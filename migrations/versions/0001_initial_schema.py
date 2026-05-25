@@ -17,6 +17,48 @@ down_revision: str | None = None
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
+TIMESTAMP_TABLES = (
+    "documents",
+    "sections",
+    "chunks",
+    "indexing_jobs",
+    "conversations",
+    "messages",
+    "retrieval_events",
+    "feedback",
+)
+
+
+def create_updated_at_triggers() -> None:
+    op.execute(
+        """
+        CREATE OR REPLACE FUNCTION kb_set_updated_at()
+        RETURNS trigger AS $$
+        BEGIN
+            NEW.updated_at = now();
+            RETURN NEW;
+        END;
+        $$ LANGUAGE plpgsql
+        """
+    )
+
+    for table_name in TIMESTAMP_TABLES:
+        op.execute(
+            f"""
+            CREATE TRIGGER trg_{table_name}_updated_at
+            BEFORE UPDATE ON {table_name}
+            FOR EACH ROW
+            EXECUTE FUNCTION kb_set_updated_at()
+            """
+        )
+
+
+def drop_updated_at_triggers() -> None:
+    for table_name in TIMESTAMP_TABLES:
+        op.execute(f"DROP TRIGGER IF EXISTS trg_{table_name}_updated_at ON {table_name}")
+
+    op.execute("DROP FUNCTION IF EXISTS kb_set_updated_at()")
+
 
 def upgrade() -> None:
     op.execute("CREATE EXTENSION IF NOT EXISTS vector")
@@ -232,9 +274,11 @@ def upgrade() -> None:
         sa.PrimaryKeyConstraint("id"),
     )
     op.create_index("ix_feedback_message_id", "feedback", ["message_id"])
+    create_updated_at_triggers()
 
 
 def downgrade() -> None:
+    drop_updated_at_triggers()
     op.drop_index("ix_feedback_message_id", table_name="feedback")
     op.drop_table("feedback")
     op.drop_index("ix_retrieval_events_message_id", table_name="retrieval_events")

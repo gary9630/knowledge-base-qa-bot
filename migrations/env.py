@@ -7,6 +7,7 @@ from sqlalchemy import engine_from_config, pool
 
 from app.core.config import Settings
 from app.core.database import Base
+from app.core.database_urls import resolve_alembic_database_url
 from app.models import tables  # noqa: F401
 
 config = context.config
@@ -18,7 +19,7 @@ target_metadata = Base.metadata
 
 
 def get_database_url() -> str:
-    return config.get_main_option("sqlalchemy.url") or Settings().database_url
+    return resolve_alembic_database_url(config.get_main_option("sqlalchemy.url"), Settings())
 
 
 def run_migrations_offline() -> None:

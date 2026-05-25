@@ -1,7 +1,8 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from datetime import datetime
-from typing import Any
+from typing import Any, ClassVar
 from uuid import UUID, uuid4
 
 from pgvector.sqlalchemy import Vector  # type: ignore[import-untyped]
@@ -11,6 +12,20 @@ from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
+
+
+def default_visibility() -> list[str]:
+    return ["public"]
+
+
+class JsonDefaultsMixin:
+    __json_defaults__: ClassVar[dict[str, Callable[[], object]]] = {}
+
+    def __init__(self, **kwargs: Any) -> None:
+        for key, factory in self.__json_defaults__.items():
+            kwargs.setdefault(key, factory())
+
+        super().__init__(**kwargs)
 
 
 class TimestampMixin:
@@ -27,9 +42,13 @@ class TimestampMixin:
     )
 
 
-class Document(TimestampMixin, Base):
+class Document(JsonDefaultsMixin, TimestampMixin, Base):
     __tablename__ = "documents"
     __table_args__ = (Index("ix_documents_visibility", "visibility", postgresql_using="gin"),)
+    __json_defaults__ = {
+        "visibility": default_visibility,
+        "metadata_json": dict,
+    }
 
     id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), primary_key=True, default=uuid4)
     filename: Mapped[str] = mapped_column(Text, nullable=False)
@@ -40,6 +59,7 @@ class Document(TimestampMixin, Base):
     visibility: Mapped[list[str]] = mapped_column(
         JSONB,
         nullable=False,
+        default=default_visibility,
         server_default=text("""'["public"]'::jsonb"""),
     )
     imported_from: Mapped[str | None] = mapped_column(Text)
@@ -47,6 +67,7 @@ class Document(TimestampMixin, Base):
         "metadata",
         JSONB,
         nullable=False,
+        default=dict,
         server_default=text("'{}'::jsonb"),
     )
 
@@ -56,12 +77,13 @@ class Document(TimestampMixin, Base):
     )
 
 
-class Section(TimestampMixin, Base):
+class Section(JsonDefaultsMixin, TimestampMixin, Base):
     __tablename__ = "sections"
     __table_args__ = (
         Index("ux_sections_source_id", "source_id", unique=True),
         Index("ix_sections_tsv", "tsv", postgresql_using="gin"),
     )
+    __json_defaults__ = {"metadata_json": dict}
 
     id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), primary_key=True, default=uuid4)
     document_id: Mapped[UUID] = mapped_column(
@@ -82,6 +104,7 @@ class Section(TimestampMixin, Base):
         "metadata",
         JSONB,
         nullable=False,
+        default=dict,
         server_default=text("'{}'::jsonb"),
     )
 
@@ -92,7 +115,7 @@ class Section(TimestampMixin, Base):
     )
 
 
-class Chunk(TimestampMixin, Base):
+class Chunk(JsonDefaultsMixin, TimestampMixin, Base):
     __tablename__ = "chunks"
     __table_args__ = (
         Index(
@@ -102,6 +125,7 @@ class Chunk(TimestampMixin, Base):
             postgresql_ops={"embedding": "vector_cosine_ops"},
         ),
     )
+    __json_defaults__ = {"metadata_json": dict}
 
     id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), primary_key=True, default=uuid4)
     section_id: Mapped[UUID] = mapped_column(
@@ -119,14 +143,16 @@ class Chunk(TimestampMixin, Base):
         "metadata",
         JSONB,
         nullable=False,
+        default=dict,
         server_default=text("'{}'::jsonb"),
     )
 
     section: Mapped[Section] = relationship(back_populates="chunks")
 
 
-class IndexingJob(TimestampMixin, Base):
+class IndexingJob(JsonDefaultsMixin, TimestampMixin, Base):
     __tablename__ = "indexing_jobs"
+    __json_defaults__ = {"stats_json": dict}
 
     id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), primary_key=True, default=uuid4)
     kind: Mapped[str] = mapped_column(Text, nullable=False)
@@ -136,6 +162,7 @@ class IndexingJob(TimestampMixin, Base):
     stats_json: Mapped[dict[str, Any]] = mapped_column(
         JSONB,
         nullable=False,
+        default=dict,
         server_default=text("'{}'::jsonb"),
     )
 
@@ -153,8 +180,9 @@ class Conversation(TimestampMixin, Base):
     )
 
 
-class Message(TimestampMixin, Base):
+class Message(JsonDefaultsMixin, TimestampMixin, Base):
     __tablename__ = "messages"
+    __json_defaults__ = {"sources_json": list}
 
     id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), primary_key=True, default=uuid4)
     conversation_id: Mapped[UUID] = mapped_column(
@@ -168,6 +196,7 @@ class Message(TimestampMixin, Base):
     sources_json: Mapped[list[dict[str, Any]]] = mapped_column(
         JSONB,
         nullable=False,
+        default=list,
         server_default=text("'[]'::jsonb"),
     )
 
@@ -178,8 +207,12 @@ class Message(TimestampMixin, Base):
     )
 
 
-class RetrievalEvent(TimestampMixin, Base):
+class RetrievalEvent(JsonDefaultsMixin, TimestampMixin, Base):
     __tablename__ = "retrieval_events"
+    __json_defaults__ = {
+        "selected_sources_json": list,
+        "scores_json": dict,
+    }
 
     id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), primary_key=True, default=uuid4)
     conversation_id: Mapped[UUID | None] = mapped_column(
@@ -197,11 +230,13 @@ class RetrievalEvent(TimestampMixin, Base):
     selected_sources_json: Mapped[list[dict[str, Any]]] = mapped_column(
         JSONB,
         nullable=False,
+        default=list,
         server_default=text("'[]'::jsonb"),
     )
     scores_json: Mapped[dict[str, Any]] = mapped_column(
         JSONB,
         nullable=False,
+        default=dict,
         server_default=text("'{}'::jsonb"),
     )
     decision: Mapped[str] = mapped_column(Text, nullable=False)

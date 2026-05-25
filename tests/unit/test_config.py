@@ -1,3 +1,5 @@
+from pathlib import Path
+
 import pytest
 
 from app.core.config import Settings
@@ -12,7 +14,8 @@ _SETTINGS_ENV_KEYS = (
 
 
 @pytest.fixture(autouse=True)
-def clear_settings_env(monkeypatch: pytest.MonkeyPatch) -> None:
+def clear_settings_env(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    monkeypatch.chdir(tmp_path)
     for key in _SETTINGS_ENV_KEYS:
         monkeypatch.delenv(key, raising=False)
 
