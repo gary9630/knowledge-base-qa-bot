@@ -79,6 +79,24 @@ def test_parse_markdown_sections_ignores_yaml_frontmatter_before_heading() -> No
     assert "source_original" not in sections[0].body_md
 
 
+def test_parse_markdown_sections_ignores_import_metadata_frontmatter() -> None:
+    markdown = (
+        "---\n"
+        "source_original: raw/a.txt\n"
+        "source_type: imported\n"
+        "imported_at: 2026-05-25T00:00:00Z\n"
+        "---\n\n"
+        "# Title\n\n"
+        "Body.\n"
+    )
+
+    sections = parse_markdown_sections(filename="doc.md", body=markdown)
+
+    assert [section.heading for section in sections] == ["Title"]
+    assert sections[0].source_id == "doc.md#title"
+    assert "source_original" not in sections[0].body_md
+
+
 def test_parse_markdown_sections_returns_no_sections_for_frontmatter_only_doc() -> None:
     markdown = "---\nsource_original: raw/a.txt\n---\n"
 
@@ -93,6 +111,17 @@ def test_parse_markdown_sections_keeps_thematic_break_content_before_heading() -
     assert [section.heading for section in sections] == ["doc", "Title"]
     assert sections[0].source_id == "doc.md#doc"
     assert "Intro paragraph that is real content." in sections[0].body_md
+    assert sections[1].source_id == "doc.md#title"
+
+
+def test_parse_markdown_sections_keeps_note_label_thematic_break_content() -> None:
+    markdown = "---\nNote: this is real content.\n---\n\n# Title\n\nBody.\n"
+
+    sections = parse_markdown_sections(filename="doc.md", body=markdown)
+
+    assert [section.heading for section in sections] == ["doc", "Title"]
+    assert sections[0].source_id == "doc.md#doc"
+    assert "Note: this is real content." in sections[0].body_md
     assert sections[1].source_id == "doc.md#title"
 
 

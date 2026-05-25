@@ -10,7 +10,18 @@ from app.indexing.citations import citation_for, slugify_heading
 _HEADING_RE = re.compile(r"^(#{1,6})(?:[ \t]+|$)(.*)$")
 _CLOSING_HASHES_RE = re.compile(r"[ \t]+#+[ \t]*$")
 _FENCE_RE = re.compile(r"^[ \t]{0,3}(`{3,}|~{3,})")
-_METADATA_KEY_RE = re.compile(r"^[A-Za-z_][\w.-]*\s*:")
+_FRONTMATTER_METADATA_KEYS = frozenset(
+    {
+        "canonical_path",
+        "content_hash",
+        "imported_at",
+        "imported_from",
+        "source_original",
+        "source_type",
+        "title",
+        "visibility",
+    }
+)
 
 
 @dataclass(frozen=True)
@@ -42,7 +53,6 @@ def parse_markdown_sections(filename: str, body: str) -> list[ParsedSection]:
     current_heading: str | None = None
     current_level = 1
     current_lines: list[str] = []
-    heading_stack: list[tuple[int, str]] = []
     fence: tuple[str, int] | None = None
 
     for line in body_without_frontmatter.splitlines(keepends=True):
@@ -82,11 +92,6 @@ def parse_markdown_sections(filename: str, body: str) -> list[ParsedSection]:
                 )
 
             current_level, current_heading = heading_match
-            current_heading_slug = slugify_heading(current_heading)
-            while heading_stack and heading_stack[-1][0] >= current_level:
-                heading_stack.pop()
-
-            heading_stack.append((current_level, current_heading_slug))
             current_lines = [line]
             continue
 
@@ -151,7 +156,15 @@ def _strip_yaml_frontmatter(body: str) -> tuple[str, bool]:
 
 
 def _looks_like_yaml_metadata(lines: list[str]) -> bool:
-    return any(_METADATA_KEY_RE.match(line.strip()) for line in lines)
+    keys = tuple(_frontmatter_key(line) for line in lines if line.strip())
+    return bool(keys) and all(key in _FRONTMATTER_METADATA_KEYS for key in keys)
+
+
+def _frontmatter_key(line: str) -> str:
+    key, separator, _ = line.strip().partition(":")
+    if not separator:
+        return ""
+    return key.strip().lower()
 
 
 def _has_nonblank_content(lines: list[str]) -> bool:
