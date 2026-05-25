@@ -31,6 +31,10 @@ def test_parse_markdown_sections_creates_synthetic_section_without_heading() -> 
     assert "Intro without" in sections[0].body_md
 
 
+def test_parse_markdown_sections_returns_no_sections_for_empty_doc() -> None:
+    assert parse_markdown_sections(filename="doc.md", body="") == []
+
+
 def test_parse_markdown_sections_disambiguates_repeated_same_level_headings() -> None:
     markdown = "## FAQ\n\nFirst answer.\n\n## FAQ\n\nSecond answer.\n"
 

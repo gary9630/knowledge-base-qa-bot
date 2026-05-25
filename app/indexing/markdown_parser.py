@@ -104,7 +104,7 @@ def parse_markdown_sections(filename: str, body: str) -> list[ParsedSection]:
                 current_lines,
             )
         )
-    elif _has_nonblank_content(preamble_lines) or body_without_frontmatter == "":
+    elif _has_nonblank_content(preamble_lines):
         raw_sections.append(_synthetic_section(filename, "".join(preamble_lines)))
 
     return _assign_unique_source_ids(raw_sections)
