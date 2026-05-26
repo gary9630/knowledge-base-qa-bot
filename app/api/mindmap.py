@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
-from typing import Annotated, Literal
+from typing import Annotated, Any, Literal, cast
 
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
@@ -61,6 +61,7 @@ def mindmap(session: Annotated[Session, Depends(get_request_db_session)]) -> Min
                 Section.token_count,
             ),
         )
+        .where(cast(Any, Document.visibility).contains(["public"]))
         .order_by(Document.filename.asc(), Document.id.asc())
     ).all()
     return build_mindmap_response(documents)

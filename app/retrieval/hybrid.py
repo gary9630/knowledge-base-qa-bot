@@ -49,15 +49,16 @@ class HybridRetriever:
         limit: int = 5,
         debug: bool = False,
     ) -> RetrievalResult:
-        if strategy not in ("lexical", "vector", "hybrid"):
+        if strategy not in ("lexical", "markdown", "vector", "hybrid"):
             raise ValueError(f"unsupported retrieval strategy: {strategy}")
         if limit <= 0 or not query.strip():
             return RetrievalResult(decision="cannot_confirm", candidates=[])
 
+        normalized_strategy: RetrievalStrategy = "lexical" if strategy == "markdown" else strategy
         candidates: list[RetrievedCandidate] = []
-        if strategy in ("lexical", "hybrid"):
+        if normalized_strategy in ("lexical", "hybrid"):
             candidates.extend(self.lexical_retriever.search(query, limit))
-        if strategy in ("vector", "hybrid"):
+        if normalized_strategy in ("vector", "hybrid"):
             candidates.extend(self.vector_retriever.search(query, limit))
 
         merged = merge_results(candidates)
@@ -65,6 +66,9 @@ class HybridRetriever:
             :limit
         ]
         rejected = [candidate for candidate in merged if candidate.score < self.score_threshold]
+        if strategy == "markdown":
+            accepted = [replace(candidate, strategy="markdown") for candidate in accepted]
+            rejected = [replace(candidate, strategy="markdown") for candidate in rejected]
         decision: RetrievalDecision = "can_answer" if accepted else "cannot_confirm"
 
         return RetrievalResult(
@@ -85,10 +89,16 @@ def merge_results(candidates: Iterable[RetrievedCandidate]) -> list[RetrievedCan
         strategy_scores = _strategy_scores(group)
         debug_scores = _merged_debug_scores(group, strategy_scores)
         strategy = "hybrid" if len(strategy_scores) > 1 else best.strategy
+        base_score = max(strategy_scores.values(), default=best.score)
+        score, priority_debug_scores = _score_with_source_priority(
+            base_score,
+            best.source_priority,
+        )
+        debug_scores.update(priority_debug_scores)
         merged.append(
             replace(
                 best,
-                score=max(strategy_scores.values(), default=best.score),
+                score=score,
                 strategy=strategy,
                 debug_scores=debug_scores,
             )
@@ -117,6 +127,21 @@ def _merged_debug_scores(
         for key, value in candidate.debug_scores.items():
             debug_scores[key] = max(debug_scores.get(key, value), value)
     return debug_scores
+
+
+def _score_with_source_priority(
+    base_score: float,
+    source_priority: int,
+) -> tuple[float, dict[str, float]]:
+    if source_priority <= 0:
+        return base_score, {}
+
+    boost = min(0.05, source_priority * 0.01)
+    return min(1.0, base_score + boost), {
+        "base_score": base_score,
+        "source_priority": float(source_priority),
+        "source_priority_boost": boost,
+    }
 
 
 def _build_lexical_retriever(session: Session | None) -> LexicalRetriever:

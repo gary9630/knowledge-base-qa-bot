@@ -23,6 +23,8 @@ from app.models.tables import Chunk, Document, IndexingJob, Section
 from app.retrieval.embeddings import EmbeddingProvider
 
 PGVECTOR_EMBEDDING_DIMENSION = 1536
+DEFAULT_CHUNK_TOKEN_LIMIT = 420
+DEFAULT_CHUNK_OVERLAP = 64
 
 
 @dataclass(frozen=True)
@@ -33,6 +35,23 @@ class IndexingResult:
     export_path: Path
 
 
+@dataclass(frozen=True)
+class _ChunkText:
+    chunk_index: int
+    body_text: str
+    token_count: int
+    content_hash: str
+    start_token: int
+    end_token: int
+
+
+@dataclass(frozen=True)
+class _ChunkBuildResult:
+    chunks_indexed: int
+    chunks_embedded: int
+    chunks_reused: int
+
+
 class IndexingService:
     def __init__(
         self,
@@ -41,11 +60,22 @@ class IndexingService:
         docs_dir: Path,
         kb_dir: Path,
         embedding_provider: EmbeddingProvider,
+        chunk_token_limit: int = DEFAULT_CHUNK_TOKEN_LIMIT,
+        chunk_overlap: int = DEFAULT_CHUNK_OVERLAP,
     ) -> None:
+        if chunk_token_limit <= 0:
+            raise ValueError("chunk_token_limit must be positive")
+        if chunk_overlap < 0:
+            raise ValueError("chunk_overlap must be non-negative")
+        if chunk_overlap >= chunk_token_limit:
+            raise ValueError("chunk_overlap must be smaller than chunk_token_limit")
+
         self.session = session
         self.docs_dir = docs_dir
         self.kb_dir = kb_dir
         self.embedding_provider = embedding_provider
+        self.chunk_token_limit = chunk_token_limit
+        self.chunk_overlap = chunk_overlap
 
     def rebuild_index(self) -> IndexingResult:
         if self.session.in_transaction():
@@ -69,12 +99,20 @@ class IndexingService:
                 self._delete_stale_documents(markdown_files)
 
                 for path in markdown_files:
-                    document_export, section_count, chunk_count = self._index_file(path)
+                    (
+                        document_export,
+                        section_count,
+                        chunk_count,
+                        chunks_embedded,
+                        chunks_reused,
+                    ) = self._index_file(path)
                     indexed_filenames.add(document_export.filename)
                     document_exports.append(document_export)
                     stats["files_indexed"] = len(indexed_filenames)
                     stats["sections_indexed"] += section_count
                     stats["chunks_indexed"] += chunk_count
+                    stats["chunks_embedded"] += chunks_embedded
+                    stats["chunks_reused"] += chunks_reused
 
                 export_payload = build_index_export_payload(document_exports)
                 export_path = self.kb_dir / "index.json"
@@ -95,7 +133,7 @@ class IndexingService:
             self._persist_failed_job(error, stats, job_id=job_id)
             raise
 
-    def _index_file(self, path: Path) -> tuple[DocumentExport, int, int]:
+    def _index_file(self, path: Path) -> tuple[DocumentExport, int, int, int, int]:
         filename = _relative_filename(self.docs_dir, path)
         body = path.read_text(encoding="utf-8")
         provenance = parse_product_frontmatter(body)
@@ -103,24 +141,38 @@ class IndexingService:
         document = self._upsert_document(path, filename, body, parsed_sections, provenance)
         self.session.flush()
 
-        self.session.execute(delete(Section).where(Section.document_id == document.id))
-        self.session.flush()
+        reusable_embeddings = self._existing_chunk_embeddings(document.id)
+        stale_sections = self._existing_sections_by_source_id(document.id)
 
         section_exports: list[SectionExport] = []
         chunks_indexed = 0
+        chunks_embedded = 0
+        chunks_reused = 0
         for parsed_section in parsed_sections:
             section_hash = _content_hash(parsed_section.body_md)
-            section = Section(
-                document_id=document.id,
-                source_id=parsed_section.source_id,
-                heading=parsed_section.heading,
-                heading_slug=parsed_section.heading_slug,
-                level=parsed_section.level,
-                body_md=parsed_section.body_md,
-                token_count=_token_count(parsed_section.body_md),
-                content_hash=section_hash,
-            )
-            self.session.add(section)
+            section = stale_sections.pop(parsed_section.source_id, None)
+            section_unchanged = section is not None and section.content_hash == section_hash
+            if section is None:
+                section = Section(
+                    document_id=document.id,
+                    source_id=parsed_section.source_id,
+                    heading=parsed_section.heading,
+                    heading_slug=parsed_section.heading_slug,
+                    level=parsed_section.level,
+                    body_md=parsed_section.body_md,
+                    token_count=_token_count(parsed_section.body_md),
+                    content_hash=section_hash,
+                )
+                self.session.add(section)
+            else:
+                section.document_id = document.id
+                section.heading = parsed_section.heading
+                section.heading_slug = parsed_section.heading_slug
+                section.level = parsed_section.level
+                section.body_md = parsed_section.body_md
+                section.token_count = _token_count(parsed_section.body_md)
+                section.content_hash = section_hash
+
             self.session.flush()
             self.session.execute(
                 update(Section)
@@ -128,8 +180,25 @@ class IndexingService:
                 .values(tsv=func.to_tsvector("simple", Section.body_md))
             )
 
-            chunk_count = self._create_chunks(section, parsed_section.body_md, section_hash)
-            chunks_indexed += chunk_count
+            existing_chunk_count = self._count_section_chunks(section.id)
+            chunk_settings_current = self._section_chunk_settings_match(section.id)
+            if section_unchanged and existing_chunk_count > 0 and chunk_settings_current:
+                chunk_result = _ChunkBuildResult(
+                    chunks_indexed=existing_chunk_count,
+                    chunks_embedded=0,
+                    chunks_reused=existing_chunk_count,
+                )
+            else:
+                self.session.execute(delete(Chunk).where(Chunk.section_id == section.id))
+                self.session.flush()
+                chunk_result = self._create_chunks(
+                    section,
+                    parsed_section.body_md,
+                    reusable_embeddings,
+                )
+            chunks_indexed += chunk_result.chunks_indexed
+            chunks_embedded += chunk_result.chunks_embedded
+            chunks_reused += chunk_result.chunks_reused
             section_exports.append(
                 SectionExport(
                     source_id=section.source_id,
@@ -143,6 +212,10 @@ class IndexingService:
                 )
             )
 
+        for stale_section in stale_sections.values():
+            self.session.delete(stale_section)
+        self.session.flush()
+
         return (
             DocumentExport(
                 filename=filename,
@@ -153,6 +226,8 @@ class IndexingService:
             ),
             len(parsed_sections),
             chunks_indexed,
+            chunks_embedded,
+            chunks_reused,
         )
 
     def _upsert_document(
@@ -165,10 +240,11 @@ class IndexingService:
     ) -> Document:
         content_hash = _content_hash(body)
         document = self._get_canonical_document(filename)
-        title = parsed_sections[0].heading if parsed_sections else None
+        title = provenance.get("title") or (parsed_sections[0].heading if parsed_sections else None)
         source_type = provenance.get("source_type", "markdown")
         imported_from = provenance.get("source_original") if source_type == "imported" else None
-        metadata = dict(provenance) if source_type == "imported" else {}
+        visibility = _visibility_from_provenance(provenance)
+        metadata = dict(provenance)
 
         if document is None:
             document = Document(
@@ -177,6 +253,7 @@ class IndexingService:
                 source_type=source_type,
                 title=title,
                 content_hash=content_hash,
+                visibility=visibility,
                 imported_from=imported_from,
                 metadata_json=metadata,
             )
@@ -186,32 +263,96 @@ class IndexingService:
             document.source_type = source_type
             document.title = title
             document.content_hash = content_hash
+            document.visibility = visibility
             document.imported_from = imported_from
             document.metadata_json = metadata
 
         return document
 
-    def _create_chunks(self, section: Section, body_md: str, content_hash: str) -> int:
-        if not body_md.strip():
-            return 0
-
-        embedding = self.embedding_provider.embed_text(body_md)
-        if len(embedding) != PGVECTOR_EMBEDDING_DIMENSION:
-            raise ValueError(
-                f"embedding provider returned {len(embedding)} dimensions; "
-                f"expected {PGVECTOR_EMBEDDING_DIMENSION} dimensions"
-            )
-
-        chunk = Chunk(
-            section_id=section.id,
-            chunk_index=0,
-            body_text=body_md,
-            token_count=_token_count(body_md),
-            embedding=embedding,
-            content_hash=content_hash,
+    def _create_chunks(
+        self,
+        section: Section,
+        body_md: str,
+        reusable_embeddings: dict[str, list[float]],
+    ) -> _ChunkBuildResult:
+        chunk_texts = split_section_chunks(
+            body_md,
+            token_limit=self.chunk_token_limit,
+            overlap=self.chunk_overlap,
         )
-        self.session.add(chunk)
-        return 1
+        chunks_embedded = 0
+        chunks_reused = 0
+
+        for chunk_text in chunk_texts:
+            embedding = reusable_embeddings.get(chunk_text.content_hash)
+            if embedding is None:
+                embedding = self.embedding_provider.embed_text(chunk_text.body_text)
+                _validate_embedding_dimension(embedding)
+                chunks_embedded += 1
+            else:
+                _validate_embedding_dimension(embedding)
+                chunks_reused += 1
+
+            chunk = Chunk(
+                section_id=section.id,
+                chunk_index=chunk_text.chunk_index,
+                body_text=chunk_text.body_text,
+                token_count=chunk_text.token_count,
+                embedding=embedding,
+                content_hash=chunk_text.content_hash,
+                metadata_json={
+                    "start_token": chunk_text.start_token,
+                    "end_token": chunk_text.end_token,
+                    "chunk_token_limit": self.chunk_token_limit,
+                    "chunk_overlap": self.chunk_overlap,
+                },
+            )
+            self.session.add(chunk)
+
+        return _ChunkBuildResult(
+            chunks_indexed=len(chunk_texts),
+            chunks_embedded=chunks_embedded,
+            chunks_reused=chunks_reused,
+        )
+
+    def _existing_chunk_embeddings(self, document_id: UUID) -> dict[str, list[float]]:
+        reusable_embeddings: dict[str, list[float]] = {}
+        statement = (
+            select(Chunk.content_hash, Chunk.embedding)
+            .join(Section, Section.id == Chunk.section_id)
+            .where(Section.document_id == document_id)
+            .where(Chunk.embedding.is_not(None))
+        )
+        for content_hash, embedding in self.session.execute(statement):
+            if content_hash in reusable_embeddings or embedding is None:
+                continue
+            reusable_embeddings[content_hash] = [float(value) for value in embedding]
+        return reusable_embeddings
+
+    def _existing_sections_by_source_id(self, document_id: UUID) -> dict[str, Section]:
+        sections = self.session.scalars(
+            select(Section).where(Section.document_id == document_id)
+        ).all()
+        return {section.source_id: section for section in sections}
+
+    def _count_section_chunks(self, section_id: UUID) -> int:
+        count = self.session.scalar(
+            select(func.count()).select_from(Chunk).where(Chunk.section_id == section_id)
+        )
+        return int(count or 0)
+
+    def _section_chunk_settings_match(self, section_id: UUID) -> bool:
+        metadata_rows = self.session.scalars(
+            select(Chunk.metadata_json).where(Chunk.section_id == section_id)
+        ).all()
+        if not metadata_rows:
+            return False
+
+        return all(
+            metadata.get("chunk_token_limit") == self.chunk_token_limit
+            and metadata.get("chunk_overlap") == self.chunk_overlap
+            for metadata in metadata_rows
+        )
 
     def _get_canonical_document(self, filename: str) -> Document | None:
         documents = self.session.scalars(
@@ -308,6 +449,95 @@ def _content_hash(body: str) -> str:
     return sha256(body.encode("utf-8")).hexdigest()
 
 
+def _visibility_from_provenance(provenance: dict[str, str]) -> list[str]:
+    raw_visibility = provenance.get("visibility")
+    if not raw_visibility:
+        return ["public"]
+
+    normalized = (
+        raw_visibility.replace("[", " ")
+        .replace("]", " ")
+        .replace(",", " ")
+        .replace("'", " ")
+        .replace('"', " ")
+    )
+    labels = [label.strip() for label in normalized.split() if label.strip()]
+    return labels or ["public"]
+
+
+def split_section_chunks(
+    body_md: str,
+    *,
+    token_limit: int = DEFAULT_CHUNK_TOKEN_LIMIT,
+    overlap: int = DEFAULT_CHUNK_OVERLAP,
+) -> list[_ChunkText]:
+    if token_limit <= 0:
+        raise ValueError("token_limit must be positive")
+    if overlap < 0:
+        raise ValueError("overlap must be non-negative")
+    if overlap >= token_limit:
+        raise ValueError("overlap must be smaller than token_limit")
+
+    stripped_body = body_md.strip()
+    if not stripped_body:
+        return []
+
+    tokens = body_md.split()
+    if len(tokens) <= token_limit:
+        return [
+            _chunk_text(
+                chunk_index=0,
+                body_text=stripped_body,
+                start_token=0,
+                end_token=len(tokens),
+            )
+        ]
+
+    chunks: list[_ChunkText] = []
+    step = token_limit - overlap
+    start_token = 0
+    while start_token < len(tokens):
+        end_token = min(len(tokens), start_token + token_limit)
+        chunks.append(
+            _chunk_text(
+                chunk_index=len(chunks),
+                body_text=" ".join(tokens[start_token:end_token]),
+                start_token=start_token,
+                end_token=end_token,
+            )
+        )
+        if end_token == len(tokens):
+            break
+        start_token += step
+
+    return chunks
+
+
+def _chunk_text(
+    *,
+    chunk_index: int,
+    body_text: str,
+    start_token: int,
+    end_token: int,
+) -> _ChunkText:
+    return _ChunkText(
+        chunk_index=chunk_index,
+        body_text=body_text,
+        token_count=_token_count(body_text),
+        content_hash=_content_hash(body_text),
+        start_token=start_token,
+        end_token=end_token,
+    )
+
+
+def _validate_embedding_dimension(embedding: list[float]) -> None:
+    if len(embedding) != PGVECTOR_EMBEDDING_DIMENSION:
+        raise ValueError(
+            f"embedding provider returned {len(embedding)} dimensions; "
+            f"expected {PGVECTOR_EMBEDDING_DIMENSION} dimensions"
+        )
+
+
 def _token_count(body: str) -> int:
     return len(body.split())
 
@@ -318,4 +548,6 @@ def _initial_stats() -> dict[str, Any]:
         "files_indexed": 0,
         "sections_indexed": 0,
         "chunks_indexed": 0,
+        "chunks_embedded": 0,
+        "chunks_reused": 0,
     }

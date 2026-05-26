@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 
 from app.core.config import Settings
 from app.main import create_app
-from app.models.tables import Document, Feedback, IngestionJob
+from app.models.tables import Document, Feedback, IngestionJob, Section
 
 
 @pytest.fixture
@@ -83,6 +83,13 @@ def test_index_search_chat_sources_and_feedback_workflow(
     search_body = search_response.json()
     assert search_body["decision"] == "can_answer"
     assert search_body["candidates"][0]["source_id"] == "常見問題FAQ.md#課程網站"
+
+    markdown_search_response = client.post(
+        "/search",
+        json={"query": "課程網站在哪？", "strategy": "markdown", "limit": 3},
+    )
+    assert markdown_search_response.status_code == 200
+    assert markdown_search_response.json()["candidates"][0]["strategy"] == "markdown"
 
     chat_response = client.post("/chat", json={"query": "課程網站在哪？"})
     assert chat_response.status_code == 200
@@ -214,6 +221,67 @@ def test_imported_upload_enters_db_index_with_canonical_metadata(
     assert document.imported_from == "raw/upload.txt"
     assert document.metadata_json["content_hash"] == import_body["content_hash"]
     assert document.metadata_json["canonical_path"] == import_body["canonical_path"]
+
+
+def test_sources_endpoints_hide_non_public_documents(
+    app_with_test_db: FastAPI,
+    db_session: Session,
+) -> None:
+    public_document = Document(
+        filename="public.md",
+        canonical_path="docs/public.md",
+        source_type="markdown",
+        title="Public",
+        content_hash="public-hash",
+    )
+    public_section = Section(
+        document=public_document,
+        source_id="public.md#public",
+        heading="Public",
+        heading_slug="public",
+        level=1,
+        body_md="# Public\n\nVisible",
+        token_count=3,
+        content_hash="public-section-hash",
+    )
+    staff_document = Document(
+        filename="staff.md",
+        canonical_path="docs/staff.md",
+        source_type="markdown",
+        title="Staff",
+        content_hash="staff-hash",
+        visibility=["staff"],
+    )
+    staff_section = Section(
+        document=staff_document,
+        source_id="staff.md#staff",
+        heading="Staff",
+        heading_slug="staff",
+        level=1,
+        body_md="# Staff\n\nHidden",
+        token_count=3,
+        content_hash="staff-section-hash",
+    )
+    db_session.add_all([public_document, public_section, staff_document, staff_section])
+    db_session.commit()
+    client = TestClient(app_with_test_db)
+
+    list_response = client.get("/sources")
+    assert list_response.status_code == 200
+    assert [document["filename"] for document in list_response.json()["documents"]] == [
+        "public.md",
+    ]
+
+    public_response = client.get(f"/sources/{public_document.id}")
+    assert public_response.status_code == 200
+
+    staff_response = client.get(f"/sources/{staff_document.id}")
+    assert staff_response.status_code == 404
+
+    staff_section_response = client.get(
+        f"/sources/{staff_document.id}/sections/{staff_section.id}"
+    )
+    assert staff_section_response.status_code == 404
 
 
 def _session_factory(db_session: Session) -> Callable[[], Session]:

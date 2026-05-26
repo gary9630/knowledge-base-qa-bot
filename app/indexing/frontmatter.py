@@ -8,7 +8,9 @@ PRODUCT_FRONTMATTER_KEYS = frozenset(
         "content_hash",
         "imported_at",
         "imported_from",
+        "published_at",
         "source_original",
+        "source_priority",
         "source_type",
         "title",
         "visibility",
@@ -28,14 +30,15 @@ def parse_product_frontmatter(body: str) -> dict[str, str]:
             continue
 
         metadata = _parse_flat_metadata(lines[1:index])
-        if (
-            _REQUIRED_IMPORTED_KEYS.issubset(metadata)
-            and all(key in PRODUCT_FRONTMATTER_KEYS for key in metadata)
-            and metadata["source_type"] == "imported"
-        ):
-            return metadata
+        if not metadata or any(key not in PRODUCT_FRONTMATTER_KEYS for key in metadata):
+            return {}
 
-        return {}
+        if metadata.get("source_type") == "imported" and not _REQUIRED_IMPORTED_KEYS.issubset(
+            metadata
+        ):
+            return {}
+
+        return metadata
 
     return {}
 

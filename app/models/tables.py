@@ -44,7 +44,11 @@ class TimestampMixin:
 
 class Document(JsonDefaultsMixin, TimestampMixin, Base):
     __tablename__ = "documents"
-    __table_args__ = (Index("ix_documents_visibility", "visibility", postgresql_using="gin"),)
+    __table_args__ = (
+        Index("ix_documents_filename", "filename"),
+        Index("ix_documents_source_type", "source_type"),
+        Index("ix_documents_visibility", "visibility", postgresql_using="gin"),
+    )
     __json_defaults__ = {
         "visibility": default_visibility,
         "metadata_json": dict,
@@ -118,6 +122,7 @@ class Section(JsonDefaultsMixin, TimestampMixin, Base):
 class Chunk(JsonDefaultsMixin, TimestampMixin, Base):
     __tablename__ = "chunks"
     __table_args__ = (
+        Index("ux_chunks_section_id_chunk_index", "section_id", "chunk_index", unique=True),
         Index(
             "ix_chunks_embedding_hnsw",
             "embedding",
@@ -152,6 +157,7 @@ class Chunk(JsonDefaultsMixin, TimestampMixin, Base):
 
 class IndexingJob(JsonDefaultsMixin, TimestampMixin, Base):
     __tablename__ = "indexing_jobs"
+    __table_args__ = (Index("ix_indexing_jobs_status_created_at", "status", "created_at"),)
     __json_defaults__ = {"stats_json": dict}
 
     id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), primary_key=True, default=uuid4)

@@ -140,6 +140,59 @@ def test_mindmap_returns_document_and_section_nodes(db_session: Session) -> None
     UUID(troubleshooting_id)
 
 
+def test_mindmap_hides_non_public_documents(db_session: Session) -> None:
+    public_document = Document(
+        filename="public.md",
+        canonical_path="docs/public.md",
+        source_type="markdown",
+        title="Public",
+        content_hash="public-hash",
+    )
+    Section(
+        document=public_document,
+        source_id="public.md#public",
+        heading="Public",
+        heading_slug="public",
+        level=1,
+        body_md="# Public",
+        token_count=2,
+        content_hash="public-section-hash",
+    )
+    staff_document = Document(
+        filename="staff.md",
+        canonical_path="docs/staff.md",
+        source_type="markdown",
+        title="Staff",
+        content_hash="staff-hash",
+        visibility=["staff"],
+    )
+    Section(
+        document=staff_document,
+        source_id="staff.md#staff",
+        heading="Staff",
+        heading_slug="staff",
+        level=1,
+        body_md="# Staff",
+        token_count=2,
+        content_hash="staff-section-hash",
+    )
+    db_session.add_all([public_document, staff_document])
+    db_session.commit()
+    client = TestClient(_app_with_session(db_session))
+
+    response = client.get("/mindmap")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["stats"] == {"documents": 1, "sections": 1}
+    document_filenames = [
+        node["metadata"].get("filename")
+        for node in body["nodes"]
+        if node["type"] == "document"
+    ]
+    assert document_filenames == ["public.md"]
+
+
 def _app_with_session(db_session: Session) -> FastAPI:
     return create_app(
         settings=Settings(embedding_provider="fake", answer_provider="fake"),

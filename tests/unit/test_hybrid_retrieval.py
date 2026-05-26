@@ -39,6 +39,30 @@ def test_merge_results_deduplicates_by_section_and_prefers_highest_score() -> No
     }
 
 
+def test_merge_results_applies_source_priority_as_small_ranking_boost() -> None:
+    transcript = _candidate(
+        score=0.60,
+        strategy="lexical",
+        heading="Transcript",
+        source_type="transcript",
+        source_priority=1,
+    )
+    announcement = _candidate(
+        score=0.60,
+        strategy="lexical",
+        heading="Announcement",
+        source_type="announcement",
+        source_priority=4,
+    )
+
+    merged = merge_results([transcript, announcement])
+
+    assert [candidate.heading for candidate in merged] == ["Announcement", "Transcript"]
+    assert merged[0].score == pytest.approx(0.64)
+    assert merged[0].debug_scores["source_priority"] == 4.0
+    assert merged[0].debug_scores["source_priority_boost"] == pytest.approx(0.04)
+
+
 def test_hybrid_search_returns_cannot_confirm_below_threshold_without_debug() -> None:
     weak_candidate = _candidate(score=0.19, strategy="lexical")
     retriever = HybridRetriever(
@@ -110,6 +134,8 @@ def _candidate(
     score: float,
     strategy: str,
     heading: str = "Course Site",
+    source_type: str = "markdown",
+    source_priority: int = 0,
 ) -> RetrievedCandidate:
     candidate_section_id = section_id or uuid4()
     return RetrievedCandidate(
@@ -120,4 +146,6 @@ def _candidate(
         body_md=f"## {heading}\n\nBody",
         score=score,
         strategy=strategy,
+        source_type=source_type,
+        source_priority=source_priority,
     )

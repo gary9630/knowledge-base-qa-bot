@@ -8,7 +8,21 @@ from typing import Literal, overload
 from uuid import UUID
 
 RetrievalDecision = Literal["can_answer", "cannot_confirm"]
-RetrievalStrategy = Literal["lexical", "vector", "hybrid"]
+RetrievalStrategy = Literal["lexical", "markdown", "vector", "hybrid"]
+SOURCE_TYPE_PRIORITIES = {
+    "course_policy": 5,
+    "policy": 5,
+    "announcement": 4,
+    "official_handout": 3,
+    "handout": 3,
+    "session_summary": 2,
+    "summary": 2,
+    "transcript": 1,
+    "qa": 0,
+    "q&a": 0,
+    "imported": 0,
+    "markdown": 0,
+}
 
 _TOKEN_RE = re.compile(r"[\w]+", re.UNICODE)
 _CJK_RE = re.compile(r"[\u3400-\u9fff]+")
@@ -35,6 +49,8 @@ class RetrievedCandidate:
     body_md: str
     score: float
     strategy: str
+    source_type: str = "unknown"
+    source_priority: int = 0
     debug_scores: dict[str, float] = field(default_factory=dict)
 
 
@@ -83,6 +99,38 @@ def expand_query_terms(query: str, *, max_terms: int = 16) -> list[str]:
 def expanded_query_text(query: str) -> str:
     terms = expand_query_terms(query)
     return " ".join(terms) if terms else query.strip()
+
+
+def source_priority_for(source_type: str, metadata: dict[str, object] | None = None) -> int:
+    metadata_priority = (metadata or {}).get("source_priority")
+    parsed_priority = _parse_source_priority(metadata_priority)
+    if parsed_priority is not None:
+        return parsed_priority
+    return SOURCE_TYPE_PRIORITIES.get(source_type.casefold(), 0)
+
+
+def _parse_source_priority(value: object) -> int | None:
+    if value is None or isinstance(value, bool):
+        return None
+    if isinstance(value, int):
+        return _normalize_priority(value)
+    if isinstance(value, float):
+        return _normalize_priority(round(value))
+    if isinstance(value, str):
+        stripped = value.strip()
+        if not stripped:
+            return None
+        try:
+            return _normalize_priority(round(float(stripped)))
+        except ValueError:
+            return SOURCE_TYPE_PRIORITIES.get(stripped.casefold())
+    return None
+
+
+def _normalize_priority(value: int) -> int:
+    if value > 10:
+        value = round(value / 10)
+    return min(5, max(0, value))
 
 
 def _strip_question_suffix(token: str) -> str:

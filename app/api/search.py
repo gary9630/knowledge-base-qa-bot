@@ -24,6 +24,8 @@ class CandidateResponse(BaseModel):
     body_md: str
     score: float
     strategy: str
+    source_type: str
+    source_priority: int
     debug_scores: dict[str, float] = Field(default_factory=dict)
 
 
@@ -75,5 +77,7 @@ def candidate_response(candidate: RetrievedCandidate) -> CandidateResponse:
         body_md=candidate.body_md,
         score=candidate.score,
         strategy=candidate.strategy,
+        source_type=candidate.source_type,
+        source_priority=candidate.source_priority,
         debug_scores=dict(candidate.debug_scores),
     )

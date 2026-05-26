@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Annotated
+from typing import Annotated, Any, cast
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -71,6 +71,7 @@ def list_sources(
             ),
             selectinload(Document.sections).load_only(Section.id),
         )
+        .where(cast(Any, Document.visibility).contains(["public"]))
         .order_by(Document.filename.asc(), Document.id.asc())
     ).all()
     return SourcesResponse(documents=[document_summary(document) for document in documents])
@@ -94,6 +95,7 @@ def get_source(
             )
         )
         .where(Document.id == document_id)
+        .where(cast(Any, Document.visibility).contains(["public"]))
     )
     if document is None:
         raise HTTPException(status_code=404, detail="Document not found.")
@@ -108,8 +110,10 @@ def get_source_section(
 ) -> SectionResponse:
     section = session.scalar(
         select(Section)
+        .join(Document, Document.id == Section.document_id)
         .where(Section.document_id == document_id)
         .where(Section.id == section_id)
+        .where(cast(Any, Document.visibility).contains(["public"]))
     )
     if section is None:
         raise HTTPException(status_code=404, detail="Section not found.")
