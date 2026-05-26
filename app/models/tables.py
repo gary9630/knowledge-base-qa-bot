@@ -20,8 +20,11 @@ def default_visibility() -> list[str]:
 
 class JsonDefaultsMixin:
     __json_defaults__: ClassVar[dict[str, Callable[[], object]]] = {}
+    __scalar_defaults__: ClassVar[dict[str, object]] = {}
 
     def __init__(self, **kwargs: Any) -> None:
+        for key, value in self.__scalar_defaults__.items():
+            kwargs.setdefault(key, value)
         for key, factory in self.__json_defaults__.items():
             kwargs.setdefault(key, factory())
 
@@ -299,17 +302,32 @@ class EvalCase(JsonDefaultsMixin, TimestampMixin, Base):
     __table_args__ = (
         Index("ix_eval_cases_active", "active"),
         Index("ix_eval_cases_created_at", "created_at"),
+        Index("ix_eval_cases_source_kind", "source_kind"),
+        Index("ux_eval_cases_seed_key", "seed_key", unique=True),
+        Index("ux_eval_cases_promoted_feedback_id", "promoted_feedback_id", unique=True),
     )
     __json_defaults__ = {
         "expected_sources_json": list,
         "tags_json": list,
         "metadata_json": dict,
     }
+    __scalar_defaults__ = {"source_kind": "manual"}
 
     id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), primary_key=True, default=uuid4)
     name: Mapped[str] = mapped_column(Text, nullable=False)
     query: Mapped[str] = mapped_column(Text, nullable=False)
     expected_decision: Mapped[str] = mapped_column(Text, nullable=False)
+    source_kind: Mapped[str] = mapped_column(
+        Text,
+        nullable=False,
+        default="manual",
+        server_default=text("'manual'"),
+    )
+    seed_key: Mapped[str | None] = mapped_column(Text)
+    promoted_feedback_id: Mapped[UUID | None] = mapped_column(
+        PG_UUID(as_uuid=True),
+        ForeignKey("feedback.id", ondelete="SET NULL"),
+    )
     expected_sources_json: Mapped[list[str]] = mapped_column(
         JSONB,
         nullable=False,
@@ -343,13 +361,21 @@ class EvalRun(JsonDefaultsMixin, TimestampMixin, Base):
     __tablename__ = "eval_runs"
     __table_args__ = (
         Index("ix_eval_runs_status_created_at", "status", "created_at"),
+        Index("ix_eval_runs_trigger_created_at", "trigger", "created_at"),
     )
     __json_defaults__ = {"stats_json": dict}
+    __scalar_defaults__ = {"trigger": "manual"}
 
     id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), primary_key=True, default=uuid4)
     status: Mapped[str] = mapped_column(Text, nullable=False, index=True)
     strategy: Mapped[str] = mapped_column(Text, nullable=False)
     limit: Mapped[int] = mapped_column(Integer, nullable=False)
+    trigger: Mapped[str] = mapped_column(
+        Text,
+        nullable=False,
+        default="manual",
+        server_default=text("'manual'"),
+    )
     error: Mapped[str | None] = mapped_column(Text)
     stats_json: Mapped[dict[str, Any]] = mapped_column(
         JSONB,

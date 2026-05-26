@@ -3,7 +3,7 @@ COMPOSE ?= docker compose
 API_URL ?= http://localhost:8000
 KB_TEST_DATABASE_URL ?= postgresql+psycopg://kb:kb@postgres:5432/kb_test
 
-.PHONY: dev test test-unit test-integration test-e2e lint format migrate index docker-build docker-up docker-down docker-logs docker-test
+.PHONY: dev test test-unit test-integration test-e2e lint format migrate index eval-seed eval-run docker-build docker-up docker-down docker-logs docker-test
 
 dev:
 	$(UV) uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
@@ -33,6 +33,12 @@ migrate:
 
 index:
 	curl -fsS -X POST "$(API_URL)/index"
+
+eval-seed:
+	$(UV) python -m scripts.seed_eval_cases
+
+eval-run:
+	$(UV) python -m scripts.run_evals --trigger scheduled
 
 docker-build:
 	$(COMPOSE) build

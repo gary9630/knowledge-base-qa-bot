@@ -1,0 +1,24 @@
+[
+  {
+    "seed_key": "faq.course-site",
+    "name": "FAQ course site",
+    "query": "課程網站在哪？",
+    "expected_decision": "can_answer",
+    "expected_source_ids": ["常見問題FAQ.md#課程網站"],
+    "tags": ["seed", "faq"],
+    "metadata": {
+      "fixture": "default"
+    }
+  },
+  {
+    "seed_key": "policy.unknown-answer",
+    "name": "Unknown information cannot be confirmed",
+    "query": "課程是否提供不存在的秘密證書？",
+    "expected_decision": "cannot_confirm",
+    "expected_source_ids": [],
+    "tags": ["seed", "cannot-confirm"],
+    "metadata": {
+      "fixture": "default"
+    }
+  }
+]

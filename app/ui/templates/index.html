@@ -156,6 +156,7 @@
             </div>
             <div class="button-row">
               <button class="secondary-button" type="button" id="refresh-evals">Refresh</button>
+              <button class="secondary-button" type="button" id="seed-evals">Seed Baseline</button>
               <button class="primary-button" type="button" id="run-evals">Run Evals</button>
             </div>
           </header>
@@ -180,6 +181,15 @@
           </form>
           <pre class="eval-status" id="eval-status" aria-live="polite">No eval activity yet.</pre>
 
+          <section class="tool-section" aria-labelledby="eval-report-heading">
+            <div class="section-heading">
+              <h3 id="eval-report-heading">Eval Report</h3>
+            </div>
+            <div class="eval-report" id="eval-report">
+              <p class="muted">No eval report loaded.</p>
+            </div>
+          </section>
+
           <div class="eval-grid">
             <section class="tool-section" aria-labelledby="eval-cases-heading">
               <div class="section-heading">
@@ -195,6 +205,14 @@
               </div>
               <div class="eval-results" id="eval-results">
                 <p class="muted">No eval run loaded.</p>
+              </div>
+            </section>
+            <section class="tool-section" aria-labelledby="feedback-promotions-heading">
+              <div class="section-heading">
+                <h3 id="feedback-promotions-heading">Feedback Promotions</h3>
+              </div>
+              <div class="feedback-promotions" id="feedback-promotions">
+                <p class="muted">No feedback loaded.</p>
               </div>
             </section>
           </div>

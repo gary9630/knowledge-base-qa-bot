@@ -89,6 +89,21 @@ services:
     command: >
       python -c "from pathlib import Path; from app.core.config import Settings; from app.core.database import SessionLocal; from app.indexing.service import IndexingService; from app.retrieval.embeddings import create_embedding_provider; settings=Settings(); session=SessionLocal(); result=IndexingService(session=session, docs_dir=Path(settings.docs_dir), kb_dir=Path(settings.kb_dir), embedding_provider=create_embedding_provider(settings)).rebuild_index(); session.close(); print(f'indexed {result.files_indexed} files, {result.sections_indexed} sections, {result.chunks_indexed} chunks')"
 
+  eval-runner:
+    build:
+      context: .
+      target: app
+    profiles:
+      - eval
+    environment: *app-environment
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    volumes: *app-volumes
+    command: python -m scripts.run_evals --trigger scheduled
+
   test:
     build:
       context: .

@@ -13,6 +13,8 @@
     importJobs: [],
     evalCases: [],
     evalRun: null,
+    evalReport: null,
+    feedbackItems: [],
     selectedSources: [],
   };
 
@@ -56,7 +58,10 @@
     evalResults: $("#eval-results"),
     evalSummary: $("#eval-summary"),
     evalStatus: $("#eval-status"),
+    evalReport: $("#eval-report"),
+    feedbackPromotions: $("#feedback-promotions"),
     refreshEvals: $("#refresh-evals"),
+    seedEvals: $("#seed-evals"),
     runEvals: $("#run-evals"),
   };
 
@@ -561,6 +566,7 @@
   function bindEvals() {
     elements.evalForm.addEventListener("submit", createEvalCase);
     elements.refreshEvals.addEventListener("click", refreshEvals);
+    elements.seedEvals.addEventListener("click", seedEvals);
     elements.runEvals.addEventListener("click", runEvals);
   }
 
@@ -762,13 +768,19 @@
       const casesPayload = await casesResponse.json();
       renderEvalCases(casesPayload.cases || []);
       await refreshLatestEvalRun();
+      await refreshEvalReport();
+      await refreshFeedbackPromotions();
       setEvalStatus(`Eval cases loaded: ${(casesPayload.cases || []).length}`);
     } catch (error) {
       const message = `Eval cases unavailable: ${errorMessage(error)}`;
       state.evalCases = [];
       state.evalRun = null;
+      state.evalReport = null;
+      state.feedbackItems = [];
       elements.evalCases.replaceChildren(emptyText(message));
       elements.evalResults.replaceChildren(emptyText("No eval run loaded."));
+      elements.evalReport.replaceChildren(emptyText("No eval report loaded."));
+      elements.feedbackPromotions.replaceChildren(emptyText("No feedback loaded."));
       renderEvalSummary(null);
       setEvalStatus(message);
     }
@@ -807,12 +819,60 @@
       appendOperation(message);
       state.evalRun = payload;
       renderEvalRun(payload);
+      await refreshEvalReport();
     } catch (error) {
       const message = `Eval run failed: ${errorMessage(error)}`;
       setEvalStatus(message);
       appendOperation(message);
     } finally {
       elements.runEvals.disabled = false;
+    }
+  }
+
+  async function seedEvals() {
+    elements.seedEvals.disabled = true;
+    try {
+      const response = await fetch("/evals/seed", {
+        method: "POST",
+        headers: jsonAdminHeaders(),
+        body: JSON.stringify({}),
+      });
+      if (!response.ok) {
+        throw new Error(await responseError(response));
+      }
+      const payload = await response.json();
+      const message = `Seeded evals: ${payload.summary.created} created, ${payload.summary.updated} updated`;
+      setEvalStatus(message);
+      appendOperation(message);
+      renderEvalCases(payload.cases || []);
+      await refreshEvalReport();
+    } catch (error) {
+      const message = `Eval seed failed: ${errorMessage(error)}`;
+      setEvalStatus(message);
+      appendOperation(message);
+    } finally {
+      elements.seedEvals.disabled = false;
+    }
+  }
+
+  async function refreshEvalReport() {
+    try {
+      const payload = await getJsonWithHeaders("/evals/report", adminHeaders());
+      state.evalReport = payload;
+      renderEvalReport(payload);
+    } catch (error) {
+      state.evalReport = null;
+      elements.evalReport.replaceChildren(emptyText("No eval report loaded."));
+    }
+  }
+
+  async function refreshFeedbackPromotions() {
+    try {
+      const payload = await getJsonWithHeaders("/feedback", adminHeaders());
+      renderFeedbackPromotions(payload.feedback || []);
+    } catch (error) {
+      state.feedbackItems = [];
+      elements.feedbackPromotions.replaceChildren(emptyText("No feedback loaded."));
     }
   }
 
@@ -869,6 +929,96 @@
       row.append(title, meta);
       elements.evalResults.append(row);
     });
+  }
+
+  function renderEvalReport(report) {
+    elements.evalReport.replaceChildren();
+    const totals = report && report.totals ? report.totals : {};
+    const latest = report && report.latest_run ? report.latest_run : null;
+    const cards = [
+      ["Cases", `${totals.active_cases || 0}/${totals.total_cases || 0} active`],
+      ["Runs", totals.total_runs || 0],
+      ["Latest", latest ? `${formatPercent(latest.stats && latest.stats.pass_rate)} pass` : "--"],
+      ["Failures", latest && latest.stats ? latest.stats.failed || 0 : 0],
+    ];
+    cards.forEach(([label, value]) => {
+      const row = document.createElement("div");
+      row.className = "report-row";
+      const title = document.createElement("strong");
+      title.textContent = label;
+      const meta = document.createElement("span");
+      meta.className = "source-meta";
+      meta.textContent = String(value);
+      row.append(title, meta);
+      elements.evalReport.append(row);
+    });
+
+    const failures = report && Array.isArray(report.latest_failures) ? report.latest_failures : [];
+    failures.slice(0, 3).forEach((failure) => {
+      const row = document.createElement("div");
+      row.className = "report-row is-failed";
+      const title = document.createElement("strong");
+      title.textContent = `FAIL · ${failure.name || failure.query}`;
+      const meta = document.createElement("span");
+      meta.className = "source-meta";
+      meta.textContent = `missing ${(failure.missing_source_ids || []).join(", ") || "--"}`;
+      row.append(title, meta);
+      elements.evalReport.append(row);
+    });
+  }
+
+  function renderFeedbackPromotions(feedbackItems) {
+    state.feedbackItems = Array.isArray(feedbackItems) ? feedbackItems : [];
+    elements.feedbackPromotions.replaceChildren();
+    if (state.feedbackItems.length === 0) {
+      elements.feedbackPromotions.append(emptyText("No feedback loaded."));
+      return;
+    }
+
+    state.feedbackItems.slice(0, 8).forEach((feedback) => {
+      const row = document.createElement("div");
+      row.className = "feedback-row";
+      const title = document.createElement("strong");
+      title.textContent = feedback.query || "Feedback without query";
+      const meta = document.createElement("span");
+      meta.className = "source-meta";
+      meta.textContent = [
+        `rating ${feedback.rating}`,
+        feedback.reason,
+        feedback.expected_source,
+      ]
+        .filter(Boolean)
+        .join(" · ");
+      const action = document.createElement("button");
+      action.className = "text-button";
+      action.type = "button";
+      action.textContent = "Promote";
+      action.addEventListener("click", () => promoteFeedback(feedback.id));
+      row.append(title, meta, action);
+      elements.feedbackPromotions.append(row);
+    });
+  }
+
+  async function promoteFeedback(feedbackId) {
+    try {
+      const response = await fetch("/evals/cases/promote-feedback", {
+        method: "POST",
+        headers: jsonAdminHeaders(),
+        body: JSON.stringify({ feedback_id: feedbackId, tags: ["feedback", "regression"] }),
+      });
+      if (!response.ok) {
+        throw new Error(await responseError(response));
+      }
+      const payload = await response.json();
+      const message = `Promoted feedback: ${payload.name}`;
+      setEvalStatus(message);
+      appendOperation(message);
+      await refreshEvals();
+    } catch (error) {
+      const message = `Feedback promotion failed: ${errorMessage(error)}`;
+      setEvalStatus(message);
+      appendOperation(message);
+    }
   }
 
   function renderEvalSummary(run) {

@@ -231,7 +231,9 @@ button {
 .source-table,
 .import-jobs,
 .eval-cases,
-.eval-results {
+.eval-results,
+.eval-report,
+.feedback-promotions {
   display: grid;
   gap: 8px;
   margin-top: 10px;
@@ -246,6 +248,8 @@ button {
 .selected-source,
 .job-row,
 .eval-row,
+.report-row,
+.feedback-row,
 .tool-panel {
   display: grid;
   gap: 4px;
@@ -266,7 +270,9 @@ button.selected-source {
 .source-row strong,
 .selected-source strong,
 .job-row strong,
-.eval-row strong {
+.eval-row strong,
+.report-row strong,
+.feedback-row strong {
   overflow-wrap: anywhere;
   font-size: 13px;
 }
@@ -597,6 +603,10 @@ select {
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   gap: 16px;
   align-items: start;
+}
+
+.eval-report {
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
 }
 
 .source-table-row {

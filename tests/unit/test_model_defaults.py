@@ -42,7 +42,14 @@ def test_json_defaults_are_available_before_flush() -> None:
         strategy="hybrid",
         decision="answered",
     )
-    eval_case = EvalCase(name="Case", query="Question", expected_decision="can_answer")
+    feedback_id = uuid4()
+    eval_case = EvalCase(
+        name="Case",
+        query="Question",
+        expected_decision="can_answer",
+        seed_key="seed.case",
+        promoted_feedback_id=feedback_id,
+    )
     eval_run = EvalRun(status="running", strategy="hybrid", limit=5)
     eval_result = EvalResult(
         run_id=uuid4(),
@@ -65,6 +72,10 @@ def test_json_defaults_are_available_before_flush() -> None:
     assert eval_case.expected_sources_json == []
     assert eval_case.tags_json == []
     assert eval_case.metadata_json == {}
+    assert eval_case.source_kind == "manual"
+    assert eval_case.seed_key == "seed.case"
+    assert eval_case.promoted_feedback_id == feedback_id
+    assert eval_run.trigger == "manual"
     assert eval_run.stats_json == {}
     assert eval_result.expected_sources_json == []
     assert eval_result.selected_sources_json == []

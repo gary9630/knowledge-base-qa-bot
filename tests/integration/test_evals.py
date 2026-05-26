@@ -13,7 +13,17 @@ from sqlalchemy.orm import Session
 from app.answer.providers import AnswerProvider, AnswerSource
 from app.core.config import Settings
 from app.main import create_app
-from app.models.tables import EvalCase, EvalResult, EvalRun
+from app.models.tables import (
+    Conversation,
+    EvalCase,
+    EvalResult,
+    EvalRun,
+    Feedback,
+    Message,
+    RetrievalEvent,
+)
+from app.retrieval.embeddings import FakeEmbeddingProvider
+from scripts.run_evals import main as run_evals_main
 
 
 @pytest.fixture
@@ -120,6 +130,89 @@ def test_eval_case_rejects_blank_name_and_query(
     assert blank_query_response.status_code == 422
 
 
+def test_eval_seed_endpoint_upserts_cases_by_seed_key(
+    app_with_indexed_docs: FastAPI,
+    db_session: Session,
+) -> None:
+    client = TestClient(app_with_indexed_docs)
+    payload = {
+        "cases": [
+            {
+                "seed_key": "faq.course-site",
+                "name": "FAQ course site",
+                "query": "課程網站在哪？",
+                "expected_decision": "can_answer",
+                "expected_source_ids": ["常見問題FAQ.md#課程網站"],
+                "tags": ["seed", "faq"],
+                "metadata": {"fixture": "default"},
+            }
+        ]
+    }
+
+    first_response = client.post("/evals/seed", json=payload)
+    second_response = client.post(
+        "/evals/seed",
+        json={
+            "cases": [
+                {
+                    **payload["cases"][0],
+                    "name": "FAQ course site updated",
+                    "tags": ["seed", "faq", "updated"],
+                }
+            ]
+        },
+    )
+
+    assert first_response.status_code == 200
+    assert first_response.json()["summary"] == {"created": 1, "updated": 0, "total": 1}
+    assert second_response.status_code == 200
+    assert second_response.json()["summary"] == {"created": 0, "updated": 1, "total": 1}
+
+    cases = db_session.scalars(select(EvalCase).where(EvalCase.seed_key == "faq.course-site")).all()
+    assert len(cases) == 1
+    assert cases[0].name == "FAQ course site updated"
+    assert cases[0].source_kind == "seed"
+    assert cases[0].tags_json == ["seed", "faq", "updated"]
+
+
+def test_feedback_can_be_promoted_to_eval_case_idempotently(
+    db_session: Session,
+    tmp_path: Path,
+) -> None:
+    app = _indexed_app(db_session, tmp_path)
+    client = TestClient(app)
+    feedback = _feedback_for_query(db_session, query="課程網站在哪？")
+
+    list_response = client.get("/feedback")
+    first_response = client.post(
+        "/evals/cases/promote-feedback",
+        json={"feedback_id": str(feedback.id), "tags": ["regression", "feedback"]},
+    )
+    second_response = client.post(
+        "/evals/cases/promote-feedback",
+        json={"feedback_id": str(feedback.id), "tags": ["regression", "feedback"]},
+    )
+
+    assert list_response.status_code == 200
+    assert list_response.json()["feedback"][0]["query"] == "課程網站在哪？"
+    assert first_response.status_code == 200
+    assert second_response.status_code == 200
+    first_body = first_response.json()
+    second_body = second_response.json()
+    assert first_body["id"] == second_body["id"]
+    assert first_body["query"] == "課程網站在哪？"
+    assert first_body["expected_decision"] == "can_answer"
+    assert first_body["expected_source_ids"] == ["常見問題FAQ.md#課程網站"]
+    assert first_body["source_kind"] == "feedback"
+    assert first_body["promoted_feedback_id"] == str(feedback.id)
+
+    promoted_case = db_session.get(EvalCase, UUID(first_body["id"]))
+    assert promoted_case is not None
+    assert promoted_case.promoted_feedback_id == feedback.id
+    assert promoted_case.metadata_json["feedback_id"] == str(feedback.id)
+    assert promoted_case.metadata_json["rating"] == -1
+
+
 def test_failed_eval_run_is_persisted_as_latest(
     db_session: Session,
     tmp_path: Path,
@@ -170,6 +263,80 @@ def test_failed_eval_run_is_persisted_as_latest(
     assert eval_run.error == "answer backend unavailable"
 
 
+def test_cli_eval_runner_persists_scheduled_trigger(
+    app_with_indexed_docs: FastAPI,
+    db_session: Session,
+) -> None:
+    client = TestClient(app_with_indexed_docs)
+    assert client.post("/index").status_code == 200
+    seed_response = client.post(
+        "/evals/seed",
+        json={
+            "cases": [
+                {
+                    "seed_key": "faq.course-site",
+                    "name": "FAQ course site",
+                    "query": "課程網站在哪？",
+                    "expected_decision": "can_answer",
+                    "expected_source_ids": ["常見問題FAQ.md#課程網站"],
+                }
+            ]
+        },
+    )
+    assert seed_response.status_code == 200
+
+    exit_code = run_evals_main(
+        ["--trigger", "scheduled", "--limit", "3"],
+        session_factory=_session_factory(db_session),
+        embedding_provider=FakeEmbeddingProvider(),
+        answer_provider=app_with_indexed_docs.state.answer_provider,
+    )
+
+    eval_run = db_session.scalar(select(EvalRun).order_by(EvalRun.created_at.desc()))
+    assert exit_code == 0
+    assert eval_run is not None
+    assert eval_run.trigger == "scheduled"
+    assert eval_run.status == "succeeded"
+
+
+def test_eval_report_summarizes_latest_failures(
+    app_with_indexed_docs: FastAPI,
+) -> None:
+    client = TestClient(app_with_indexed_docs)
+    assert client.post("/index").status_code == 200
+    case_response = client.post(
+        "/evals/cases",
+        json={
+            "name": "wrong source expectation",
+            "query": "課程網站在哪？",
+            "expected_decision": "can_answer",
+            "expected_source_ids": ["missing.md#source"],
+            "tags": ["report"],
+        },
+    )
+    assert case_response.status_code == 200
+    run_response = client.post(
+        "/evals/run",
+        json={"case_ids": [case_response.json()["id"]], "strategy": "hybrid", "limit": 3},
+    )
+    assert run_response.status_code == 200
+
+    report_response = client.get("/evals/report")
+
+    assert report_response.status_code == 200
+    report = report_response.json()
+    assert report["totals"]["total_cases"] == 1
+    assert report["totals"]["active_cases"] == 1
+    assert report["totals"]["total_runs"] == 1
+    assert report["latest_run"]["id"] == run_response.json()["id"]
+    assert report["latest_run"]["stats"]["failed"] == 1
+    assert report["recent_runs"][0]["id"] == run_response.json()["id"]
+    assert report["latest_failures"][0]["case_id"] == case_response.json()["id"]
+    assert report["latest_failures"][0]["missing_source_ids"] == ["missing.md#source"]
+    assert report["worst_cases"][0]["case_id"] == case_response.json()["id"]
+    assert report["worst_cases"][0]["failed"] == 1
+
+
 def test_eval_endpoints_require_admin_key_when_configured(
     db_session: Session,
     tmp_path: Path,
@@ -186,6 +353,7 @@ def test_eval_endpoints_require_admin_key_when_configured(
     client = TestClient(app)
 
     response = client.get("/evals/cases")
+    feedback_response = client.get("/feedback")
     create_response = client.post(
         "/evals/cases",
         json={
@@ -194,14 +362,24 @@ def test_eval_endpoints_require_admin_key_when_configured(
             "expected_decision": "can_answer",
         },
     )
+    seed_response = client.post("/evals/seed", json={})
+    promote_response = client.post(
+        "/evals/cases/promote-feedback",
+        json={"feedback_id": str(uuid4())},
+    )
     run_response = client.post("/evals/run", json={"strategy": "hybrid", "limit": 3})
     latest_response = client.get("/evals/runs/latest")
+    report_response = client.get("/evals/report")
     authed_response = client.get("/evals/cases", headers={"X-KB-Admin-Key": "secret"})
 
     assert response.status_code == 401
+    assert feedback_response.status_code == 401
     assert create_response.status_code == 401
+    assert seed_response.status_code == 401
+    assert promote_response.status_code == 401
     assert run_response.status_code == 401
     assert latest_response.status_code == 401
+    assert report_response.status_code == 401
     assert authed_response.status_code == 200
 
 
@@ -214,6 +392,47 @@ class FailingAnswerProvider:
         strict: bool = False,
     ) -> str:
         raise RuntimeError("answer backend unavailable")
+
+
+def _feedback_for_query(db_session: Session, *, query: str) -> Feedback:
+    conversation_id = uuid4()
+    assistant_message_id = uuid4()
+    conversation = Conversation(id=conversation_id, title=query)
+    user_message = Message(
+        id=uuid4(),
+        conversation_id=conversation_id,
+        role="user",
+        content=query,
+    )
+    assistant_message = Message(
+        id=assistant_message_id,
+        conversation_id=conversation_id,
+        role="assistant",
+        content="我無法從知識庫確認這件事。",
+        sources_json=[],
+    )
+    db_session.add_all([conversation, user_message, assistant_message])
+    db_session.flush()
+
+    retrieval_event = RetrievalEvent(
+        conversation_id=conversation_id,
+        message_id=assistant_message_id,
+        query=query,
+        strategy="hybrid",
+        selected_sources_json=[],
+        scores_json={},
+        decision="cannot_confirm",
+    )
+    feedback = Feedback(
+        message_id=assistant_message_id,
+        rating=-1,
+        reason="missing_source",
+        expected_source="常見問題FAQ.md#課程網站",
+        note="Should cite the FAQ.",
+    )
+    db_session.add_all([retrieval_event, feedback])
+    db_session.commit()
+    return feedback
 
 
 def _indexed_app(
