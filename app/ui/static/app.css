@@ -229,7 +229,9 @@ button {
 .source-list,
 .selected-sources,
 .source-table,
-.import-jobs {
+.import-jobs,
+.eval-cases,
+.eval-results {
   display: grid;
   gap: 8px;
   margin-top: 10px;
@@ -243,6 +245,7 @@ button {
 .source-row,
 .selected-source,
 .job-row,
+.eval-row,
 .tool-panel {
   display: grid;
   gap: 4px;
@@ -262,7 +265,8 @@ button.selected-source {
 
 .source-row strong,
 .selected-source strong,
-.job-row strong {
+.job-row strong,
+.eval-row strong {
   overflow-wrap: anywhere;
   font-size: 13px;
 }
@@ -288,6 +292,14 @@ button.selected-source {
 }
 
 .job-row.is-failed {
+  border-color: #f0b8b1;
+}
+
+.eval-row.is-passed {
+  border-color: #b7dbc7;
+}
+
+.eval-row.is-failed {
   border-color: #f0b8b1;
 }
 
@@ -349,7 +361,8 @@ button.selected-source {
 }
 
 .chat-form,
-.upload-form {
+.upload-form,
+.eval-form {
   display: grid;
   gap: 10px;
   margin-top: 14px;
@@ -440,7 +453,8 @@ select {
 }
 
 .markdown-preview,
-.operation-log {
+.operation-log,
+.eval-status {
   max-height: 260px;
   overflow: auto;
   border: 1px solid var(--border);
@@ -458,6 +472,11 @@ select {
 .operation-log {
   max-height: 360px;
   margin: 4px 0 0;
+}
+
+.eval-status {
+  max-width: 640px;
+  margin: 12px 0 0;
 }
 
 .status-grid {
@@ -558,12 +577,26 @@ select {
   font-size: 12px;
 }
 
-.upload-form {
+.upload-form,
+.eval-form {
   max-width: 640px;
   border: 1px solid var(--border);
   border-radius: 8px;
   background: var(--surface);
   padding: 14px;
+}
+
+.button-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.eval-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 16px;
+  align-items: start;
 }
 
 .source-table-row {

@@ -11,6 +11,8 @@
     },
     mindmapLoaded: false,
     importJobs: [],
+    evalCases: [],
+    evalRun: null,
     selectedSources: [],
   };
 
@@ -38,11 +40,24 @@
     statusGrid: $("#index-status"),
     uploadForm: $("#upload-form"),
     adminKey: $("#admin-key"),
+    evalAdminKey: $("#eval-admin-key"),
     uploadFile: $("#upload-file"),
     refreshImports: $("#refresh-imports"),
     importJobs: $("#import-jobs"),
     rebuildIndex: $("#rebuild-index"),
     operationLog: $("#operation-log"),
+    evalForm: $("#eval-form"),
+    evalName: $("#eval-name"),
+    evalQuery: $("#eval-query"),
+    evalDecision: $("#eval-decision"),
+    evalSources: $("#eval-sources"),
+    evalTags: $("#eval-tags"),
+    evalCases: $("#eval-cases"),
+    evalResults: $("#eval-results"),
+    evalSummary: $("#eval-summary"),
+    evalStatus: $("#eval-status"),
+    refreshEvals: $("#refresh-evals"),
+    runEvals: $("#run-evals"),
   };
 
   function init() {
@@ -51,6 +66,7 @@
     bindSources();
     bindMindmap();
     bindAdmin();
+    bindEvals();
   }
 
   function bindTabs() {
@@ -542,6 +558,12 @@
     elements.refreshImports.addEventListener("click", refreshImportJobs);
   }
 
+  function bindEvals() {
+    elements.evalForm.addEventListener("submit", createEvalCase);
+    elements.refreshEvals.addEventListener("click", refreshEvals);
+    elements.runEvals.addEventListener("click", runEvals);
+  }
+
   async function uploadFile(event) {
     event.preventDefault();
     const file = elements.uploadFile.files[0];
@@ -691,6 +713,173 @@
     }
   }
 
+  async function createEvalCase(event) {
+    event.preventDefault();
+    const name = elements.evalName.value.trim();
+    const query = elements.evalQuery.value.trim();
+    if (!name || !query) {
+      setEvalStatus("Eval case needs a name and query.");
+      appendOperation("Eval case needs a name and query.");
+      return;
+    }
+
+    try {
+      const response = await fetch("/evals/cases", {
+        method: "POST",
+        headers: jsonAdminHeaders(),
+        body: JSON.stringify({
+          name,
+          query,
+          expected_decision: elements.evalDecision.value,
+          expected_source_ids: splitList(elements.evalSources.value),
+          tags: splitList(elements.evalTags.value),
+        }),
+      });
+      if (!response.ok) {
+        throw new Error(await responseError(response));
+      }
+      const adminKey = elements.evalAdminKey.value;
+      elements.evalForm.reset();
+      elements.evalAdminKey.value = adminKey;
+      setEvalStatus(`Eval case added: ${name}`);
+      appendOperation(`Eval case added: ${name}`);
+      await refreshEvals();
+    } catch (error) {
+      const message = `Eval case failed: ${errorMessage(error)}`;
+      setEvalStatus(message);
+      appendOperation(message);
+    }
+  }
+
+  async function refreshEvals() {
+    try {
+      const casesResponse = await fetch("/evals/cases", {
+        headers: adminHeaders(),
+      });
+      if (!casesResponse.ok) {
+        throw new Error(await responseError(casesResponse));
+      }
+      const casesPayload = await casesResponse.json();
+      renderEvalCases(casesPayload.cases || []);
+      await refreshLatestEvalRun();
+      setEvalStatus(`Eval cases loaded: ${(casesPayload.cases || []).length}`);
+    } catch (error) {
+      const message = `Eval cases unavailable: ${errorMessage(error)}`;
+      state.evalCases = [];
+      state.evalRun = null;
+      elements.evalCases.replaceChildren(emptyText(message));
+      elements.evalResults.replaceChildren(emptyText("No eval run loaded."));
+      renderEvalSummary(null);
+      setEvalStatus(message);
+    }
+  }
+
+  async function refreshLatestEvalRun() {
+    try {
+      const payload = await getJsonWithHeaders("/evals/runs/latest", adminHeaders());
+      state.evalRun = payload;
+      renderEvalRun(payload);
+    } catch (error) {
+      state.evalRun = null;
+      elements.evalResults.replaceChildren(emptyText("No eval run loaded."));
+      renderEvalSummary(null);
+      setEvalStatus("No eval run loaded.");
+    }
+  }
+
+  async function runEvals() {
+    elements.runEvals.disabled = true;
+    try {
+      const response = await fetch("/evals/run", {
+        method: "POST",
+        headers: jsonAdminHeaders(),
+        body: JSON.stringify({
+          strategy: elements.chatStrategy.value,
+          limit: chatLimit(),
+        }),
+      });
+      if (!response.ok) {
+        throw new Error(await responseError(response));
+      }
+      const payload = await response.json();
+      const message = `Eval ${payload.status}: ${payload.stats.passed}/${payload.stats.total} passed`;
+      setEvalStatus(message);
+      appendOperation(message);
+      state.evalRun = payload;
+      renderEvalRun(payload);
+    } catch (error) {
+      const message = `Eval run failed: ${errorMessage(error)}`;
+      setEvalStatus(message);
+      appendOperation(message);
+    } finally {
+      elements.runEvals.disabled = false;
+    }
+  }
+
+  function renderEvalCases(cases) {
+    state.evalCases = Array.isArray(cases) ? cases : [];
+    elements.evalCases.replaceChildren();
+
+    if (state.evalCases.length === 0) {
+      elements.evalCases.append(emptyText("No eval cases loaded."));
+      return;
+    }
+
+    state.evalCases.forEach((evalCase) => {
+      const row = document.createElement("div");
+      row.className = "eval-row";
+      const title = document.createElement("strong");
+      title.textContent = evalCase.name || evalCase.query;
+      const meta = document.createElement("span");
+      meta.className = "source-meta";
+      meta.textContent = [
+        evalCase.expected_decision,
+        (evalCase.expected_source_ids || []).join(", "),
+        (evalCase.tags || []).join(", "),
+      ]
+        .filter(Boolean)
+        .join(" · ");
+      row.append(title, meta);
+      elements.evalCases.append(row);
+    });
+  }
+
+  function renderEvalRun(run) {
+    elements.evalResults.replaceChildren();
+    renderEvalSummary(run);
+    const results = run && Array.isArray(run.results) ? run.results : [];
+    if (results.length === 0) {
+      elements.evalResults.append(emptyText("No eval run loaded."));
+      return;
+    }
+
+    results.forEach((result) => {
+      const row = document.createElement("div");
+      row.className = `eval-row is-${result.passed ? "passed" : "failed"}`;
+      const title = document.createElement("strong");
+      title.textContent = `${result.passed ? "PASS" : "FAIL"} · ${result.name || result.query}`;
+      const meta = document.createElement("span");
+      meta.className = "source-meta";
+      meta.textContent = [
+        `${result.actual_decision}`,
+        `score ${formatPercent(result.score)}`,
+        `retrieval ${formatPercent(result.metrics && result.metrics.retrieval_recall)}`,
+        `citation ${formatPercent(result.metrics && result.metrics.citation_recall)}`,
+      ].join(" · ");
+      row.append(title, meta);
+      elements.evalResults.append(row);
+    });
+  }
+
+  function renderEvalSummary(run) {
+    const stats = run && run.stats ? run.stats : null;
+    elements.evalSummary.replaceChildren(
+      statusRow("Status", run ? run.status : "Unknown"),
+      statusRow("Pass Rate", stats ? formatPercent(stats.pass_rate) : "--"),
+      statusRow("Cases", stats ? stats.total : "--"),
+    );
+  }
+
   function statusRow(label, value) {
     const wrapper = document.createElement("div");
     const term = document.createElement("dt");
@@ -703,6 +892,14 @@
 
   async function getJson(path) {
     const response = await fetch(path);
+    if (!response.ok) {
+      throw new Error(await responseError(response));
+    }
+    return response.json();
+  }
+
+  async function getJsonWithHeaders(path, headers) {
+    const response = await fetch(path, { headers });
     if (!response.ok) {
       throw new Error(await responseError(response));
     }
@@ -743,9 +940,35 @@
       current && current !== "No admin operations yet." ? `${current}\n${nextLine}` : nextLine;
   }
 
+  function setEvalStatus(message) {
+    elements.evalStatus.textContent = message;
+  }
+
   function adminHeaders() {
-    const adminKey = elements.adminKey.value.trim();
+    const adminKey = (elements.adminKey.value || elements.evalAdminKey.value || "").trim();
     return adminKey ? { "X-KB-Admin-Key": adminKey } : {};
+  }
+
+  function jsonAdminHeaders() {
+    return {
+      "Content-Type": "application/json",
+      ...adminHeaders(),
+    };
+  }
+
+  function splitList(value) {
+    return String(value || "")
+      .split(/[\n,]/)
+      .map((item) => item.trim())
+      .filter(Boolean);
+  }
+
+  function formatPercent(value) {
+    const number = Number(value);
+    if (!Number.isFinite(number)) {
+      return "--";
+    }
+    return `${Math.round(number * 100)}%`;
   }
 
   function emptyText(text) {

@@ -18,4 +18,7 @@ def test_initial_migration_creates_core_tables(db_engine: Engine) -> None:
             "messages",
             "retrieval_events",
         "feedback",
+        "eval_cases",
+        "eval_runs",
+        "eval_results",
     }.issubset(table_names)

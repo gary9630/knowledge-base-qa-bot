@@ -6,7 +6,7 @@ from typing import Any, ClassVar
 from uuid import UUID, uuid4
 
 from pgvector.sqlalchemy import Vector  # type: ignore[import-untyped]
-from sqlalchemy import DateTime, ForeignKey, Index, Integer, Text, func, text
+from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Index, Integer, Text, func, text
 from sqlalchemy.dialects.postgresql import JSONB, TSVECTOR
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -292,3 +292,148 @@ class Feedback(TimestampMixin, Base):
     note: Mapped[str | None] = mapped_column(Text)
 
     message: Mapped[Message] = relationship(back_populates="feedback_items")
+
+
+class EvalCase(JsonDefaultsMixin, TimestampMixin, Base):
+    __tablename__ = "eval_cases"
+    __table_args__ = (
+        Index("ix_eval_cases_active", "active"),
+        Index("ix_eval_cases_created_at", "created_at"),
+    )
+    __json_defaults__ = {
+        "expected_sources_json": list,
+        "tags_json": list,
+        "metadata_json": dict,
+    }
+
+    id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), primary_key=True, default=uuid4)
+    name: Mapped[str] = mapped_column(Text, nullable=False)
+    query: Mapped[str] = mapped_column(Text, nullable=False)
+    expected_decision: Mapped[str] = mapped_column(Text, nullable=False)
+    expected_sources_json: Mapped[list[str]] = mapped_column(
+        JSONB,
+        nullable=False,
+        default=list,
+        server_default=text("'[]'::jsonb"),
+    )
+    tags_json: Mapped[list[str]] = mapped_column(
+        JSONB,
+        nullable=False,
+        default=list,
+        server_default=text("'[]'::jsonb"),
+    )
+    metadata_json: Mapped[dict[str, Any]] = mapped_column(
+        "metadata",
+        JSONB,
+        nullable=False,
+        default=dict,
+        server_default=text("'{}'::jsonb"),
+    )
+    active: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        default=True,
+        server_default=text("true"),
+    )
+
+    results: Mapped[list[EvalResult]] = relationship(back_populates="case")
+
+
+class EvalRun(JsonDefaultsMixin, TimestampMixin, Base):
+    __tablename__ = "eval_runs"
+    __table_args__ = (
+        Index("ix_eval_runs_status_created_at", "status", "created_at"),
+    )
+    __json_defaults__ = {"stats_json": dict}
+
+    id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), primary_key=True, default=uuid4)
+    status: Mapped[str] = mapped_column(Text, nullable=False, index=True)
+    strategy: Mapped[str] = mapped_column(Text, nullable=False)
+    limit: Mapped[int] = mapped_column(Integer, nullable=False)
+    error: Mapped[str | None] = mapped_column(Text)
+    stats_json: Mapped[dict[str, Any]] = mapped_column(
+        JSONB,
+        nullable=False,
+        default=dict,
+        server_default=text("'{}'::jsonb"),
+    )
+
+    results: Mapped[list[EvalResult]] = relationship(
+        back_populates="run",
+        cascade="all, delete-orphan",
+    )
+
+
+class EvalResult(JsonDefaultsMixin, TimestampMixin, Base):
+    __tablename__ = "eval_results"
+    __table_args__ = (
+        Index("ix_eval_results_run_id", "run_id"),
+        Index("ix_eval_results_case_id", "case_id"),
+        Index("ix_eval_results_passed", "passed"),
+    )
+    __json_defaults__ = {
+        "expected_sources_json": list,
+        "selected_sources_json": list,
+        "cited_sources_json": list,
+        "missing_sources_json": list,
+        "unexpected_sources_json": list,
+        "metrics_json": dict,
+    }
+
+    id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), primary_key=True, default=uuid4)
+    run_id: Mapped[UUID] = mapped_column(
+        PG_UUID(as_uuid=True),
+        ForeignKey("eval_runs.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    case_id: Mapped[UUID] = mapped_column(
+        PG_UUID(as_uuid=True),
+        ForeignKey("eval_cases.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    query: Mapped[str] = mapped_column(Text, nullable=False)
+    expected_decision: Mapped[str] = mapped_column(Text, nullable=False)
+    actual_decision: Mapped[str] = mapped_column(Text, nullable=False)
+    passed: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    score: Mapped[float] = mapped_column(Float, nullable=False)
+    answer: Mapped[str | None] = mapped_column(Text)
+    error: Mapped[str | None] = mapped_column(Text)
+    expected_sources_json: Mapped[list[str]] = mapped_column(
+        JSONB,
+        nullable=False,
+        default=list,
+        server_default=text("'[]'::jsonb"),
+    )
+    selected_sources_json: Mapped[list[str]] = mapped_column(
+        JSONB,
+        nullable=False,
+        default=list,
+        server_default=text("'[]'::jsonb"),
+    )
+    cited_sources_json: Mapped[list[str]] = mapped_column(
+        JSONB,
+        nullable=False,
+        default=list,
+        server_default=text("'[]'::jsonb"),
+    )
+    missing_sources_json: Mapped[list[str]] = mapped_column(
+        JSONB,
+        nullable=False,
+        default=list,
+        server_default=text("'[]'::jsonb"),
+    )
+    unexpected_sources_json: Mapped[list[str]] = mapped_column(
+        JSONB,
+        nullable=False,
+        default=list,
+        server_default=text("'[]'::jsonb"),
+    )
+    metrics_json: Mapped[dict[str, Any]] = mapped_column(
+        JSONB,
+        nullable=False,
+        default=dict,
+        server_default=text("'{}'::jsonb"),
+    )
+
+    run: Mapped[EvalRun] = relationship(back_populates="results")
+    case: Mapped[EvalCase] = relationship(back_populates="results")

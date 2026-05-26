@@ -1,6 +1,16 @@
 from uuid import uuid4
 
-from app.models import Chunk, Document, IndexingJob, Message, RetrievalEvent, Section
+from app.models import (
+    Chunk,
+    Document,
+    EvalCase,
+    EvalResult,
+    EvalRun,
+    IndexingJob,
+    Message,
+    RetrievalEvent,
+    Section,
+)
 
 
 def test_json_defaults_are_available_before_flush() -> None:
@@ -32,6 +42,17 @@ def test_json_defaults_are_available_before_flush() -> None:
         strategy="hybrid",
         decision="answered",
     )
+    eval_case = EvalCase(name="Case", query="Question", expected_decision="can_answer")
+    eval_run = EvalRun(status="running", strategy="hybrid", limit=5)
+    eval_result = EvalResult(
+        run_id=uuid4(),
+        case_id=uuid4(),
+        query="Question",
+        expected_decision="can_answer",
+        actual_decision="can_answer",
+        passed=True,
+        score=1.0,
+    )
 
     assert document.visibility == ["public"]
     assert document.metadata_json == {}
@@ -41,6 +62,16 @@ def test_json_defaults_are_available_before_flush() -> None:
     assert message.sources_json == []
     assert retrieval_event.selected_sources_json == []
     assert retrieval_event.scores_json == {}
+    assert eval_case.expected_sources_json == []
+    assert eval_case.tags_json == []
+    assert eval_case.metadata_json == {}
+    assert eval_run.stats_json == {}
+    assert eval_result.expected_sources_json == []
+    assert eval_result.selected_sources_json == []
+    assert eval_result.cited_sources_json == []
+    assert eval_result.missing_sources_json == []
+    assert eval_result.unexpected_sources_json == []
+    assert eval_result.metrics_json == {}
 
 
 def test_json_defaults_do_not_share_mutable_instances() -> None:

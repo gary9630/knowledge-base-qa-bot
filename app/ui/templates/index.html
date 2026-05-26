@@ -44,6 +44,12 @@
             </svg>
             Sources
           </button>
+          <button class="tab" id="tab-evals" type="button" role="tab" aria-selected="false" aria-controls="panel-evals" tabindex="-1" data-tab="evals">
+            <svg aria-hidden="true" viewBox="0 0 24 24">
+              <path d="M5 12h4l2 6 4-12 2 6h2M4 4h16v16H4z" />
+            </svg>
+            Feedback / Evals
+          </button>
         </nav>
 
         <section class="sidebar-section" aria-labelledby="source-list-heading">
@@ -142,6 +148,57 @@
             <p class="muted">No indexed sources found.</p>
           </div>
         </section>
+
+        <section class="workspace-panel" id="panel-evals" role="tabpanel" tabindex="0" data-panel="evals" aria-labelledby="tab-evals" hidden>
+          <header class="workspace-header">
+            <div>
+              <h2>Feedback / Evals</h2>
+            </div>
+            <div class="button-row">
+              <button class="secondary-button" type="button" id="refresh-evals">Refresh</button>
+              <button class="primary-button" type="button" id="run-evals">Run Evals</button>
+            </div>
+          </header>
+
+          <form class="eval-form" id="eval-form">
+            <label for="eval-admin-key">Admin Key</label>
+            <input id="eval-admin-key" name="eval-admin-key" type="password" autocomplete="current-password" />
+            <label for="eval-name">Name</label>
+            <input id="eval-name" name="name" type="text" />
+            <label for="eval-query">Query</label>
+            <textarea id="eval-query" name="query" rows="3"></textarea>
+            <label for="eval-decision">Expected Decision</label>
+            <select id="eval-decision" name="decision">
+              <option value="can_answer">Can answer</option>
+              <option value="cannot_confirm">Cannot confirm</option>
+            </select>
+            <label for="eval-sources">Expected Sources</label>
+            <input id="eval-sources" name="sources" type="text" />
+            <label for="eval-tags">Tags</label>
+            <input id="eval-tags" name="tags" type="text" />
+            <button class="primary-button" type="submit">Add Case</button>
+          </form>
+          <pre class="eval-status" id="eval-status" aria-live="polite">No eval activity yet.</pre>
+
+          <div class="eval-grid">
+            <section class="tool-section" aria-labelledby="eval-cases-heading">
+              <div class="section-heading">
+                <h3 id="eval-cases-heading">Eval Cases</h3>
+              </div>
+              <div class="eval-cases" id="eval-cases">
+                <p class="muted">No eval cases loaded.</p>
+              </div>
+            </section>
+            <section class="tool-section" aria-labelledby="eval-results-heading">
+              <div class="section-heading">
+                <h3 id="eval-results-heading">Latest Results</h3>
+              </div>
+              <div class="eval-results" id="eval-results">
+                <p class="muted">No eval run loaded.</p>
+              </div>
+            </section>
+          </div>
+        </section>
       </main>
 
       <aside class="inspector" aria-label="Context inspector">
@@ -173,6 +230,24 @@
             </div>
             <div>
               <dt>Updated</dt>
+              <dd>--</dd>
+            </div>
+          </dl>
+        </section>
+
+        <section class="inspector-section">
+          <h2>Eval Summary</h2>
+          <dl class="status-grid" id="eval-summary">
+            <div>
+              <dt>Status</dt>
+              <dd>Unknown</dd>
+            </div>
+            <div>
+              <dt>Pass Rate</dt>
+              <dd>--</dd>
+            </div>
+            <div>
+              <dt>Cases</dt>
               <dd>--</dd>
             </div>
           </dl>

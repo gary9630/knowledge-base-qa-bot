@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 
 from app.answer.providers import AnswerProvider, create_answer_provider
 from app.api.chat import router as chat_router
+from app.api.evals import router as evals_router
 from app.api.feedback import router as feedback_router
 from app.api.health import router as health_router
 from app.api.imports import router as imports_router
@@ -53,6 +54,7 @@ def create_app(
     app.include_router(chat_router)
     app.include_router(sources_router)
     app.include_router(feedback_router)
+    app.include_router(evals_router)
     return app
 
 

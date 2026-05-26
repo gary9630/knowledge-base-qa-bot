@@ -12,6 +12,7 @@ def test_ui_serves_three_column_workbench() -> None:
     assert "Chat" in response.text
     assert "Mindmap" in response.text
     assert "Admin Uploads" in response.text
+    assert "Feedback / Evals" in response.text
     assert "selected sources" in response.text.lower()
     assert 'role="tabpanel"' in response.text
     assert 'aria-controls="panel-chat"' in response.text
@@ -35,6 +36,24 @@ def test_ui_serves_three_column_workbench() -> None:
     assert "parseSseDataLine" in js_response.text
     assert 'id="import-jobs"' in response.text
     assert 'id="refresh-imports"' in response.text
+
+
+def test_ui_exposes_eval_workbench_wiring() -> None:
+    client = TestClient(create_app())
+
+    response = client.get("/")
+    js_response = client.get("/static/app.js")
+
+    assert response.status_code == 200
+    assert 'id="tab-evals"' in response.text
+    assert 'id="panel-evals"' in response.text
+    assert 'id="eval-form"' in response.text
+    assert 'id="eval-status"' in response.text
+    assert 'id="run-evals"' in response.text
+    assert "fetch(\"/evals/cases\"" in js_response.text
+    assert "fetch(\"/evals/run\"" in js_response.text
+    assert "getJsonWithHeaders(\"/evals/runs/latest\"" in js_response.text
+    assert "setEvalStatus" in js_response.text
 
 
 def test_ui_exposes_mindmap_on_demand_wiring() -> None:
