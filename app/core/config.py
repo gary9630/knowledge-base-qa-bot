@@ -16,6 +16,10 @@ class Settings(BaseSettings):
     raw_dir: str = "raw"
     kb_dir: str = ".kb"
     default_retrieval_strategy: str = "hybrid"
+    auth_secret_key: str | None = None
+    platform_username: str | None = None
+    platform_password: str | None = None
+    platform_session_ttl_seconds: int = 86_400
     admin_api_key: str | None = None
     max_upload_bytes: int = 10_000_000
     embedding_provider: str = "fake"

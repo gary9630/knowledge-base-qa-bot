@@ -66,6 +66,25 @@ def test_ui_exposes_eval_workbench_wiring() -> None:
     assert "setEvalStatus" in js_response.text
 
 
+def test_ui_exposes_platform_login_wiring() -> None:
+    client = TestClient(create_app())
+
+    response = client.get("/")
+    js_response = client.get("/static/app.js")
+
+    assert response.status_code == 200
+    assert 'id="platform-login-form"' in response.text
+    assert 'id="platform-username"' in response.text
+    assert 'id="platform-password"' in response.text
+    assert 'id="platform-logout"' in response.text
+    assert 'id="admin-key"' in response.text
+    assert 'id="eval-admin-key"' in response.text
+    assert "getJsonWithHeaders(\"/auth/session\"" in js_response.text
+    assert "fetch(\"/auth/login\"" in js_response.text
+    assert "fetch(\"/auth/logout\"" in js_response.text
+    assert "X-KB-CSRF-Token" in js_response.text
+
+
 def test_ui_exposes_mindmap_on_demand_wiring() -> None:
     client = TestClient(create_app())
 

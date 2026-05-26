@@ -9,6 +9,19 @@
     <script src="{{ url_for('static', path='app.js') }}" defer></script>
   </head>
   <body>
+    <section class="login-shell" id="platform-login" aria-labelledby="platform-login-heading" hidden>
+      <form class="login-form" id="platform-login-form">
+        <div>
+          <h1 id="platform-login-heading">Knowledge Workbench</h1>
+          <p id="platform-auth-status">Sign in to continue.</p>
+        </div>
+        <label for="platform-username">Username</label>
+        <input id="platform-username" name="username" type="text" autocomplete="username" />
+        <label for="platform-password">Password</label>
+        <input id="platform-password" name="password" type="password" autocomplete="current-password" />
+        <button class="primary-button" type="submit">Sign In</button>
+      </form>
+    </section>
     <div class="workbench" data-app>
       <aside class="sidebar" aria-label="Primary workspace">
         <div class="brand">
@@ -17,6 +30,7 @@
             <h1>Knowledge Workbench</h1>
             <p id="index-status-pill">Index status unavailable</p>
           </div>
+          <button class="text-button" type="button" id="platform-logout" hidden>Logout</button>
         </div>
 
         <nav class="tabs" aria-label="Workspace tabs" role="tablist">

@@ -4,6 +4,10 @@ x-app-environment: &app-environment
   - KB_DOCS_DIR=/app/docs
   - KB_RAW_DIR=/app/raw
   - KB_KB_DIR=/app/.kb
+  - KB_AUTH_SECRET_KEY=${KB_AUTH_SECRET_KEY:-local-auth-secret}
+  - KB_PLATFORM_USERNAME=${KB_PLATFORM_USERNAME:-student}
+  - KB_PLATFORM_PASSWORD=${KB_PLATFORM_PASSWORD:-student-password}
+  - KB_PLATFORM_SESSION_TTL_SECONDS=${KB_PLATFORM_SESSION_TTL_SECONDS:-86400}
   - KB_ADMIN_API_KEY=${KB_ADMIN_API_KEY:-local-admin-key}
   - KB_MAX_UPLOAD_BYTES=${KB_MAX_UPLOAD_BYTES:-10000000}
 

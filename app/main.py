@@ -4,6 +4,7 @@ from fastapi import FastAPI
 from sqlalchemy.orm import Session
 
 from app.answer.providers import AnswerProvider, create_answer_provider
+from app.api.auth import router as auth_router
 from app.api.chat import router as chat_router
 from app.api.evals import router as evals_router
 from app.api.feedback import router as feedback_router
@@ -46,6 +47,7 @@ def create_app(
 
     mount_ui_static(app)
     app.include_router(ui_router)
+    app.include_router(auth_router)
     app.include_router(health_router)
     app.include_router(indexing_router)
     app.include_router(imports_router)

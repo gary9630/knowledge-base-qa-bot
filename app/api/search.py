@@ -7,11 +7,15 @@ from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
-from app.api.dependencies import get_embedding_provider, get_request_db_session
+from app.api.dependencies import (
+    get_embedding_provider,
+    get_request_db_session,
+    require_platform_access,
+)
 from app.retrieval.hybrid import HybridRetriever
 from app.retrieval.models import RetrievalDecision, RetrievalStrategy, RetrievedCandidate
 
-router = APIRouter()
+router = APIRouter(dependencies=[Depends(require_platform_access)])
 
 API_RETRIEVAL_SCORE_THRESHOLD = 0.05
 

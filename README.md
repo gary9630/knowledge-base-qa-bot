@@ -41,8 +41,10 @@ docker compose --profile test run --rm test
 
 `docs`, `raw`, `.kb`, and Postgres data are stored in named Docker volumes. For local
 sample data, seed `docs/` before local indexing, or upload files through the UI/API when
-running the Compose app. The Compose default admin key is `local-admin-key`; override it
-with `KB_ADMIN_API_KEY` before using anything beyond local development. Docker Compose
+running the Compose app. The Compose default platform login is `student` /
+`student-password`, and the default admin key is `local-admin-key`; override
+`KB_AUTH_SECRET_KEY`, `KB_PLATFORM_USERNAME`, `KB_PLATFORM_PASSWORD`, and
+`KB_ADMIN_API_KEY` before using anything beyond local development. Docker Compose
 configuration, image build, app health, upload, worker indexing, and retrieval can be
 verified locally with the commands below.
 
@@ -57,6 +59,10 @@ Settings use the `KB_` prefix unless noted.
 | `KB_DOCS_DIR` | `docs` | Canonical Markdown source directory. |
 | `KB_RAW_DIR` | `raw` | Uploaded original-file directory. |
 | `KB_KB_DIR` | `.kb` | Local index/export artifacts. |
+| `KB_AUTH_SECRET_KEY` | unset | HMAC secret for platform login sessions; production/staging require it. |
+| `KB_PLATFORM_USERNAME` | unset | Single platform username for course-facing login. |
+| `KB_PLATFORM_PASSWORD` | unset | Single platform password for course-facing login. |
+| `KB_PLATFORM_SESSION_TTL_SECONDS` | `86400` | Platform session lifetime in seconds. |
 | `KB_ADMIN_API_KEY` | unset | Optional admin key required for upload/index endpoints; production requires it. |
 | `KB_MAX_UPLOAD_BYTES` | `10000000` | Maximum upload size accepted by `/imports`. |
 | `KB_EMBEDDING_PROVIDER` | `fake` | Use `fake` for deterministic dev/test or `openai` for real embeddings. |
@@ -103,6 +109,10 @@ curl -X POST http://localhost:8000/chat \
   -d '{"query":"What does the knowledge base say?","strategy":"hybrid","limit":5}'
 ```
 
+When platform auth is configured, use the browser login flow for chat/search/source
+inspection. The platform login is intentionally a single configured user, not registration
+or RBAC. Admin operations remain separate and require `X-KB-Admin-Key`.
+
 Useful read endpoints:
 
 - `GET /imports/status`, `GET /imports/{job_id}`, and `POST /imports/{job_id}/retry`
@@ -135,9 +145,11 @@ docker compose --profile worker run --rm worker
 ## Production Notes
 
 Use managed Postgres with pgvector enabled, real credentials, backups, and a migration step
-that runs once per deploy. Set `KB_ADMIN_API_KEY` and enforce it on upload/index operations;
-do not expose admin endpoints publicly without an authenticated gateway. Store raw uploads
-and canonical Markdown in durable storage or
-mounted volumes. Use OpenAI or another production embedding provider with a stable vector
-dimension before indexing production data. Add authentication, upload limits, observability,
-rate limits, and source-level access control before exposing the app publicly.
+that runs once per deploy. Set `KB_AUTH_SECRET_KEY`, `KB_PLATFORM_USERNAME`,
+`KB_PLATFORM_PASSWORD`, and `KB_ADMIN_API_KEY`; production/staging fail closed when platform
+auth is incomplete. Keep the platform login separate from admin access, and do not expose
+admin endpoints publicly without the admin key or an authenticated gateway. Store raw uploads
+and canonical Markdown in durable storage or mounted volumes. Use OpenAI or another
+production embedding provider with a stable vector dimension before indexing production data.
+Add observability, rate limits, and source-level access control before exposing the app
+publicly.

@@ -8,7 +8,11 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
-from app.api.dependencies import get_request_db_session, require_admin_access
+from app.api.dependencies import (
+    get_request_db_session,
+    require_admin_access,
+    require_platform_access,
+)
 from app.evals.cases import query_for_feedback
 from app.models.tables import Feedback, Message
 
@@ -60,7 +64,11 @@ def list_feedback(
     )
 
 
-@router.post("/feedback", response_model=FeedbackResponse)
+@router.post(
+    "/feedback",
+    response_model=FeedbackResponse,
+    dependencies=[Depends(require_platform_access)],
+)
 def create_feedback(
     payload: FeedbackRequest,
     session: Annotated[Session, Depends(get_request_db_session)],

@@ -18,6 +18,7 @@ from app.api.dependencies import (
     get_answer_provider,
     get_embedding_provider,
     get_request_db_session,
+    require_platform_access,
 )
 from app.api.indexing import index_is_ready
 from app.api.search import (
@@ -52,7 +53,11 @@ class ChatResponse(BaseModel):
     selected_sources: list[CandidateResponse]
 
 
-@router.post("/chat", response_model=ChatResponse)
+@router.post(
+    "/chat",
+    response_model=ChatResponse,
+    dependencies=[Depends(require_platform_access)],
+)
 def chat(
     payload: ChatRequest,
     request: Request,
@@ -61,7 +66,7 @@ def chat(
     return _build_chat_response(payload=payload, request=request, session=session)
 
 
-@router.post("/chat/stream")
+@router.post("/chat/stream", dependencies=[Depends(require_platform_access)])
 def chat_stream(
     payload: ChatRequest,
     request: Request,

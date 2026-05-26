@@ -16,6 +16,12 @@
     evalReport: null,
     feedbackItems: [],
     selectedSources: [],
+    auth: {
+      authRequired: false,
+      authenticated: true,
+      username: null,
+      csrfToken: null,
+    },
   };
 
   const $ = (selector) => document.querySelector(selector);
@@ -65,15 +71,107 @@
     refreshEvals: $("#refresh-evals"),
     seedEvals: $("#seed-evals"),
     runEvals: $("#run-evals"),
+    platformLogin: $("#platform-login"),
+    platformLoginForm: $("#platform-login-form"),
+    platformUsername: $("#platform-username"),
+    platformPassword: $("#platform-password"),
+    platformAuthStatus: $("#platform-auth-status"),
+    platformLogout: $("#platform-logout"),
+    workbench: $("[data-app]"),
   };
 
   function init() {
+    bindAuth();
     bindTabs();
     bindChat();
     bindSources();
     bindMindmap();
     bindAdmin();
     bindEvals();
+    refreshAuthSession();
+  }
+
+  function bindAuth() {
+    elements.platformLoginForm.addEventListener("submit", loginPlatform);
+    elements.platformLogout.addEventListener("click", logoutPlatform);
+  }
+
+  async function refreshAuthSession() {
+    try {
+      const payload = await getJsonWithHeaders("/auth/session", authHeaders());
+      setAuthState(payload);
+    } catch (error) {
+      setAuthState({
+        auth_required: true,
+        authenticated: false,
+        username: null,
+        csrf_token: null,
+      });
+      elements.platformAuthStatus.textContent = `Auth unavailable: ${errorMessage(error)}`;
+    }
+  }
+
+  async function loginPlatform(event) {
+    event.preventDefault();
+    const username = elements.platformUsername.value.trim();
+    const password = elements.platformPassword.value;
+    if (!username || !password) {
+      elements.platformAuthStatus.textContent = "Username and password are required.";
+      return;
+    }
+
+    try {
+      const response = await fetch("/auth/login", {
+        method: "POST",
+        credentials: "same-origin",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ username, password }),
+      });
+      if (!response.ok) {
+        throw new Error(await responseError(response));
+      }
+      const payload = await response.json();
+      elements.platformPassword.value = "";
+      setAuthState(payload);
+    } catch (error) {
+      elements.platformAuthStatus.textContent = errorMessage(error);
+    }
+  }
+
+  async function logoutPlatform() {
+    try {
+      const response = await fetch("/auth/logout", {
+        method: "POST",
+        credentials: "same-origin",
+        headers: authHeaders(true),
+      });
+      if (!response.ok) {
+        throw new Error(await responseError(response));
+      }
+      const payload = await response.json();
+      setAuthState(payload);
+    } catch (error) {
+      elements.platformAuthStatus.textContent = `Logout failed: ${errorMessage(error)}`;
+    }
+  }
+
+  function setAuthState(payload) {
+    state.auth = {
+      authRequired: Boolean(payload.auth_required),
+      authenticated: Boolean(payload.authenticated),
+      username: payload.username || null,
+      csrfToken: payload.csrf_token || null,
+    };
+
+    const blocked = state.auth.authRequired && !state.auth.authenticated;
+    elements.platformLogin.hidden = !blocked;
+    elements.workbench.classList.toggle("is-auth-blocked", blocked);
+    elements.platformLogout.hidden = !state.auth.authRequired || !state.auth.authenticated;
+    elements.platformAuthStatus.textContent = state.auth.authenticated
+      ? `Signed in${state.auth.username ? ` as ${state.auth.username}` : ""}.`
+      : "Sign in to continue.";
   }
 
   function bindTabs() {
@@ -150,9 +248,7 @@
     };
     const response = await fetch("/chat/stream", {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
+      headers: platformJsonHeaders(),
       body: JSON.stringify(payload),
     });
 
@@ -1101,7 +1197,7 @@
   }
 
   async function getJsonWithHeaders(path, headers) {
-    const response = await fetch(path, { headers });
+    const response = await fetch(path, { headers, credentials: "same-origin" });
     if (!response.ok) {
       throw new Error(await responseError(response));
     }
@@ -1148,7 +1244,7 @@
 
   function adminHeaders() {
     const adminKey = (elements.adminKey.value || elements.evalAdminKey.value || "").trim();
-    return adminKey ? { "X-KB-Admin-Key": adminKey } : {};
+    return authHeaders(true, adminKey ? { "X-KB-Admin-Key": adminKey } : {});
   }
 
   function jsonAdminHeaders() {
@@ -1156,6 +1252,18 @@
       "Content-Type": "application/json",
       ...adminHeaders(),
     };
+  }
+
+  function platformJsonHeaders() {
+    return authHeaders(true, { "Content-Type": "application/json" });
+  }
+
+  function authHeaders(unsafe = false, headers = {}) {
+    const nextHeaders = { ...headers };
+    if (unsafe && state.auth.csrfToken) {
+      nextHeaders["X-KB-CSRF-Token"] = state.auth.csrfToken;
+    }
+    return nextHeaders;
   }
 
   function splitList(value) {

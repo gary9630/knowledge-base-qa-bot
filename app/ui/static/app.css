@@ -53,6 +53,43 @@ button {
   min-height: 100vh;
 }
 
+.workbench.is-auth-blocked {
+  display: none;
+}
+
+.login-shell {
+  display: grid;
+  min-height: 100vh;
+  place-items: center;
+  padding: 24px;
+}
+
+.login-shell[hidden] {
+  display: none;
+}
+
+.login-form {
+  display: grid;
+  width: min(100%, 360px);
+  gap: 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  padding: 18px;
+  box-shadow: var(--shadow);
+}
+
+.login-form h1 {
+  margin: 0;
+  font-size: 20px;
+  line-height: 1.2;
+}
+
+.login-form p {
+  margin: 4px 0 0;
+  color: var(--muted);
+}
+
 .sidebar,
 .workspace,
 .inspector {
@@ -92,7 +129,7 @@ button {
 
 .brand {
   display: grid;
-  grid-template-columns: 38px minmax(0, 1fr);
+  grid-template-columns: 38px minmax(0, 1fr) auto;
   align-items: center;
   gap: 10px;
 }

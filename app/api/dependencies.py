@@ -7,11 +7,20 @@ from fastapi import Header, HTTPException, Request
 from sqlalchemy.orm import Session
 
 from app.answer.providers import AnswerProvider, create_answer_provider
+from app.auth.sessions import (
+    PlatformSession,
+    platform_auth_is_configured,
+    platform_auth_requires_configuration,
+    verify_platform_session_token,
+)
 from app.core.config import Settings
 from app.core.database import SessionLocal
 from app.retrieval.embeddings import EmbeddingProvider, create_embedding_provider
 
 SessionFactory = Callable[[], Session]
+PLATFORM_SESSION_COOKIE = "kb_platform_session"
+CSRF_HEADER_NAME = "X-KB-CSRF-Token"
+SAFE_METHODS = {"GET", "HEAD", "OPTIONS", "TRACE"}
 
 
 def get_app_settings(request: Request) -> Settings:
@@ -72,3 +81,34 @@ def require_admin_access(
             status_code=503,
             detail="KB_ADMIN_API_KEY is required for admin endpoints.",
         )
+
+
+def current_platform_session(request: Request) -> PlatformSession | None:
+    settings = get_app_settings(request)
+    token = request.cookies.get(PLATFORM_SESSION_COOKIE)
+    if not token:
+        return None
+    return verify_platform_session_token(settings, token)
+
+
+def require_platform_access(
+    request: Request,
+    csrf_token: str | None = Header(default=None, alias=CSRF_HEADER_NAME),
+) -> PlatformSession | None:
+    settings = get_app_settings(request)
+    if not platform_auth_is_configured(settings):
+        if platform_auth_requires_configuration(settings):
+            raise HTTPException(
+                status_code=503,
+                detail="Platform auth is required but not configured.",
+            )
+        return None
+
+    session = current_platform_session(request)
+    if session is None:
+        raise HTTPException(status_code=401, detail="Platform login is required.")
+
+    if request.method.upper() not in SAFE_METHODS and csrf_token != session.csrf_token:
+        raise HTTPException(status_code=403, detail="CSRF token is required.")
+
+    return session

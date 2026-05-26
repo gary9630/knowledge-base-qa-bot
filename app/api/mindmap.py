@@ -8,10 +8,10 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session, load_only, selectinload
 
-from app.api.dependencies import get_request_db_session
+from app.api.dependencies import get_request_db_session, require_platform_access
 from app.models.tables import Document, Section
 
-router = APIRouter()
+router = APIRouter(dependencies=[Depends(require_platform_access)])
 
 
 class MindmapNode(BaseModel):
