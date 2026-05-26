@@ -59,6 +59,8 @@
     evalSummary: $("#eval-summary"),
     evalStatus: $("#eval-status"),
     evalReport: $("#eval-report"),
+    evalRecentRuns: $("#eval-recent-runs"),
+    evalWorstCases: $("#eval-worst-cases"),
     feedbackPromotions: $("#feedback-promotions"),
     refreshEvals: $("#refresh-evals"),
     seedEvals: $("#seed-evals"),
@@ -780,6 +782,8 @@
       elements.evalCases.replaceChildren(emptyText(message));
       elements.evalResults.replaceChildren(emptyText("No eval run loaded."));
       elements.evalReport.replaceChildren(emptyText("No eval report loaded."));
+      elements.evalRecentRuns.replaceChildren(emptyText("No recent runs loaded."));
+      elements.evalWorstCases.replaceChildren(emptyText("No worst cases loaded."));
       elements.feedbackPromotions.replaceChildren(emptyText("No feedback loaded."));
       renderEvalSummary(null);
       setEvalStatus(message);
@@ -863,6 +867,8 @@
     } catch (error) {
       state.evalReport = null;
       elements.evalReport.replaceChildren(emptyText("No eval report loaded."));
+      elements.evalRecentRuns.replaceChildren(emptyText("No recent runs loaded."));
+      elements.evalWorstCases.replaceChildren(emptyText("No worst cases loaded."));
     }
   }
 
@@ -933,6 +939,8 @@
 
   function renderEvalReport(report) {
     elements.evalReport.replaceChildren();
+    elements.evalRecentRuns.replaceChildren();
+    elements.evalWorstCases.replaceChildren();
     const totals = report && report.totals ? report.totals : {};
     const latest = report && report.latest_run ? report.latest_run : null;
     const cards = [
@@ -965,6 +973,50 @@
       row.append(title, meta);
       elements.evalReport.append(row);
     });
+
+    const recentRuns = report && Array.isArray(report.recent_runs) ? report.recent_runs : [];
+    if (recentRuns.length === 0) {
+      elements.evalRecentRuns.append(emptyText("No recent runs loaded."));
+    } else {
+      recentRuns.slice(0, 5).forEach((run) => {
+        const row = document.createElement("div");
+        row.className = `report-row is-${run.status || "unknown"}`;
+        const title = document.createElement("strong");
+        title.textContent = `${run.status || "unknown"} · ${formatPercent(run.stats && run.stats.pass_rate)} pass`;
+        const meta = document.createElement("span");
+        meta.className = "source-meta";
+        meta.textContent = [
+          run.trigger,
+          run.strategy,
+          run.stats ? `${run.stats.passed || 0}/${run.stats.total || 0}` : null,
+          formatDateTime(run.created_at),
+        ]
+          .filter(Boolean)
+          .join(" · ");
+        row.append(title, meta);
+        elements.evalRecentRuns.append(row);
+      });
+    }
+
+    const worstCases = report && Array.isArray(report.worst_cases) ? report.worst_cases : [];
+    if (worstCases.length === 0) {
+      elements.evalWorstCases.append(emptyText("No worst cases loaded."));
+    } else {
+      worstCases.slice(0, 5).forEach((evalCase) => {
+        const row = document.createElement("div");
+        row.className = `report-row ${evalCase.failed ? "is-failed" : "is-passed"}`;
+        const title = document.createElement("strong");
+        title.textContent = evalCase.name || evalCase.query || evalCase.case_id;
+        const meta = document.createElement("span");
+        meta.className = "source-meta";
+        meta.textContent = [
+          `${evalCase.failed || 0}/${evalCase.total || 0} failed`,
+          `${formatPercent(evalCase.pass_rate)} pass`,
+        ].join(" · ");
+        row.append(title, meta);
+        elements.evalWorstCases.append(row);
+      });
+    }
   }
 
   function renderFeedbackPromotions(feedbackItems) {
@@ -1119,6 +1171,17 @@
       return "--";
     }
     return `${Math.round(number * 100)}%`;
+  }
+
+  function formatDateTime(value) {
+    if (!value) {
+      return null;
+    }
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) {
+      return String(value);
+    }
+    return date.toLocaleString();
   }
 
   function emptyText(text) {

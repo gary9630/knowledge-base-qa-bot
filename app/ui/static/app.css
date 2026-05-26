@@ -609,6 +609,24 @@ select {
   grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
 }
 
+.report-sections {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.report-section {
+  min-width: 0;
+}
+
+.report-section h4 {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.25;
+}
+
 .source-table-row {
   display: grid;
   grid-template-columns: minmax(160px, 1fr) 90px 120px;

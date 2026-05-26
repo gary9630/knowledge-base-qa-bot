@@ -53,12 +53,16 @@ def test_ui_exposes_eval_workbench_wiring() -> None:
     assert 'id="seed-evals"' in response.text
     assert 'id="feedback-promotions"' in response.text
     assert 'id="run-evals"' in response.text
+    assert "Recent Runs" in response.text
+    assert "Worst Cases" in response.text
     assert "fetch(\"/evals/cases\"" in js_response.text
     assert "fetch(\"/evals/run\"" in js_response.text
     assert "fetch(\"/evals/seed\"" in js_response.text
     assert "fetch(\"/evals/cases/promote-feedback\"" in js_response.text
     assert "getJsonWithHeaders(\"/evals/report\"" in js_response.text
     assert "getJsonWithHeaders(\"/evals/runs/latest\"" in js_response.text
+    assert "report.recent_runs" in js_response.text
+    assert "report.worst_cases" in js_response.text
     assert "setEvalStatus" in js_response.text
 
 

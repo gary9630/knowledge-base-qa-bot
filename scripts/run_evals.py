@@ -9,7 +9,15 @@ from sqlalchemy.orm import Session
 from app.answer.providers import AnswerProvider, create_answer_provider
 from app.core.config import Settings
 from app.core.database import SessionLocal
-from app.evals.runner import EvalRunExecution, EvalRunOptions, execution_from_run, run_eval_suite
+from app.evals.runner import (
+    EvalCasesNotFoundError,
+    EvalRunExecution,
+    EvalRunOptions,
+    NoActiveEvalCasesError,
+    execution_from_run,
+    record_failed_eval_run,
+    run_eval_suite,
+)
 from app.retrieval.embeddings import EmbeddingProvider, create_embedding_provider
 
 EvalCliRunner = Callable[[EvalRunOptions], EvalRunExecution]
@@ -53,6 +61,11 @@ def main(
         print(f"Eval run failed: {exc}", file=sys.stderr)
         return 1
 
+    if execution.status == "failed":
+        if execution.error:
+            print(f"Eval run failed: {execution.error}", file=sys.stderr)
+        return 1
+
     failed = _int_stat(execution.stats.get("failed"))
     total = _int_stat(execution.stats.get("total"))
     passed = _int_stat(execution.stats.get("passed"))
@@ -74,19 +87,39 @@ def _runner_from_dependencies(
 ) -> EvalCliRunner:
     resolved_settings = settings or Settings()
     resolved_session_factory = session_factory or SessionLocal
-    resolved_embedding_provider = embedding_provider or create_embedding_provider(
-        resolved_settings
-    )
-    resolved_answer_provider = answer_provider or create_answer_provider(resolved_settings)
 
     def run(options: EvalRunOptions) -> EvalRunExecution:
         with resolved_session_factory() as session:
-            eval_run, _ = run_eval_suite(
-                session=session,
-                embedding_provider=resolved_embedding_provider,
-                answer_provider=resolved_answer_provider,
-                options=options,
-            )
+            try:
+                resolved_embedding_provider = embedding_provider or create_embedding_provider(
+                    resolved_settings
+                )
+                resolved_answer_provider = answer_provider or create_answer_provider(
+                    resolved_settings
+                )
+            except Exception as error:
+                eval_run = record_failed_eval_run(
+                    session,
+                    options=options,
+                    error=error,
+                )
+                return execution_from_run(eval_run)
+
+            try:
+                eval_run, _ = run_eval_suite(
+                    session=session,
+                    embedding_provider=resolved_embedding_provider,
+                    answer_provider=resolved_answer_provider,
+                    options=options,
+                )
+            except (NoActiveEvalCasesError, EvalCasesNotFoundError) as error:
+                eval_run = record_failed_eval_run(
+                    session,
+                    options=options,
+                    error=error,
+                )
+                return execution_from_run(eval_run)
+
             return execution_from_run(eval_run)
 
     return run

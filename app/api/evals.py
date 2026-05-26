@@ -192,12 +192,16 @@ def seed_eval_case_set(
     payload: EvalSeedRequest,
     session: Annotated[Session, Depends(get_request_db_session)],
 ) -> EvalSeedResponse:
-    seed_cases = (
-        parse_seed_cases([seed_case.model_dump() for seed_case in payload.cases])
-        if payload.cases
-        else load_default_seed_cases()
-    )
-    summary, eval_cases = seed_eval_cases(session, seed_cases)
+    try:
+        seed_cases = (
+            parse_seed_cases([seed_case.model_dump() for seed_case in payload.cases])
+            if payload.cases
+            else load_default_seed_cases()
+        )
+        summary, eval_cases = seed_eval_cases(session, seed_cases)
+    except ValueError as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
+
     session.commit()
     return EvalSeedResponse(
         summary=eval_seed_summary_response(summary),

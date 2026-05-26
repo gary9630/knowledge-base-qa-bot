@@ -175,6 +175,35 @@ def test_eval_seed_endpoint_upserts_cases_by_seed_key(
     assert cases[0].tags_json == ["seed", "faq", "updated"]
 
 
+def test_eval_seed_endpoint_returns_bad_request_for_invalid_seed_payload(
+    app_with_indexed_docs: FastAPI,
+) -> None:
+    client = TestClient(app_with_indexed_docs)
+
+    response = client.post(
+        "/evals/seed",
+        json={
+            "cases": [
+                {
+                    "seed_key": "duplicate",
+                    "name": "first",
+                    "query": "課程網站在哪？",
+                    "expected_decision": "can_answer",
+                },
+                {
+                    "seed_key": "duplicate",
+                    "name": "second",
+                    "query": "課程網站在哪？",
+                    "expected_decision": "can_answer",
+                },
+            ]
+        },
+    )
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == "duplicate seed_key: duplicate"
+
+
 def test_feedback_can_be_promoted_to_eval_case_idempotently(
     db_session: Session,
     tmp_path: Path,
@@ -297,6 +326,42 @@ def test_cli_eval_runner_persists_scheduled_trigger(
     assert eval_run is not None
     assert eval_run.trigger == "scheduled"
     assert eval_run.status == "succeeded"
+
+
+def test_cli_eval_runner_persists_failed_run_when_provider_bootstrap_fails(
+    db_session: Session,
+    tmp_path: Path,
+) -> None:
+    settings = Settings(
+        docs_dir=str(tmp_path / "docs"),
+        raw_dir=str(tmp_path / "raw"),
+        kb_dir=str(tmp_path / ".kb"),
+        embedding_provider="openai",
+        answer_provider="fake",
+        openai_api_key=None,
+    )
+
+    exit_code = run_evals_main(
+        ["--trigger", "scheduled", "--limit", "3"],
+        session_factory=_session_factory(db_session),
+        settings=settings,
+    )
+
+    eval_run = db_session.scalar(select(EvalRun).order_by(EvalRun.created_at.desc()))
+    assert exit_code == 1
+    assert eval_run is not None
+    assert eval_run.trigger == "scheduled"
+    assert eval_run.status == "failed"
+    assert eval_run.strategy == "hybrid"
+    assert eval_run.limit == 3
+    assert eval_run.error == "OPENAI_API_KEY is required for OpenAI embedding provider"
+    assert eval_run.stats_json == {
+        "total": 0,
+        "passed": 0,
+        "failed": 0,
+        "pass_rate": 0.0,
+        "average_score": 0.0,
+    }
 
 
 def test_eval_report_summarizes_latest_failures(

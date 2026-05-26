@@ -44,6 +44,7 @@ class EvalRunExecution:
     run_id: UUID
     status: str
     stats: dict[str, object]
+    error: str | None = None
 
 
 def run_eval_suite(
@@ -113,11 +114,38 @@ def run_eval_suite(
     return eval_run, persisted_results
 
 
+def record_failed_eval_run(
+    session: Session,
+    *,
+    options: EvalRunOptions,
+    error: Exception,
+    case_count: int = 0,
+) -> EvalRun:
+    eval_run = EvalRun(
+        status="failed",
+        strategy=options.strategy,
+        limit=options.limit,
+        trigger=options.trigger,
+        error=_error_message(error),
+        stats_json={
+            "total": case_count,
+            "passed": 0,
+            "failed": case_count,
+            "pass_rate": 0.0,
+            "average_score": 0.0,
+        },
+    )
+    session.add(eval_run)
+    session.commit()
+    return eval_run
+
+
 def execution_from_run(eval_run: EvalRun) -> EvalRunExecution:
     return EvalRunExecution(
         run_id=eval_run.id,
         status=eval_run.status,
         stats=dict(eval_run.stats_json),
+        error=eval_run.error,
     )
 
 
