@@ -32,6 +32,23 @@ def test_dockerfile_packages_python_312_fastapi_app() -> None:
     assert "EXPOSE 8000" in dockerfile
 
 
+def test_dockerfile_creates_owned_runtime_directories_before_chown() -> None:
+    dockerfile = read_project_file("Dockerfile")
+
+    runtime_setup = re.search(
+        r"RUN useradd .*?mkdir -p (?P<mkdir>.*?)\\\n\s+&& "
+        r"chown -R appuser:appuser (?P<chown>[^\n]+)",
+        dockerfile,
+        re.DOTALL,
+    )
+
+    assert runtime_setup is not None
+    mkdir_paths = set(runtime_setup.group("mkdir").split())
+    chown_paths = set(runtime_setup.group("chown").split())
+
+    assert chown_paths <= mkdir_paths | {"/app"}
+
+
 def test_compose_defines_app_postgres_and_worker_contracts() -> None:
     compose = read_project_file("docker-compose.yml")
 
@@ -53,6 +70,18 @@ def test_compose_defines_app_postgres_and_worker_contracts() -> None:
     assert "source: raw_data" in compose
     assert "target: /app/raw" in compose
     assert "nocopy: true" not in compose
+
+
+def test_compose_test_profile_uses_isolated_test_environment() -> None:
+    compose = read_project_file("docker-compose.yml")
+    test_service = compose.split("\n  test:\n", 1)[1].split("\nvolumes:", 1)[0]
+
+    assert "environment: *app-environment" not in test_service
+    assert "KB_APP_ENV=production" not in test_service
+    assert "KB_ADMIN_API_KEY" not in test_service
+    assert "KB_DOCS_DIR" not in test_service
+    assert "KB_RAW_DIR" not in test_service
+    assert "KB_KB_DIR" not in test_service
 
 
 def test_dockerignore_excludes_development_docs_from_runtime_image() -> None:

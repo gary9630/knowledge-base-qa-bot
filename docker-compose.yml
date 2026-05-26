@@ -18,6 +18,9 @@ x-app-volumes: &app-volumes
     source: kb_data
     target: /app/.kb
 
+x-test-environment: &test-environment
+  - KB_APP_ENV=test
+
 services:
   postgres:
     image: pgvector/pgvector:pg16
@@ -92,7 +95,7 @@ services:
       target: test
     profiles:
       - test
-    environment: *app-environment
+    environment: *test-environment
     depends_on:
       postgres:
         condition: service_healthy

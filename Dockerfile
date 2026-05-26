@@ -19,7 +19,7 @@ RUN uv sync --frozen --no-cache --no-dev --no-install-project
 
 COPY . .
 RUN useradd --create-home --shell /usr/sbin/nologin appuser \
-    && mkdir -p /app/docs /app/raw /app/.kb \
+    && mkdir -p /app/docs /app/raw /app/.kb /tmp/uv-cache \
     && chown -R appuser:appuser /app /tmp/uv-cache
 
 USER appuser

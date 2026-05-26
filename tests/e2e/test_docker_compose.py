@@ -7,6 +7,8 @@ import uuid
 
 import pytest
 
+COMPOSE_ADMIN_API_KEY = os.getenv("KB_ADMIN_API_KEY", "local-admin-key")
+
 
 @pytest.mark.skipif(
     os.getenv("KB_DOCKER_E2E") != "1",
@@ -43,7 +45,10 @@ def test_docker_compose_upload_can_write_runtime_volumes() -> None:
         "http://localhost:8000/imports",
         data=payload,
         method="POST",
-        headers={"Content-Type": f"multipart/form-data; boundary={boundary}"},
+        headers={
+            "Content-Type": f"multipart/form-data; boundary={boundary}",
+            "X-KB-Admin-Key": COMPOSE_ADMIN_API_KEY,
+        },
     )
 
     with urllib.request.urlopen(request, timeout=10) as response:

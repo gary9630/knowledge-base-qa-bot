@@ -43,8 +43,8 @@ docker compose --profile test run --rm test
 sample data, seed `docs/` before local indexing, or upload files through the UI/API when
 running the Compose app. The Compose default admin key is `local-admin-key`; override it
 with `KB_ADMIN_API_KEY` before using anything beyond local development. Docker Compose
-configuration is covered by tests; this README does not claim a full Docker image build was
-verified in this environment.
+configuration, image build, app health, upload, worker indexing, and retrieval can be
+verified locally with the commands below.
 
 ## Environment
 
@@ -122,6 +122,9 @@ database. Docker packaging checks can be run with:
 
 ```bash
 docker compose --profile worker --profile test config
+docker compose up --build -d app
+KB_DOCKER_E2E=1 make test-e2e
+docker compose --profile worker run --rm worker
 ```
 
 ## Production Notes
