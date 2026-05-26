@@ -18,6 +18,11 @@ from app.api.ui import mount_ui_static
 from app.api.ui import router as ui_router
 from app.core.config import Settings
 from app.core.database import SessionLocal
+from app.observability.metrics import InMemoryMetrics
+from app.observability.middleware import (
+    RequestObservabilityMiddleware,
+    request_id_exception_handler,
+)
 from app.retrieval.embeddings import EmbeddingProvider, create_embedding_provider
 
 SessionFactory = Callable[[], Session]
@@ -34,8 +39,7 @@ def create_app(
     resolved_settings = settings or Settings()
     if resolved_settings.embedding_dimension != SCHEMA_EMBEDDING_DIMENSION:
         raise ValueError(
-            "embedding_dimension must match database schema "
-            f"({SCHEMA_EMBEDDING_DIMENSION})"
+            f"embedding_dimension must match database schema ({SCHEMA_EMBEDDING_DIMENSION})"
         )
     app = FastAPI(title="Knowledge Base Q&A Bot")
     app.state.settings = resolved_settings
@@ -44,6 +48,9 @@ def create_app(
         resolved_settings
     )
     app.state.answer_provider = answer_provider or create_answer_provider(resolved_settings)
+    app.state.metrics = InMemoryMetrics()
+    app.add_middleware(RequestObservabilityMiddleware)
+    app.add_exception_handler(Exception, request_id_exception_handler)
 
     mount_ui_static(app)
     app.include_router(ui_router)

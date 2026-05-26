@@ -1,9 +1,10 @@
 UV := uv run --python 3.12
 COMPOSE ?= docker compose
 API_URL ?= http://localhost:8000
+KB_ADMIN_API_KEY ?= local-admin-key
 KB_TEST_DATABASE_URL ?= postgresql+psycopg://kb:kb@postgres:5432/kb_test
 
-.PHONY: dev test test-unit test-integration test-e2e lint format migrate index eval-seed eval-run docker-build docker-up docker-down docker-logs docker-test
+.PHONY: dev test test-unit test-integration test-e2e lint format migrate index eval-seed eval-run ops-check docker-build docker-up docker-down docker-logs docker-test
 
 dev:
 	$(UV) uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
@@ -39,6 +40,17 @@ eval-seed:
 
 eval-run:
 	$(UV) python -m scripts.run_evals --trigger scheduled
+
+ops-check:
+	@echo "health:"
+	curl -fsS "$(API_URL)/health"
+	@echo
+	@echo "ready:"
+	curl -fsS "$(API_URL)/ready"
+	@echo
+	@echo "metrics:"
+	curl -fsS -H "X-KB-Admin-Key: $(KB_ADMIN_API_KEY)" "$(API_URL)/metrics"
+	@echo
 
 docker-build:
 	$(COMPOSE) build

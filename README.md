@@ -142,6 +142,35 @@ KB_DOCKER_E2E=1 make test-e2e
 docker compose --profile worker run --rm worker
 ```
 
+## Operations
+
+App-native operations endpoints are built into the FastAPI service:
+
+- `GET /health` is a lightweight liveness check.
+- `GET /ready` verifies database connectivity, pgvector availability, Alembic migration
+  state, indexed document counts, and production platform-auth configuration. It returns
+  HTTP 503 when any readiness check fails.
+- `GET /metrics` returns in-process JSON counters and recent request samples for quick
+  triage without a Prometheus/OpenTelemetry stack. It is protected by the admin API key
+  when `KB_ADMIN_API_KEY` is configured.
+
+Every response includes an `X-Request-ID` header. Clients can send their own request ID
+with that header, or the app will generate one. Completed and failed requests emit
+structured JSON log lines with the request ID, method, path, status code, duration, and
+client host so support can correlate browser/API reports to server logs.
+
+Run the deployment smoke check against a local or deployed API with:
+
+```bash
+make ops-check API_URL=http://localhost:8000 KB_ADMIN_API_KEY=local-admin-key
+```
+
+If readiness fails, check the named item in the `checks` object first. `database` means the
+app cannot query Postgres, `pgvector` means the vector extension is missing, `migrations`
+means the database revision is not at the Alembic head, `index` reports whether any
+documents/chunks have been indexed, and `platform_auth` reports missing production login
+configuration.
+
 ## Production Notes
 
 Use managed Postgres with pgvector enabled, real credentials, backups, and a migration step
@@ -151,5 +180,5 @@ auth is incomplete. Keep the platform login separate from admin access, and do n
 admin endpoints publicly without the admin key or an authenticated gateway. Store raw uploads
 and canonical Markdown in durable storage or mounted volumes. Use OpenAI or another
 production embedding provider with a stable vector dimension before indexing production data.
-Add observability, rate limits, and source-level access control before exposing the app
-publicly.
+Wire application logs to the hosting provider's log sink and run `make ops-check` after each
+deploy. Add rate limits and source-level access control before exposing the app publicly.

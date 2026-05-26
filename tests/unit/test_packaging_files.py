@@ -102,6 +102,7 @@ def test_makefile_exposes_dev_test_lint_migration_and_docker_targets() -> None:
         "format",
         "migrate",
         "index",
+        "ops-check",
         "docker-build",
         "docker-up",
         "docker-test",
@@ -114,6 +115,10 @@ def test_makefile_exposes_dev_test_lint_migration_and_docker_targets() -> None:
     assert "docker compose" in makefile
     assert "|| true" not in makefile
     assert "pg_isready" in makefile
+    assert "$(API_URL)/ready" in makefile
+    assert "$(API_URL)/metrics" in makefile
+    assert "KB_ADMIN_API_KEY" in makefile
+    assert "X-KB-Admin-Key" in makefile
     assert "SELECT 1 FROM pg_database" in makefile
     docker_test_body = makefile.split("docker-test:", 1)[1]
     assert "$(COMPOSE) build test" in docker_test_body

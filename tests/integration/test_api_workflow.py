@@ -57,7 +57,7 @@ def test_index_search_chat_sources_and_feedback_workflow(
     client = TestClient(app_with_test_db)
 
     ready_before = client.get("/ready")
-    assert ready_before.status_code == 200
+    assert ready_before.status_code == 503
     assert ready_before.json()["database"] is True
     assert ready_before.json()["index"] is False
 
@@ -140,6 +140,58 @@ def test_index_search_chat_sources_and_feedback_workflow(
         },
     )
     assert user_feedback_response.status_code == 400
+
+
+def test_ready_reports_operational_checks(app_with_test_db: FastAPI) -> None:
+    client = TestClient(app_with_test_db)
+
+    ready_before = client.get("/ready")
+    client.post("/index")
+    ready_after = client.get("/ready")
+
+    assert ready_before.status_code == 503
+    before_body = ready_before.json()
+    assert before_body["database"] is True
+    assert before_body["index"] is False
+    assert before_body["ready"] is False
+    assert before_body["checks"]["database"]["ok"] is True
+    assert before_body["checks"]["pgvector"]["ok"] is True
+    assert before_body["checks"]["migrations"]["ok"] is True
+    assert before_body["checks"]["migrations"]["current_revision"]
+    assert before_body["checks"]["migrations"]["head_revision"]
+    assert before_body["checks"]["index"]["ok"] is False
+    assert before_body["checks"]["platform_auth"]["ok"] is True
+
+    assert ready_after.status_code == 200
+    after_body = ready_after.json()
+    assert after_body["ready"] is True
+    assert after_body["checks"]["index"]["ok"] is True
+
+
+def test_ready_reports_missing_platform_auth_in_production(
+    db_session: Session,
+    tmp_path: Path,
+) -> None:
+    settings = Settings(
+        app_env="production",
+        docs_dir=str(tmp_path / "docs"),
+        raw_dir=str(tmp_path / "raw"),
+        kb_dir=str(tmp_path / ".kb"),
+        embedding_provider="fake",
+        answer_provider="fake",
+    )
+    app = create_app(settings=settings, session_factory=_session_factory(db_session))
+    client = TestClient(app)
+
+    response = client.get("/ready")
+
+    assert response.status_code == 503
+    body = response.json()
+    assert body["ready"] is False
+    assert body["checks"]["platform_auth"] == {
+        "ok": False,
+        "detail": "Platform auth is required but not configured.",
+    }
 
 
 def test_imports_upload_saves_raw_file_and_canonical_markdown(
@@ -278,9 +330,7 @@ def test_sources_endpoints_hide_non_public_documents(
     staff_response = client.get(f"/sources/{staff_document.id}")
     assert staff_response.status_code == 404
 
-    staff_section_response = client.get(
-        f"/sources/{staff_document.id}/sections/{staff_section.id}"
-    )
+    staff_section_response = client.get(f"/sources/{staff_document.id}/sections/{staff_section.id}")
     assert staff_section_response.status_code == 404
 
 
