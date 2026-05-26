@@ -48,6 +48,21 @@ error=<exception type>
 
 It increments `errors_total` and re-raises so the ASGI server/client sees the stream failure. The status code cannot be changed after response start, so the failure signal lives in logs and metrics.
 
+If an app-level streaming endpoint catches an exception and converts it into an SSE
+`error` event, the endpoint must mark the request with handled stream error metadata before
+yielding the error event. The middleware reads that marker at the final body frame and records
+the request as:
+
+```text
+event=request_failed
+stream_error=true
+handled=true
+status_code=<started response status, usually 200>
+```
+
+Client disconnects and cancellation errors are recorded as stream failures when they reach
+the middleware, then re-raised.
+
 ## Headers
 
 The middleware injects `X-Request-ID` into `http.response.start`. This ensures regular and streaming responses both include the same request id. The existing exception handler remains as fallback for framework-generated 500 responses.
@@ -65,6 +80,8 @@ streaming duration includes body iteration time
 streaming completion is recorded once after the final body frame
 late streaming generator errors increment errors_total
 late streaming generator errors log request_failed with stream_error=true
+handled /chat/stream SSE error events increment errors_total
+stream cancellations increment errors_total
 regular request behavior and request id propagation remain intact
 ```
 

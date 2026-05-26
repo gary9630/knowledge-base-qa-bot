@@ -27,6 +27,7 @@ from app.api.search import (
     candidate_response,
 )
 from app.models.tables import Conversation, Message, RetrievalEvent
+from app.observability.middleware import mark_stream_error
 from app.retrieval.hybrid import HybridRetriever
 from app.retrieval.models import RetrievalDecision, RetrievalStrategy, RetrievedCandidate
 
@@ -183,9 +184,11 @@ def _chat_stream_response_events(
             session=session,
         )
     except HTTPException as error:
+        mark_stream_error(request, error, detail=str(error.detail))
         session.rollback()
         yield {"event": "error", "data": _event_json({"detail": error.detail})}
-    except Exception:
+    except Exception as error:
+        mark_stream_error(request, error, detail="Chat stream failed.")
         session.rollback()
         yield {"event": "error", "data": _event_json({"detail": "Chat stream failed."})}
 

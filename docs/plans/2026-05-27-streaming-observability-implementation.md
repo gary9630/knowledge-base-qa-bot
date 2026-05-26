@@ -101,12 +101,59 @@ Always re-raise the exception.
 
 Run the targeted test and full observability unit tests.
 
-## Task 3: Regression and Deploy Verification
+## Task 3: Handled Chat Stream Error Events
 
 **Files:**
-- Modify only if tests require small expectation updates.
+- Modify: `tests/integration/test_chat_stream.py`
+- Modify: `app/api/chat.py`
+- Modify: `app/observability/middleware.py`
 
-**Step 1: Run local verification**
+**Step 1: Write the failing test**
+
+Add a DB-backed `/chat/stream` test using a failing answer provider. Assert:
+
+```text
+the response status is 200
+the SSE body ends with event=error
+errors_total is 1
+latest request route is POST /chat/stream
+request_failed log includes stream_error=true and handled=true
+```
+
+**Step 2: Run test to verify it fails**
+
+Run in Docker:
+
+```bash
+docker compose run --rm -e KB_DATABASE_URL_TEST=postgresql+psycopg://kb:kb@postgres:5432/kb_test test pytest tests/integration/test_chat_stream.py::test_chat_stream_provider_error_records_stream_failure -q
+```
+
+Expected: FAIL because the chat generator catches the provider failure and emits an SSE
+error event without marking the request as failed.
+
+**Step 3: Implement handled error marking**
+
+Add a small stream error marker helper in observability middleware. Call it from
+`_chat_stream_response_events()` before yielding an SSE error event. On the final body frame,
+record a handled stream error instead of request completion when the marker is present.
+
+**Step 4: Verify**
+
+Run the targeted Docker-backed test and full chat stream integration tests.
+
+## Task 4: Cancellation and Deploy Verification
+
+**Files:**
+- Modify: `tests/unit/test_observability_middleware.py`
+- Modify only other files if tests require small expectation updates.
+
+**Step 1: Add cancellation regression**
+
+Add a direct ASGI middleware test where the downstream app sends response start, sends one
+body frame with `more_body=true`, then raises `asyncio.CancelledError`. Assert the request is
+recorded once with `errors_total=1` and `stream_error=true`.
+
+**Step 2: Run local verification**
 
 Run:
 
@@ -116,7 +163,7 @@ uv run --python 3.12 pytest -q
 make lint
 ```
 
-**Step 2: Run Docker verification**
+**Step 3: Run Docker verification**
 
 Run:
 
@@ -127,6 +174,6 @@ KB_DOCKER_E2E=1 make test-e2e
 make ops-check
 ```
 
-**Step 3: Commit and push**
+**Step 4: Commit and push**
 
 Stage only streaming observability docs/code/tests. Leave `.python-version`, `project-ideas.md`, and `sample-docs/` untracked.

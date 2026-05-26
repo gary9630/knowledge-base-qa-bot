@@ -1,9 +1,12 @@
 from __future__ import annotations
 
 import json
-from collections.abc import Callable
+import logging
+from collections.abc import Callable, Iterator, Sequence
+from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
+from typing import cast
 from uuid import UUID
 
 import pytest
@@ -11,8 +14,10 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
+from app.answer.providers import AnswerSource
 from app.core.config import Settings
 from app.main import create_app
+from app.observability.middleware import REQUEST_LOGGER_NAME
 
 
 @dataclass(frozen=True)
@@ -125,6 +130,58 @@ def test_chat_stream_sends_sources_tokens_and_done(
     assert UUID(done_payload["retrieval_event_id"])
 
 
+def test_chat_stream_provider_error_records_stream_failure(
+    db_session: Session,
+    tmp_path: Path,
+) -> None:
+    docs_dir = tmp_path / "docs"
+    raw_dir = tmp_path / "raw"
+    kb_dir = tmp_path / ".kb"
+    docs_dir.mkdir()
+    (docs_dir / "faq.md").write_text(
+        "# FAQ\n\n## Course Site\n\nCourse site is https://buildmoat.org/\n",
+        encoding="utf-8",
+    )
+    app = create_app(
+        settings=Settings(
+            docs_dir=str(docs_dir),
+            raw_dir=str(raw_dir),
+            kb_dir=str(kb_dir),
+            embedding_provider="fake",
+            answer_provider="fake",
+        ),
+        session_factory=_session_factory(db_session),
+        answer_provider=FailingAnswerProvider(),
+    )
+    client = TestClient(app)
+    index_response = client.post("/index")
+    assert index_response.status_code == 200
+
+    with _captured_request_logs(logging.ERROR) as records:
+        with client.stream(
+            "POST",
+            "/chat/stream",
+            json={"query": "Where is the course site?"},
+            headers={"X-Request-ID": "chat-stream-error"},
+        ) as response:
+            assert response.status_code == 200
+            body = "".join(response.iter_text())
+
+    metrics = app.state.metrics.snapshot()
+    log_payloads = [_json_log(record.message) for record in records]
+    events = _parse_sse_events(body)
+
+    assert events[-1]["event"] == "error"
+    assert metrics["errors_total"] == 1
+    assert metrics["latest_requests"][0]["request_id"] == "chat-stream-error"
+    assert metrics["latest_requests"][0]["route"] == "POST /chat/stream"
+    assert log_payloads[0]["event"] == "request_failed"
+    assert log_payloads[0]["request_id"] == "chat-stream-error"
+    assert log_payloads[0]["stream_error"] is True
+    assert log_payloads[0]["handled"] is True
+    assert log_payloads[0]["error"] == "HTTPException"
+
+
 def test_parse_sse_events_supports_crlf_frames() -> None:
     body = 'event: sources\r\ndata: {"sources":[]}\r\n\r\nevent: done\r\ndata: {}\r\n\r\n'
 
@@ -147,6 +204,52 @@ def _parse_sse_events(body: str) -> list[dict[str, str]]:
         if event:
             events.append(event)
     return events
+
+
+class FailingAnswerProvider:
+    def generate_answer(
+        self,
+        query: str,
+        sources: Sequence[AnswerSource],
+        *,
+        strict: bool = False,
+    ) -> str:
+        raise RuntimeError("answer provider failed")
+
+
+class _ListHandler(logging.Handler):
+    def __init__(self, level: int) -> None:
+        super().__init__(level)
+        self.records: list[logging.LogRecord] = []
+
+    def emit(self, record: logging.LogRecord) -> None:
+        self.records.append(record)
+
+
+@contextmanager
+def _captured_request_logs(level: int) -> Iterator[list[logging.LogRecord]]:
+    logger = logging.getLogger(REQUEST_LOGGER_NAME)
+    handler = _ListHandler(level)
+    previous_level = logger.level
+    previous_disabled = logger.disabled
+    previous_global_disable = logging.root.manager.disable
+    logger.addHandler(handler)
+    logger.setLevel(level)
+    logger.disabled = False
+    logging.disable(logging.NOTSET)
+    try:
+        yield handler.records
+    finally:
+        logger.removeHandler(handler)
+        logger.setLevel(previous_level)
+        logger.disabled = previous_disabled
+        logging.disable(previous_global_disable)
+
+
+def _json_log(message: str) -> dict[str, object]:
+    payload = json.loads(message)
+    assert isinstance(payload, dict)
+    return cast(dict[str, object], payload)
 
 
 def _session_factory(db_session: Session) -> Callable[[], Session]:

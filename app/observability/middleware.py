@@ -4,74 +4,162 @@ import json
 import logging
 import re
 import time
-from collections.abc import Awaitable, Callable
+from dataclasses import dataclass
 from uuid import uuid4
 
-from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import PlainTextResponse, Response
-from starlette.types import ASGIApp
+from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from app.observability.metrics import InMemoryMetrics, RequestMetric
 
 REQUEST_ID_HEADER = "X-Request-ID"
 REQUEST_LOGGER_NAME = "app.observability.requests"
 _REQUEST_ID_RE = re.compile(r"^[A-Za-z0-9._:-]{1,128}$")
+_STREAM_ERROR_STATE_KEY = "_kb_stream_error"
 
 
-class RequestObservabilityMiddleware(BaseHTTPMiddleware):
+@dataclass(frozen=True)
+class StreamErrorInfo:
+    error_name: str
+    detail: str | None = None
+    exception: BaseException | None = None
+
+
+class RequestObservabilityMiddleware:
     def __init__(self, app: ASGIApp) -> None:
-        super().__init__(app)
+        self.app = app
         self._logger = logging.getLogger(REQUEST_LOGGER_NAME)
 
-    async def dispatch(
-        self,
-        request: Request,
-        call_next: Callable[[Request], Awaitable[Response]],
-    ) -> Response:
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+
+        request = Request(scope, receive)
         request_id = request_id_from_headers(request)
         request.state.request_id = request_id
         started_at = time.perf_counter()
         status_code = 500
-        error_name: str | None = None
+        response_started = False
+        recorded = False
+
+        async def send_with_observability(message: Message) -> None:
+            nonlocal recorded, response_started, status_code
+
+            if message["type"] == "http.response.start":
+                response_started = True
+                status_code = int(message.get("status", 500))
+                message = with_request_id_header(message, request_id)
+
+            await send(message)
+
+            if (
+                message["type"] == "http.response.body"
+                and not bool(message.get("more_body", False))
+                and not recorded
+            ):
+                duration_ms = _elapsed_ms(started_at)
+                stream_error = stream_error_from_request(request)
+                if stream_error is None:
+                    self._record_metric(
+                        request,
+                        request_id,
+                        status_code,
+                        duration_ms,
+                        error=False,
+                    )
+                    self._logger.info(
+                        _json_log(
+                            event="request_completed",
+                            request_id=request_id,
+                            method=request.method,
+                            path=request.url.path,
+                            status_code=status_code,
+                            duration_ms=duration_ms,
+                            client=_client_host(request),
+                        )
+                    )
+                else:
+                    self._record_handled_stream_error(
+                        request,
+                        request_id,
+                        status_code,
+                        duration_ms,
+                        stream_error,
+                    )
+                recorded = True
 
         try:
-            response = await call_next(request)
-            status_code = response.status_code
-        except Exception as error:
-            error_name = error.__class__.__name__
-            duration_ms = _elapsed_ms(started_at)
-            self._record_metric(request, request_id, status_code, duration_ms, error=True)
-            self._logger.error(
-                _json_log(
-                    event="request_failed",
-                    request_id=request_id,
-                    method=request.method,
-                    path=request.url.path,
-                    status_code=status_code,
-                    duration_ms=duration_ms,
-                    client=_client_host(request),
-                    error=error_name,
-                ),
-                exc_info=error,
-            )
+            await self.app(scope, receive, send_with_observability)
+        except BaseException as error:
+            if not recorded:
+                self._record_error(
+                    request,
+                    request_id,
+                    status_code if response_started else 500,
+                    _elapsed_ms(started_at),
+                    error,
+                    stream_error=response_started,
+                )
+                recorded = True
             raise
 
-        duration_ms = _elapsed_ms(started_at)
-        response.headers[REQUEST_ID_HEADER] = request_id
-        self._record_metric(request, request_id, status_code, duration_ms, error=False)
-        self._logger.info(
-            _json_log(
-                event="request_completed",
-                request_id=request_id,
-                method=request.method,
-                path=request.url.path,
-                status_code=status_code,
-                duration_ms=duration_ms,
-                client=_client_host(request),
-            )
+    def _record_error(
+        self,
+        request: Request,
+        request_id: str,
+        status_code: int,
+        duration_ms: int,
+        error: BaseException,
+        *,
+        stream_error: bool,
+    ) -> None:
+        self._record_metric(request, request_id, status_code, duration_ms, error=True)
+        payload = {
+            "event": "request_failed",
+            "request_id": request_id,
+            "method": request.method,
+            "path": request.url.path,
+            "status_code": status_code,
+            "duration_ms": duration_ms,
+            "client": _client_host(request),
+            "error": error.__class__.__name__,
+        }
+        if stream_error:
+            payload["stream_error"] = True
+        self._logger.error(
+            _json_log(**payload),
+            exc_info=error,
         )
-        return response
+
+    def _record_handled_stream_error(
+        self,
+        request: Request,
+        request_id: str,
+        status_code: int,
+        duration_ms: int,
+        error: StreamErrorInfo,
+    ) -> None:
+        self._record_metric(request, request_id, status_code, duration_ms, error=True)
+        payload = {
+            "event": "request_failed",
+            "request_id": request_id,
+            "method": request.method,
+            "path": request.url.path,
+            "status_code": status_code,
+            "duration_ms": duration_ms,
+            "client": _client_host(request),
+            "error": error.error_name,
+            "stream_error": True,
+            "handled": True,
+        }
+        if error.detail:
+            payload["detail"] = error.detail
+        self._logger.error(
+            _json_log(**payload),
+            exc_info=error.exception,
+        )
 
     def _record_metric(
         self,
@@ -110,6 +198,30 @@ def request_id_from_headers(request: Request) -> str:
     return create_request_id()
 
 
+def mark_stream_error(
+    request: Request,
+    error: BaseException,
+    *,
+    detail: str | None = None,
+) -> None:
+    setattr(
+        request.state,
+        _STREAM_ERROR_STATE_KEY,
+        StreamErrorInfo(
+            error_name=error.__class__.__name__,
+            detail=detail,
+            exception=error,
+        ),
+    )
+
+
+def stream_error_from_request(request: Request) -> StreamErrorInfo | None:
+    stream_error = getattr(request.state, _STREAM_ERROR_STATE_KEY, None)
+    if isinstance(stream_error, StreamErrorInfo):
+        return stream_error
+    return None
+
+
 async def request_id_exception_handler(request: Request, _exc: Exception) -> Response:
     request_id = getattr(request.state, "request_id", None)
     if not isinstance(request_id, str) or not _REQUEST_ID_RE.fullmatch(request_id):
@@ -126,6 +238,16 @@ def route_label(request: Request) -> str:
     if isinstance(route_path, str) and route_path:
         return f"{request.method} {route_path}"
     return f"{request.method} <unmatched>"
+
+
+def with_request_id_header(message: Message, request_id: str) -> Message:
+    headers = [
+        (name, value)
+        for name, value in message.get("headers", [])
+        if name.lower() != REQUEST_ID_HEADER.lower().encode("ascii")
+    ]
+    headers.append((REQUEST_ID_HEADER.encode("ascii"), request_id.encode("ascii")))
+    return {**message, "headers": headers}
 
 
 def _json_log(**payload: object) -> str:
