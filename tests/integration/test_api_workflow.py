@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 
 from app.core.config import Settings
 from app.main import create_app
-from app.models.tables import Feedback
+from app.models.tables import Document, Feedback, IngestionJob
 
 
 @pytest.fixture
@@ -137,6 +137,7 @@ def test_index_search_chat_sources_and_feedback_workflow(
 
 def test_imports_upload_saves_raw_file_and_canonical_markdown(
     app_with_test_db: FastAPI,
+    db_session: Session,
 ) -> None:
     client = TestClient(app_with_test_db)
 
@@ -147,11 +148,72 @@ def test_imports_upload_saves_raw_file_and_canonical_markdown(
 
     assert response.status_code == 200
     body = response.json()
+    assert body["id"]
+    assert body["status"] == "succeeded"
     assert body["filename"] == "upload.txt"
     assert Path(body["raw_path"]).read_bytes() == b"Question\n\nAnswer"
     canonical_markdown = Path(body["canonical_path"]).read_text(encoding="utf-8")
     assert "source_original: raw/upload.txt" in canonical_markdown
+    assert f"content_hash: {body['content_hash']}" in canonical_markdown
     assert "# upload" in canonical_markdown
+
+    job = db_session.get(IngestionJob, UUID(body["id"]))
+    assert job is not None
+    assert job.status == "succeeded"
+    assert job.content_hash == body["content_hash"]
+    assert job.raw_path == body["raw_path"]
+    assert job.canonical_path == body["canonical_path"]
+
+
+def test_imports_upload_deduplicates_by_content_hash(
+    app_with_test_db: FastAPI,
+    db_session: Session,
+) -> None:
+    client = TestClient(app_with_test_db)
+
+    first_response = client.post(
+        "/imports",
+        files={"file": ("upload.txt", b"Question\n\nAnswer", "text/plain")},
+    )
+    duplicate_response = client.post(
+        "/imports",
+        files={"file": ("copy.txt", b"Question\n\nAnswer", "text/plain")},
+    )
+
+    assert first_response.status_code == 200
+    assert duplicate_response.status_code == 200
+    first_body = first_response.json()
+    duplicate_body = duplicate_response.json()
+    assert duplicate_body["status"] == "duplicate"
+    assert duplicate_body["canonical_path"] == first_body["canonical_path"]
+    assert duplicate_body["metadata"]["duplicate_of"] == first_body["id"]
+    assert not Path(duplicate_body["raw_path"]).with_name("copy.txt").exists()
+
+    jobs = db_session.scalars(select(IngestionJob).order_by(IngestionJob.created_at.asc())).all()
+    assert [job.status for job in jobs] == ["succeeded", "duplicate"]
+
+
+def test_imported_upload_enters_db_index_with_canonical_metadata(
+    app_with_test_db: FastAPI,
+    db_session: Session,
+) -> None:
+    client = TestClient(app_with_test_db)
+
+    import_response = client.post(
+        "/imports",
+        files={"file": ("upload.txt", b"Question\n\nAnswer", "text/plain")},
+    )
+    index_response = client.post("/index")
+
+    assert import_response.status_code == 200
+    assert index_response.status_code == 200
+    import_body = import_response.json()
+    document = db_session.scalar(select(Document).where(Document.filename == "upload.md"))
+    assert document is not None
+    assert document.source_type == "imported"
+    assert document.imported_from == "raw/upload.txt"
+    assert document.metadata_json["content_hash"] == import_body["content_hash"]
+    assert document.metadata_json["canonical_path"] == import_body["canonical_path"]
 
 
 def _session_factory(db_session: Session) -> Callable[[], Session]:

@@ -167,6 +167,33 @@ class IndexingJob(JsonDefaultsMixin, TimestampMixin, Base):
     )
 
 
+class IngestionJob(JsonDefaultsMixin, TimestampMixin, Base):
+    __tablename__ = "ingestion_jobs"
+    __table_args__ = (
+        Index("ix_ingestion_jobs_kind_status", "kind", "status"),
+        Index("ix_ingestion_jobs_status_created_at", "status", "created_at"),
+    )
+    __json_defaults__ = {"metadata_json": dict}
+
+    id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), primary_key=True, default=uuid4)
+    kind: Mapped[str] = mapped_column(Text, nullable=False)
+    status: Mapped[str] = mapped_column(Text, nullable=False, index=True)
+    filename: Mapped[str] = mapped_column(Text, nullable=False)
+    content_type: Mapped[str | None] = mapped_column(Text)
+    content_hash: Mapped[str] = mapped_column(Text, nullable=False, index=True)
+    size_bytes: Mapped[int] = mapped_column(Integer, nullable=False)
+    raw_path: Mapped[str | None] = mapped_column(Text)
+    canonical_path: Mapped[str | None] = mapped_column(Text)
+    error: Mapped[str | None] = mapped_column(Text)
+    metadata_json: Mapped[dict[str, Any]] = mapped_column(
+        "metadata",
+        JSONB,
+        nullable=False,
+        default=dict,
+        server_default=text("'{}'::jsonb"),
+    )
+
+
 class Conversation(TimestampMixin, Base):
     __tablename__ = "conversations"
 

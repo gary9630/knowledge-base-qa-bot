@@ -115,6 +115,8 @@ def test_makefile_exposes_dev_test_lint_migration_and_docker_targets() -> None:
     assert "|| true" not in makefile
     assert "pg_isready" in makefile
     assert "SELECT 1 FROM pg_database" in makefile
+    docker_test_body = makefile.split("docker-test:", 1)[1]
+    assert "$(COMPOSE) build test" in docker_test_body
 
 
 def test_compose_config_is_valid_when_docker_cli_is_available() -> None:

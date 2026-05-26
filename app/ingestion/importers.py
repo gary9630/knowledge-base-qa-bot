@@ -59,9 +59,17 @@ def import_markdown_to_markdown(
     body: str,
     *,
     imported_at: str | datetime | None = None,
+    content_hash: str | None = None,
+    canonical_path: str | None = None,
 ) -> str:
     markdown_body = _ensure_trailing_newline(_normalize_markdown_body(filename, body))
-    return _with_product_frontmatter(filename, markdown_body, imported_at)
+    return _with_product_frontmatter(
+        filename,
+        markdown_body,
+        imported_at,
+        content_hash=content_hash,
+        canonical_path=canonical_path,
+    )
 
 
 def import_text_to_markdown(
@@ -69,10 +77,18 @@ def import_text_to_markdown(
     body: str,
     *,
     imported_at: str | datetime | None = None,
+    content_hash: str | None = None,
+    canonical_path: str | None = None,
 ) -> str:
     title = _filename_stem(filename)
     markdown_body = f"# {title}\n\n{_ensure_trailing_newline(body)}"
-    return _with_product_frontmatter(filename, markdown_body, imported_at)
+    return _with_product_frontmatter(
+        filename,
+        markdown_body,
+        imported_at,
+        content_hash=content_hash,
+        canonical_path=canonical_path,
+    )
 
 
 def import_html_to_markdown(
@@ -80,6 +96,8 @@ def import_html_to_markdown(
     body: str,
     *,
     imported_at: str | datetime | None = None,
+    content_hash: str | None = None,
+    canonical_path: str | None = None,
 ) -> str:
     soup = BeautifulSoup(body, "html.parser")
     for element in soup(["script", "style"]):
@@ -95,7 +113,13 @@ def import_html_to_markdown(
     if not markdown_body:
         markdown_body = f"# {_filename_stem(filename)}"
 
-    return _with_product_frontmatter(filename, f"{markdown_body}\n", imported_at)
+    return _with_product_frontmatter(
+        filename,
+        f"{markdown_body}\n",
+        imported_at,
+        content_hash=content_hash,
+        canonical_path=canonical_path,
+    )
 
 
 def import_pdf_to_markdown(
@@ -103,10 +127,18 @@ def import_pdf_to_markdown(
     body: bytes,
     *,
     imported_at: str | datetime | None = None,
+    content_hash: str | None = None,
+    canonical_path: str | None = None,
     extractor: Callable[[bytes], str] | None = None,
 ) -> str:
     pdf_text = (extractor or extract_pdf_text)(body)
-    return import_text_to_markdown(filename, pdf_text, imported_at=imported_at)
+    return import_text_to_markdown(
+        filename,
+        pdf_text,
+        imported_at=imported_at,
+        content_hash=content_hash,
+        canonical_path=canonical_path,
+    )
 
 
 def extract_pdf_text(body: bytes) -> str:
@@ -128,15 +160,22 @@ def _with_product_frontmatter(
     filename: str,
     body: str,
     imported_at: str | datetime | None,
+    *,
+    content_hash: str | None = None,
+    canonical_path: str | None = None,
 ) -> str:
-    return (
-        "---\n"
-        f"source_original: {_yaml_scalar(f'raw/{Path(filename).name}')}\n"
-        "source_type: imported\n"
-        f"imported_at: {_yaml_scalar(_format_imported_at(imported_at))}\n"
-        "---\n\n"
-        f"{body}"
-    )
+    frontmatter_lines = [
+        "---",
+        f"source_original: {_yaml_scalar(f'raw/{Path(filename).name}')}",
+        "source_type: imported",
+        f"imported_at: {_yaml_scalar(_format_imported_at(imported_at))}",
+    ]
+    if content_hash:
+        frontmatter_lines.append(f"content_hash: {_yaml_scalar(content_hash)}")
+    if canonical_path:
+        frontmatter_lines.append(f"canonical_path: {_yaml_scalar(canonical_path)}")
+
+    return "\n".join([*frontmatter_lines, "---", "", body])
 
 
 def _format_imported_at(imported_at: str | datetime | None) -> str:

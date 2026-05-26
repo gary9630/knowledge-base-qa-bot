@@ -198,6 +198,20 @@ def test_text_import_uses_filename_stem_heading_and_raw_source_path() -> None:
     assert "Question\n\nAnswer" in markdown
 
 
+def test_text_import_can_include_canonical_metadata_for_ingestion_jobs() -> None:
+    markdown = import_text_to_markdown(
+        "faq.txt",
+        "Question\n\nAnswer",
+        imported_at=IMPORTED_AT,
+        content_hash="abc123",
+        canonical_path="docs/faq.md",
+    )
+    frontmatter = _import_frontmatter(markdown)
+
+    assert "content_hash: abc123" in frontmatter
+    assert "canonical_path: docs/faq.md" in frontmatter
+
+
 def test_text_import_preserves_original_text_whitespace_after_heading() -> None:
     body = "\n\n    indented first line\nbody line\n  trailing spaces  \n\n"
 

@@ -197,9 +197,14 @@ button {
 }
 
 .section-heading h2,
+.section-heading h3,
 .inspector h2 {
   font-size: 13px;
   line-height: 1.25;
+}
+
+.section-heading h3 {
+  margin: 0;
 }
 
 .workspace-header {
@@ -223,7 +228,8 @@ button {
 
 .source-list,
 .selected-sources,
-.source-table {
+.source-table,
+.import-jobs {
   display: grid;
   gap: 8px;
   margin-top: 10px;
@@ -236,6 +242,7 @@ button {
 
 .source-row,
 .selected-source,
+.job-row,
 .tool-panel {
   display: grid;
   gap: 4px;
@@ -254,9 +261,34 @@ button.selected-source {
 }
 
 .source-row strong,
-.selected-source strong {
+.selected-source strong,
+.job-row strong {
   overflow-wrap: anywhere;
   font-size: 13px;
+}
+
+.tool-section {
+  margin-top: 16px;
+}
+
+.job-row {
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+}
+
+.job-body {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.job-row.is-succeeded,
+.job-row.is-duplicate {
+  border-color: #b7dbc7;
+}
+
+.job-row.is-failed {
+  border-color: #f0b8b1;
 }
 
 .source-meta {

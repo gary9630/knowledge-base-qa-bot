@@ -24,11 +24,17 @@ def test_ui_serves_three_column_workbench() -> None:
     assert "fetch(\"/chat/stream\"" in js_response.text
     assert "event.event === \"error\"" in js_response.text
     assert "fetch(\"/imports\"" in js_response.text
+    assert "fetch(\"/imports/status\"" in js_response.text
+    assert "/retry`" in js_response.text
+    assert "elements.uploadFile.value = \"\"" in js_response.text
+    assert "elements.uploadForm.reset()" not in js_response.text
     assert "fetch(\"/index\"" in js_response.text
     assert "X-KB-Admin-Key" in js_response.text
     assert "getJson(\"/index/status\"" in js_response.text
     assert "getJson(\"/sources\"" in js_response.text
     assert "parseSseDataLine" in js_response.text
+    assert 'id="import-jobs"' in response.text
+    assert 'id="refresh-imports"' in response.text
 
 
 def test_ui_exposes_mindmap_on_demand_wiring() -> None:

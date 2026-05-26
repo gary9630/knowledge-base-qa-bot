@@ -81,6 +81,10 @@ Upload PDF, Markdown, text, or HTML and convert it to canonical Markdown:
 ```bash
 curl -H "X-KB-Admin-Key: $KB_ADMIN_API_KEY" \
   -F "file=@notes.pdf" http://localhost:8000/imports
+curl -H "X-KB-Admin-Key: $KB_ADMIN_API_KEY" \
+  http://localhost:8000/imports/status
+curl -H "X-KB-Admin-Key: $KB_ADMIN_API_KEY" \
+  -X POST http://localhost:8000/imports/<job-id>/retry
 ```
 
 Rebuild the DB index from `docs/`:
@@ -101,6 +105,7 @@ curl -X POST http://localhost:8000/chat \
 
 Useful read endpoints:
 
+- `GET /imports/status`, `GET /imports/{job_id}`, and `POST /imports/{job_id}/retry`
 - `GET /sources` and `GET /sources/{document_id}`
 - `GET /sources/{document_id}/sections/{section_id}`
 - `GET /mindmap`

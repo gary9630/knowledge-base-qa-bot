@@ -29,13 +29,14 @@ def test_docker_compose_health_endpoint() -> None:
 def test_docker_compose_upload_can_write_runtime_volumes() -> None:
     boundary = f"----kb-form-{uuid.uuid4().hex}"
     filename = f"compose-write-{uuid.uuid4().hex}.txt"
+    content = f"Docker compose write check {uuid.uuid4().hex}"
     payload = "\r\n".join(
         [
             f"--{boundary}",
             f'Content-Disposition: form-data; name="file"; filename="{filename}"',
             "Content-Type: text/plain",
             "",
-            "Docker compose write check",
+            content,
             f"--{boundary}--",
             "",
         ]
@@ -55,5 +56,8 @@ def test_docker_compose_upload_can_write_runtime_volumes() -> None:
         body = json.loads(response.read().decode("utf-8"))
 
     assert response.status == 200
+    assert body["id"]
     assert body["filename"] == filename
+    assert body["status"] == "succeeded"
+    assert body["content_hash"]
     assert body["canonical_path"].endswith(f"{filename.removesuffix('.txt')}.md")

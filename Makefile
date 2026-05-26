@@ -50,4 +50,5 @@ docker-test:
 	$(COMPOSE) up -d postgres
 	$(COMPOSE) exec postgres sh -c 'until pg_isready -U "$$POSTGRES_USER" -d "$$POSTGRES_DB"; do sleep 1; done'
 	$(COMPOSE) exec postgres sh -c 'set -eu; DB_EXISTS=$$(psql -U "$$POSTGRES_USER" -d postgres -tAc "SELECT 1 FROM pg_database WHERE datname = '\''kb_test'\''"); if [ "$$DB_EXISTS" != "1" ]; then createdb -U "$$POSTGRES_USER" kb_test; fi'
+	$(COMPOSE) build test
 	$(COMPOSE) run --rm -e KB_DATABASE_URL_TEST=$(KB_TEST_DATABASE_URL) test pytest

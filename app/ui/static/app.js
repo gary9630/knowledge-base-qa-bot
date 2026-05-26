@@ -10,6 +10,7 @@
       },
     },
     mindmapLoaded: false,
+    importJobs: [],
     selectedSources: [],
   };
 
@@ -38,6 +39,8 @@
     uploadForm: $("#upload-form"),
     adminKey: $("#admin-key"),
     uploadFile: $("#upload-file"),
+    refreshImports: $("#refresh-imports"),
+    importJobs: $("#import-jobs"),
     rebuildIndex: $("#rebuild-index"),
     operationLog: $("#operation-log"),
   };
@@ -536,6 +539,7 @@
     elements.uploadForm.addEventListener("submit", uploadFile);
     elements.rebuildIndex.addEventListener("click", rebuildIndex);
     elements.refreshStatus.addEventListener("click", refreshStatus);
+    elements.refreshImports.addEventListener("click", refreshImportJobs);
   }
 
   async function uploadFile(event) {
@@ -560,10 +564,10 @@
         throw new Error(await responseError(response));
       }
       const payload = await response.json();
-      appendOperation(`Imported ${payload.filename} -> ${payload.canonical_path}`);
-      elements.uploadForm.reset();
-      await refreshSources();
-      await refreshMindmapAfterContentChange();
+      appendOperation(`Import ${payload.status}: ${payload.filename} -> ${payload.canonical_path}`);
+      elements.uploadFile.value = "";
+      renderImportJobs([payload, ...state.importJobs]);
+      await refreshImportJobs();
     } catch (error) {
       appendOperation(`Upload failed: ${errorMessage(error)}`);
     }
@@ -613,6 +617,77 @@
         statusRow("Chunks", "--"),
         statusRow("Updated", errorMessage(error)),
       );
+    }
+  }
+
+  async function refreshImportJobs() {
+    try {
+      const response = await fetch("/imports/status", {
+        headers: adminHeaders(),
+      });
+      if (!response.ok) {
+        throw new Error(await responseError(response));
+      }
+      const payload = await response.json();
+      renderImportJobs(payload.jobs || []);
+    } catch (error) {
+      state.importJobs = [];
+      elements.importJobs.replaceChildren(emptyText(`Import jobs unavailable: ${errorMessage(error)}`));
+    }
+  }
+
+  function renderImportJobs(jobs) {
+    state.importJobs = Array.isArray(jobs) ? jobs : [];
+    elements.importJobs.replaceChildren();
+
+    if (state.importJobs.length === 0) {
+      elements.importJobs.append(emptyText("No import jobs loaded."));
+      return;
+    }
+
+    state.importJobs.slice(0, 10).forEach((job) => {
+      const row = document.createElement("div");
+      row.className = `job-row is-${job.status || "unknown"}`;
+
+      const body = document.createElement("div");
+      body.className = "job-body";
+      const title = document.createElement("strong");
+      title.textContent = job.filename || "Uploaded source";
+      const meta = document.createElement("span");
+      meta.className = "source-meta";
+      meta.textContent = [job.kind, job.status, job.updated_at].filter(Boolean).join(" · ");
+      body.append(title, meta);
+      row.append(body);
+
+      if (job.status === "failed") {
+        const retry = document.createElement("button");
+        retry.type = "button";
+        retry.className = "secondary-button";
+        retry.textContent = "Retry";
+        retry.addEventListener("click", () => retryImportJob(job.id));
+        row.append(retry);
+      }
+
+      elements.importJobs.append(row);
+    });
+  }
+
+  async function retryImportJob(jobId) {
+    try {
+      appendOperation("Retrying import job...");
+      const response = await fetch(`/imports/${jobId}/retry`, {
+        method: "POST",
+        headers: adminHeaders(),
+      });
+      if (!response.ok) {
+        throw new Error(await responseError(response));
+      }
+      const payload = await response.json();
+      appendOperation(`Import retry ${payload.status}: ${payload.filename}`);
+      await refreshImportJobs();
+    } catch (error) {
+      appendOperation(`Import retry failed: ${errorMessage(error)}`);
+      await refreshImportJobs();
     }
   }
 
