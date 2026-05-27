@@ -207,11 +207,26 @@
             <div>
               <h2>Sources</h2>
             </div>
-            <button class="secondary-button" type="button" id="refresh-status">Refresh Status</button>
+            <div class="button-row">
+              <button class="secondary-button" type="button" id="refresh-status">Refresh Status</button>
+              <button class="secondary-button" type="button" id="refresh-documents">Refresh Documents</button>
+            </div>
           </header>
+          <form class="document-form" id="document-lifecycle-form">
+            <label for="document-admin-key">Admin Key</label>
+            <input id="document-admin-key" name="document-admin-key" type="password" autocomplete="current-password" />
+          </form>
           <div class="source-table" id="source-table">
             <p class="muted">No indexed sources found.</p>
           </div>
+          <section class="tool-section" aria-labelledby="admin-documents-heading">
+            <div class="section-heading">
+              <h3 id="admin-documents-heading">Document Lifecycle</h3>
+            </div>
+            <div class="admin-documents" id="admin-documents" aria-live="polite">
+              <p class="muted">No admin documents loaded.</p>
+            </div>
+          </section>
         </section>
 
         <section class="workspace-panel" id="panel-evals" role="tabpanel" tabindex="0" data-panel="evals" aria-labelledby="tab-evals" hidden>

@@ -9,6 +9,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session, load_only, selectinload
 
 from app.api.dependencies import get_request_db_session, get_source_principal
+from app.document_lifecycle import active_document_filter
 from app.models.tables import Document, Section
 from app.source_access import SourcePrincipal, source_visibility_filter
 
@@ -73,6 +74,7 @@ def list_sources(
             ),
             selectinload(Document.sections).load_only(Section.id),
         )
+        .where(active_document_filter())
         .where(source_visibility_filter(Document.visibility, principal))
         .order_by(Document.filename.asc(), Document.id.asc())
     ).all()
@@ -98,6 +100,7 @@ def get_source(
             )
         )
         .where(Document.id == document_id)
+        .where(active_document_filter())
         .where(source_visibility_filter(Document.visibility, principal))
     )
     if document is None:
@@ -117,6 +120,7 @@ def get_source_section(
         .join(Document, Document.id == Section.document_id)
         .where(Section.document_id == document_id)
         .where(Section.id == section_id)
+        .where(active_document_filter())
         .where(source_visibility_filter(Document.visibility, principal))
     )
     if section is None:

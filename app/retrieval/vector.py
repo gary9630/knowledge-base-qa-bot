@@ -6,6 +6,7 @@ from typing import Any, cast
 from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
+from app.document_lifecycle import active_document_filter
 from app.models.tables import Chunk, Document, Section
 from app.retrieval.embeddings import EmbeddingProvider
 from app.retrieval.models import RetrievedCandidate, source_priority_for
@@ -44,6 +45,7 @@ class VectorRetriever:
             .join(Chunk, Chunk.section_id == Section.id)
             .join(Document, Document.id == Section.document_id)
             .where(Chunk.embedding.is_not(None))
+            .where(active_document_filter())
             .order_by(
                 distance.asc(),
                 Section.created_at.asc(),

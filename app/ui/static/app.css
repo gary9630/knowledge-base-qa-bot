@@ -267,6 +267,7 @@ button {
 .selected-sources,
 .source-table,
 .import-jobs,
+.admin-documents,
 .audit-events,
 .eval-cases,
 .eval-results,
@@ -285,6 +286,7 @@ button {
 .source-row,
 .selected-source,
 .job-row,
+.document-row,
 .audit-row,
 .eval-row,
 .report-row,
@@ -309,6 +311,7 @@ button.selected-source {
 .source-row strong,
 .selected-source strong,
 .job-row strong,
+.document-row strong,
 .eval-row strong,
 .report-row strong,
 .feedback-row strong {
@@ -320,6 +323,7 @@ button.selected-source {
   margin-top: 16px;
 }
 
+.document-row,
 .job-row {
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
@@ -337,6 +341,20 @@ button.selected-source {
 }
 
 .job-row.is-failed {
+  border-color: #f0b8b1;
+}
+
+.document-row.is-indexed {
+  border-color: #b7dbc7;
+}
+
+.document-row.is-disabled {
+  border-color: #f2d08a;
+}
+
+.document-row.is-deleted,
+.document-row.is-source_missing,
+.document-row.is-not_indexed {
   border-color: #f0b8b1;
 }
 
@@ -416,6 +434,7 @@ button.selected-source {
 
 .chat-form,
 .upload-form,
+.document-form,
 .audit-form,
 .eval-form {
   display: grid;
@@ -633,6 +652,7 @@ select {
 }
 
 .upload-form,
+.document-form,
 .audit-form,
 .eval-form {
   max-width: 640px;

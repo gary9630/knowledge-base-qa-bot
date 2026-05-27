@@ -63,6 +63,8 @@ def test_json_defaults_are_available_before_flush() -> None:
 
     assert document.visibility == ["public"]
     assert document.metadata_json == {}
+    assert document.lifecycle_status == "active"
+    assert document.lifecycle_reason is None
     assert section.metadata_json == {}
     assert chunk.metadata_json == {}
     assert indexing_job.stats_json == {}

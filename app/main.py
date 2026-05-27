@@ -7,6 +7,7 @@ from app.answer.providers import AnswerProvider, create_answer_provider
 from app.api.audit import router as audit_router
 from app.api.auth import router as auth_router
 from app.api.chat import router as chat_router
+from app.api.documents import router as documents_router
 from app.api.evals import router as evals_router
 from app.api.feedback import router as feedback_router
 from app.api.health import router as health_router
@@ -68,6 +69,7 @@ def create_app(
     app.include_router(feedback_router)
     app.include_router(evals_router)
     app.include_router(audit_router)
+    app.include_router(documents_router)
     return app
 
 

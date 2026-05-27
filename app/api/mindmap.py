@@ -9,6 +9,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session, load_only, selectinload
 
 from app.api.dependencies import get_request_db_session, get_source_principal
+from app.document_lifecycle import active_document_filter
 from app.models.tables import Document, Section
 from app.source_access import SourcePrincipal, source_visibility_filter
 
@@ -65,6 +66,7 @@ def mindmap(
                 Section.token_count,
             ),
         )
+        .where(active_document_filter())
         .where(source_visibility_filter(Document.visibility, principal))
         .order_by(Document.filename.asc(), Document.id.asc())
     ).all()

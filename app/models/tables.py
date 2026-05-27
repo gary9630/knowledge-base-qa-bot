@@ -50,12 +50,14 @@ class Document(JsonDefaultsMixin, TimestampMixin, Base):
     __table_args__ = (
         Index("ix_documents_filename", "filename"),
         Index("ix_documents_source_type", "source_type"),
+        Index("ix_documents_lifecycle_status", "lifecycle_status"),
         Index("ix_documents_visibility", "visibility", postgresql_using="gin"),
     )
     __json_defaults__ = {
         "visibility": default_visibility,
         "metadata_json": dict,
     }
+    __scalar_defaults__ = {"lifecycle_status": "active"}
 
     id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), primary_key=True, default=uuid4)
     filename: Mapped[str] = mapped_column(Text, nullable=False)
@@ -63,6 +65,13 @@ class Document(JsonDefaultsMixin, TimestampMixin, Base):
     source_type: Mapped[str] = mapped_column(Text, nullable=False)
     title: Mapped[str | None] = mapped_column(Text)
     content_hash: Mapped[str] = mapped_column(Text, nullable=False, index=True)
+    lifecycle_status: Mapped[str] = mapped_column(
+        Text,
+        nullable=False,
+        default="active",
+        server_default=text("'active'"),
+    )
+    lifecycle_reason: Mapped[str | None] = mapped_column(Text)
     visibility: Mapped[list[str]] = mapped_column(
         JSONB,
         nullable=False,

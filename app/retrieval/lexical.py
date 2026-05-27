@@ -7,6 +7,7 @@ from typing import Any, cast
 from sqlalchemy import desc, func, or_, select
 from sqlalchemy.orm import Session
 
+from app.document_lifecycle import active_document_filter
 from app.models.tables import Document, Section
 from app.retrieval.models import RetrievedCandidate, expanded_query_text, source_priority_for
 
@@ -38,6 +39,7 @@ class LexicalRetriever:
             .join(Document, Document.id == Section.document_id)
             .where(Section.tsv.is_not(None))
             .where(cast(Any, Section.tsv).op("@@")(tsquery))
+            .where(active_document_filter())
             .order_by(desc(rank), Section.created_at.asc(), Section.id.asc())
             .limit(limit)
         )

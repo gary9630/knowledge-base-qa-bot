@@ -22,8 +22,9 @@ from app.api.dependencies import (
 )
 from app.auth.sessions import platform_auth_is_configured, platform_auth_requires_configuration
 from app.core.config import Settings
+from app.document_lifecycle import active_document_filter
 from app.indexing.service import IndexingService
-from app.models.tables import Chunk, IndexingJob
+from app.models.tables import Chunk, Document, IndexingJob, Section
 
 router = APIRouter()
 
@@ -135,7 +136,12 @@ def index_is_ready(session: Session) -> bool:
     if latest_job is None or latest_job.status != "succeeded":
         return False
 
-    chunk_count = session.scalar(select(func.count(Chunk.id)))
+    chunk_count = session.scalar(
+        select(func.count(Chunk.id))
+        .join(Section, Section.id == Chunk.section_id)
+        .join(Document, Document.id == Section.document_id)
+        .where(active_document_filter())
+    )
     return int(chunk_count or 0) > 0
 
 

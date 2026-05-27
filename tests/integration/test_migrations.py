@@ -7,6 +7,8 @@ def test_initial_migration_creates_core_tables(db_engine: Engine) -> None:
         inspector = inspect(connection)
 
         table_names = set(inspector.get_table_names())
+        document_columns = {column["name"] for column in inspector.get_columns("documents")}
+        document_indexes = {index["name"] for index in inspector.get_indexes("documents")}
         eval_case_columns = {column["name"] for column in inspector.get_columns("eval_cases")}
         eval_run_columns = {column["name"] for column in inspector.get_columns("eval_runs")}
         eval_case_indexes = {index["name"] for index in inspector.get_indexes("eval_cases")}
@@ -26,6 +28,8 @@ def test_initial_migration_creates_core_tables(db_engine: Engine) -> None:
         "eval_runs",
         "eval_results",
     }.issubset(table_names)
+    assert {"lifecycle_status", "lifecycle_reason"}.issubset(document_columns)
+    assert "ix_documents_lifecycle_status" in document_indexes
     assert {"source_kind", "seed_key", "promoted_feedback_id"}.issubset(eval_case_columns)
     assert "trigger" in eval_run_columns
     assert {

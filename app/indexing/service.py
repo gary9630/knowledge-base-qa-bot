@@ -11,6 +11,7 @@ from uuid import UUID
 from sqlalchemy import delete, func, select, update
 from sqlalchemy.orm import Session
 
+from app.document_lifecycle import DOCUMENT_STATUS_ACTIVE
 from app.indexing.export import (
     DocumentExport,
     SectionExport,
@@ -33,6 +34,10 @@ class IndexingResult:
     sections_indexed: int
     chunks_indexed: int
     export_path: Path
+
+
+class DocumentNotFoundError(ValueError):
+    pass
 
 
 @dataclass(frozen=True)
@@ -107,7 +112,12 @@ class IndexingService:
                         chunks_reused,
                     ) = self._index_file(path)
                     indexed_filenames.add(document_export.filename)
-                    document_exports.append(document_export)
+                    if self._document_lifecycle_status(document_export.filename) == (
+                        DOCUMENT_STATUS_ACTIVE
+                    ):
+                        document_exports.append(document_export)
+                    else:
+                        stats["files_skipped_lifecycle"] += 1
                     stats["files_indexed"] = len(indexed_filenames)
                     stats["sections_indexed"] += section_count
                     stats["chunks_indexed"] += chunk_count
@@ -127,6 +137,69 @@ class IndexingService:
                 export_path=export_path,
             )
             write_index_export_payload(self.kb_dir, export_payload)
+            self._mark_job_succeeded(job_id, stats)
+            return result
+        except Exception as error:
+            self._persist_failed_job(error, stats, job_id=job_id)
+            raise
+
+    def reindex_document(self, document_id: UUID) -> IndexingResult:
+        if self.session.in_transaction():
+            raise RuntimeError(
+                "IndexingService.reindex_document requires a session with no active transaction"
+            )
+
+        stats = _initial_stats()
+        job_id: UUID | None = None
+        try:
+            self._validate_docs_dir()
+            with self._transaction():
+                document = self.session.get(Document, document_id)
+                if document is None:
+                    raise DocumentNotFoundError("Document not found.")
+
+                path = Path(document.canonical_path)
+                if not path.exists():
+                    raise FileNotFoundError(f"Document source file does not exist: {path}")
+                if not path.is_file():
+                    raise FileNotFoundError(f"Document source path is not a file: {path}")
+
+                job = IndexingJob(
+                    kind="document_reindex",
+                    status="running",
+                    input_path=str(path),
+                    stats_json=dict(stats),
+                )
+                self.session.add(job)
+                self.session.flush()
+                job_id = job.id
+
+                document.lifecycle_status = DOCUMENT_STATUS_ACTIVE
+                document.lifecycle_reason = None
+
+                (
+                    _document_export,
+                    section_count,
+                    chunk_count,
+                    chunks_embedded,
+                    chunks_reused,
+                ) = self._index_file(path)
+                stats["files_discovered"] = 1
+                stats["files_indexed"] = 1
+                stats["sections_indexed"] = section_count
+                stats["chunks_indexed"] = chunk_count
+                stats["chunks_embedded"] = chunks_embedded
+                stats["chunks_reused"] = chunks_reused
+                stats["export_path"] = str(self.kb_dir / "index.json")
+                job.status = "indexed"
+                job.stats_json = dict(stats)
+
+            result = IndexingResult(
+                files_indexed=1,
+                sections_indexed=stats["sections_indexed"],
+                chunks_indexed=stats["chunks_indexed"],
+                export_path=self.kb_dir / "index.json",
+            )
             self._mark_job_succeeded(job_id, stats)
             return result
         except Exception as error:
@@ -369,6 +442,15 @@ class IndexingService:
         self.session.flush()
         return canonical_document
 
+    def _document_lifecycle_status(self, filename: str) -> str:
+        status = self.session.scalar(
+            select(Document.lifecycle_status)
+            .where(Document.filename == filename)
+            .order_by(Document.created_at.asc(), Document.id.asc())
+            .limit(1)
+        )
+        return str(status or DOCUMENT_STATUS_ACTIVE)
+
     def _delete_stale_documents(self, markdown_files: tuple[Path, ...]) -> None:
         filenames = {_relative_filename(self.docs_dir, path) for path in markdown_files}
         documents = self.session.scalars(select(Document)).all()
@@ -546,6 +628,7 @@ def _initial_stats() -> dict[str, Any]:
     return {
         "files_discovered": 0,
         "files_indexed": 0,
+        "files_skipped_lifecycle": 0,
         "sections_indexed": 0,
         "chunks_indexed": 0,
         "chunks_embedded": 0,

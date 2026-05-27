@@ -11,6 +11,7 @@
     },
     mindmapLoaded: false,
     importJobs: [],
+    adminDocuments: [],
     auditEvents: [],
     evalCases: [],
     evalRun: null,
@@ -41,6 +42,9 @@
     markdownPreview: $("#markdown-preview"),
     sourceList: $("#source-list"),
     sourceTable: $("#source-table"),
+    documentAdminKey: $("#document-admin-key"),
+    refreshDocuments: $("#refresh-documents"),
+    adminDocuments: $("#admin-documents"),
     mindmap: $("#mindmap"),
     loadMindmap: $("#load-mindmap"),
     refreshSources: $("#refresh-sources"),
@@ -409,6 +413,7 @@
 
   function bindSources() {
     elements.refreshSources.addEventListener("click", refreshSources);
+    elements.refreshDocuments.addEventListener("click", refreshAdminDocuments);
   }
 
   async function refreshSources() {
@@ -470,6 +475,136 @@
       },
     );
     return row;
+  }
+
+  async function refreshAdminDocuments() {
+    try {
+      const response = await fetch("/admin/documents", {
+        headers: adminHeaders(),
+      });
+      if (!response.ok) {
+        throw new Error(await responseError(response));
+      }
+      const payload = await response.json();
+      renderAdminDocuments(payload.documents || []);
+    } catch (error) {
+      state.adminDocuments = [];
+      elements.adminDocuments.replaceChildren(
+        emptyText(`Document lifecycle unavailable: ${errorMessage(error)}`),
+      );
+    }
+  }
+
+  function renderAdminDocuments(documents) {
+    state.adminDocuments = Array.isArray(documents) ? documents : [];
+    elements.adminDocuments.replaceChildren();
+
+    if (state.adminDocuments.length === 0) {
+      elements.adminDocuments.append(emptyText("No admin documents loaded."));
+      return;
+    }
+
+    state.adminDocuments.forEach((documentItem) => {
+      const row = document.createElement("div");
+      row.className = `document-row is-${documentItem.index_status || "unknown"}`;
+      const body = document.createElement("div");
+      body.className = "job-body";
+      const title = document.createElement("strong");
+      title.textContent = documentItem.title || documentItem.filename;
+      const meta = document.createElement("span");
+      meta.className = "source-meta";
+      meta.textContent = [
+        documentItem.lifecycle_status,
+        documentItem.index_status,
+        `${documentItem.section_count || 0} sections`,
+        `${documentItem.chunk_count || 0} chunks`,
+        documentItem.canonical_exists ? "source ok" : "source missing",
+      ].join(" · ");
+      body.append(title, meta);
+
+      const actions = document.createElement("div");
+      actions.className = "button-row";
+      if (documentItem.lifecycle_status === "disabled") {
+        actions.append(documentActionButton("Enable", () => setDocumentLifecycle(documentItem.id, "active")));
+      } else if (documentItem.lifecycle_status !== "deleted") {
+        actions.append(
+          documentActionButton("Disable", () =>
+            setDocumentLifecycle(documentItem.id, "disabled", "disabled from UI"),
+          ),
+        );
+      }
+      actions.append(documentActionButton("Reindex", () => reindexDocument(documentItem.id)));
+      actions.append(documentActionButton("Delete Index", () => deleteDocumentIndex(documentItem.id)));
+      row.append(body, actions);
+      elements.adminDocuments.append(row);
+    });
+  }
+
+  function documentActionButton(label, onClick) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "secondary-button";
+    button.textContent = label;
+    button.addEventListener("click", onClick);
+    return button;
+  }
+
+  async function setDocumentLifecycle(documentId, status, reason = null) {
+    try {
+      const response = await fetch(`/admin/documents/${documentId}/lifecycle`, {
+        method: "PATCH",
+        headers: jsonAdminHeaders(),
+        body: JSON.stringify({ status, reason }),
+      });
+      if (!response.ok) {
+        throw new Error(await responseError(response));
+      }
+      const payload = await response.json();
+      appendOperation(`Document ${payload.lifecycle_status}: ${payload.filename}`);
+      await refreshAdminDocuments();
+      await refreshSources();
+      await refreshMindmapAfterContentChange();
+    } catch (error) {
+      appendOperation(`Document lifecycle update failed: ${errorMessage(error)}`);
+    }
+  }
+
+  async function deleteDocumentIndex(documentId) {
+    try {
+      const response = await fetch(`/admin/documents/${documentId}`, {
+        method: "DELETE",
+        headers: adminHeaders(),
+      });
+      if (!response.ok) {
+        throw new Error(await responseError(response));
+      }
+      const payload = await response.json();
+      appendOperation(`Document index deleted: ${payload.filename}`);
+      await refreshAdminDocuments();
+      await refreshSources();
+      await refreshMindmapAfterContentChange();
+    } catch (error) {
+      appendOperation(`Document index delete failed: ${errorMessage(error)}`);
+    }
+  }
+
+  async function reindexDocument(documentId) {
+    try {
+      const response = await fetch(`/admin/documents/${documentId}/reindex`, {
+        method: "POST",
+        headers: adminHeaders(),
+      });
+      if (!response.ok) {
+        throw new Error(await responseError(response));
+      }
+      const payload = await response.json();
+      appendOperation(`Document reindexed: ${payload.filename}`);
+      await refreshAdminDocuments();
+      await refreshSources();
+      await refreshMindmapAfterContentChange();
+    } catch (error) {
+      appendOperation(`Document reindex failed: ${errorMessage(error)}`);
+    }
   }
 
   async function previewDocument(documentItem) {
@@ -1335,6 +1470,7 @@
   function adminHeaders() {
     const adminKey = (
       elements.adminKey.value ||
+      elements.documentAdminKey.value ||
       elements.auditAdminKey.value ||
       elements.evalAdminKey.value ||
       ""

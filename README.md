@@ -148,6 +148,7 @@ Useful read endpoints:
 - `GET /sources` and `GET /sources/{document_id}`
 - `GET /sources/{document_id}/sections/{section_id}`
 - `GET /mindmap`
+- `GET /admin/documents` for document lifecycle and index-health management
 - `GET /admin/audit-events` for admin/security audit events
 - `POST /search`
 - `POST /chat/stream` for server-sent token events
@@ -207,6 +208,13 @@ Audit events are written for platform login success/failure/logout, admin access
 grant/deny, rate-limit blocks, and upload concurrency blocks. The log stores request
 metadata such as request ID, method, path, client host, and user agent. Admin keys are
 fingerprinted before storage, and passwords are never written to audit metadata.
+
+Admins can manage source lifecycle through `GET /admin/documents`,
+`PATCH /admin/documents/{document_id}/lifecycle`, `DELETE /admin/documents/{document_id}`,
+and `POST /admin/documents/{document_id}/reindex`. Lifecycle states are `active`,
+`disabled`, and `deleted`. Non-active documents are hidden from sources, search, chat
+retrieval, and mindmap responses. Delete means "delete from the DB index"; source files
+remain on disk and can be restored with single-document reindex.
 
 Run the deployment smoke check against a local or deployed API with:
 

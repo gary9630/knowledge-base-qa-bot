@@ -106,6 +106,24 @@ def test_ui_exposes_audit_log_wiring() -> None:
     assert "elements.auditAdminKey" in js_response.text
 
 
+def test_ui_exposes_document_lifecycle_wiring() -> None:
+    client = TestClient(create_app())
+
+    response = client.get("/")
+    js_response = client.get("/static/app.js")
+
+    assert response.status_code == 200
+    assert 'id="document-admin-key"' in response.text
+    assert 'id="refresh-documents"' in response.text
+    assert 'id="admin-documents"' in response.text
+    assert "fetch(\"/admin/documents\"" in js_response.text
+    assert "fetch(`/admin/documents/${documentId}/lifecycle`" in js_response.text
+    assert "fetch(`/admin/documents/${documentId}`" in js_response.text
+    assert "fetch(`/admin/documents/${documentId}/reindex`" in js_response.text
+    assert "renderAdminDocuments" in js_response.text
+    assert "elements.documentAdminKey" in js_response.text
+
+
 def test_ui_exposes_mindmap_on_demand_wiring() -> None:
     client = TestClient(create_app())
 

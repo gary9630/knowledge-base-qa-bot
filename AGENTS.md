@@ -47,6 +47,7 @@
 - Source access labels are enforced across search, chat, sources, and mindmap. Learners see `public`, `role:<role>`, `user:<username>`, `cohort:<name>` from `KB_PLATFORM_COHORTS`, plus `KB_PLATFORM_EXTRA_VISIBILITY_LABELS`.
 - `/ready` includes a storage check for `docs`, `raw`, and `.kb` path usability.
 - Admin/security audit events are DB-backed in `audit_events` and exposed through protected `GET /admin/audit-events`.
+- Document lifecycle is managed through protected `/admin/documents` routes. Non-active documents must stay hidden from sources, search/chat retrieval, and mindmap.
 
 ## Testing Expectations
 
@@ -78,6 +79,7 @@ intentionally deferred until traffic or multi-replica deployment requires it.
 - Production deploy runbook lives at `ops/deploy.md`.
 - Do not expose admin endpoints publicly without the admin key or an authenticated gateway.
 - Never store raw admin keys or platform passwords in audit metadata; use `fingerprint_secret()` for admin-key actor IDs.
+- `DELETE /admin/documents/{document_id}` deletes DB index rows only; it must not remove canonical Markdown or raw upload files.
 - Run Alembic migrations once per deploy, then run `make ops-check`.
 - If switching to real embeddings, lock the model and vector dimension before indexing production data.
 - Sample content lives in `sample-docs/`; do not treat it as production data.
