@@ -10,12 +10,13 @@ from sqlalchemy.orm import Session
 from app.api.dependencies import (
     get_embedding_provider,
     get_request_db_session,
-    require_platform_access,
+    get_source_principal,
 )
 from app.retrieval.hybrid import HybridRetriever
 from app.retrieval.models import RetrievalDecision, RetrievalStrategy, RetrievedCandidate
+from app.source_access import SourcePrincipal, visibility_labels_for_principal
 
-router = APIRouter(dependencies=[Depends(require_platform_access)])
+router = APIRouter()
 
 API_RETRIEVAL_SCORE_THRESHOLD = 0.05
 
@@ -51,10 +52,12 @@ def search(
     payload: SearchRequest,
     request: Request,
     session: Annotated[Session, Depends(get_request_db_session)],
+    principal: Annotated[SourcePrincipal, Depends(get_source_principal)],
 ) -> SearchResponse:
     retriever = HybridRetriever(
         session=session,
         embedding_provider=get_embedding_provider(request),
+        visibility_labels=visibility_labels_for_principal(principal),
         score_threshold=API_RETRIEVAL_SCORE_THRESHOLD,
     )
     result = retriever.search(

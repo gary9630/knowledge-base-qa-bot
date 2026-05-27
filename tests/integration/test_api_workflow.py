@@ -334,6 +334,79 @@ def test_sources_endpoints_hide_non_public_documents(
     assert staff_section_response.status_code == 404
 
 
+def test_sources_endpoints_allow_configured_visibility_label(
+    db_session: Session,
+    tmp_path: Path,
+) -> None:
+    public_document = Document(
+        filename="public.md",
+        canonical_path="docs/public.md",
+        source_type="markdown",
+        title="Public",
+        content_hash="public-hash",
+    )
+    public_section = Section(
+        document=public_document,
+        source_id="public.md#public",
+        heading="Public",
+        heading_slug="public",
+        level=1,
+        body_md="# Public\n\nVisible",
+        token_count=3,
+        content_hash="public-section-hash",
+    )
+    staff_document = Document(
+        filename="staff.md",
+        canonical_path="docs/staff.md",
+        source_type="markdown",
+        title="Staff",
+        content_hash="staff-hash",
+        visibility=["staff"],
+    )
+    staff_section = Section(
+        document=staff_document,
+        source_id="staff.md#staff",
+        heading="Staff",
+        heading_slug="staff",
+        level=1,
+        body_md="# Staff\n\nVisible to configured staff label",
+        token_count=6,
+        content_hash="staff-section-hash",
+    )
+    db_session.add_all([public_document, public_section, staff_document, staff_section])
+    db_session.commit()
+
+    settings = Settings(
+        docs_dir=str(tmp_path / "docs"),
+        raw_dir=str(tmp_path / "raw"),
+        kb_dir=str(tmp_path / ".kb"),
+        embedding_provider="fake",
+        answer_provider="fake",
+        auth_secret_key="test-secret",
+        platform_username="student",
+        platform_password="pass",
+        platform_extra_visibility_labels="staff",
+    )
+    app = create_app(settings=settings, session_factory=_session_factory(db_session))
+    client = TestClient(app)
+    login_response = client.post(
+        "/auth/login",
+        json={"username": "student", "password": "pass"},
+    )
+    assert login_response.status_code == 200
+
+    list_response = client.get("/sources")
+    assert list_response.status_code == 200
+    assert [document["filename"] for document in list_response.json()["documents"]] == [
+        "public.md",
+        "staff.md",
+    ]
+
+    staff_response = client.get(f"/sources/{staff_document.id}")
+    assert staff_response.status_code == 200
+    assert staff_response.json()["filename"] == "staff.md"
+
+
 def _session_factory(db_session: Session) -> Callable[[], Session]:
     def create_session() -> Session:
         return Session(

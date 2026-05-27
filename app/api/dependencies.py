@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Iterator
-from typing import cast
+from typing import Annotated, cast
 
-from fastapi import Header, HTTPException, Request
+from fastapi import Depends, Header, HTTPException, Request
 from sqlalchemy.orm import Session
 
 from app.answer.providers import AnswerProvider, create_answer_provider
@@ -16,6 +16,7 @@ from app.auth.sessions import (
 from app.core.config import Settings
 from app.core.database import SessionLocal
 from app.retrieval.embeddings import EmbeddingProvider, create_embedding_provider
+from app.source_access import SourcePrincipal, source_principal_for_session
 
 SessionFactory = Callable[[], Session]
 PLATFORM_SESSION_COOKIE = "kb_platform_session"
@@ -112,3 +113,10 @@ def require_platform_access(
         raise HTTPException(status_code=403, detail="CSRF token is required.")
 
     return session
+
+
+def get_source_principal(
+    request: Request,
+    session: Annotated[PlatformSession | None, Depends(require_platform_access)],
+) -> SourcePrincipal:
+    return source_principal_for_session(get_app_settings(request), session)

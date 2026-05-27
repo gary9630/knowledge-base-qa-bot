@@ -11,8 +11,17 @@ _SETTINGS_ENV_KEYS = (
     "KB_OPENAI_API_KEY",
     "KB_OPENAI_EMBEDDING_MODEL",
     "KB_OPENAI_CHAT_MODEL",
+    "KB_PLATFORM_COHORTS",
+    "KB_PLATFORM_EXTRA_VISIBILITY_LABELS",
     "KB_ADMIN_API_KEY",
     "KB_MAX_UPLOAD_BYTES",
+    "KB_RATE_LIMIT_ENABLED",
+    "KB_RATE_LIMIT_WINDOW_SECONDS",
+    "KB_RATE_LIMIT_LOGIN_REQUESTS",
+    "KB_RATE_LIMIT_CHAT_REQUESTS",
+    "KB_RATE_LIMIT_ADMIN_REQUESTS",
+    "KB_RATE_LIMIT_UPLOAD_REQUESTS",
+    "KB_MAX_CONCURRENT_UPLOADS",
 )
 
 
@@ -37,6 +46,52 @@ def test_settings_support_fake_providers_for_tests() -> None:
 
     assert settings.embedding_provider == "fake"
     assert settings.answer_provider == "fake"
+
+
+def test_settings_rate_limit_defaults_are_production_safe() -> None:
+    settings = Settings()
+
+    assert settings.rate_limit_enabled is True
+    assert settings.rate_limit_window_seconds == 60
+    assert settings.rate_limit_login_requests == 10
+    assert settings.rate_limit_chat_requests == 60
+    assert settings.rate_limit_admin_requests == 60
+    assert settings.rate_limit_upload_requests == 10
+    assert settings.max_concurrent_uploads == 2
+
+
+def test_settings_rate_limit_values_can_be_overridden_by_env(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("KB_RATE_LIMIT_ENABLED", "false")
+    monkeypatch.setenv("KB_RATE_LIMIT_WINDOW_SECONDS", "30")
+    monkeypatch.setenv("KB_RATE_LIMIT_LOGIN_REQUESTS", "3")
+    monkeypatch.setenv("KB_RATE_LIMIT_CHAT_REQUESTS", "7")
+    monkeypatch.setenv("KB_RATE_LIMIT_ADMIN_REQUESTS", "11")
+    monkeypatch.setenv("KB_RATE_LIMIT_UPLOAD_REQUESTS", "2")
+    monkeypatch.setenv("KB_MAX_CONCURRENT_UPLOADS", "1")
+
+    settings = Settings()
+
+    assert settings.rate_limit_enabled is False
+    assert settings.rate_limit_window_seconds == 30
+    assert settings.rate_limit_login_requests == 3
+    assert settings.rate_limit_chat_requests == 7
+    assert settings.rate_limit_admin_requests == 11
+    assert settings.rate_limit_upload_requests == 2
+    assert settings.max_concurrent_uploads == 1
+
+
+def test_settings_source_access_values_can_be_overridden_by_env(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("KB_PLATFORM_COHORTS", "spring-2026, alumni")
+    monkeypatch.setenv("KB_PLATFORM_EXTRA_VISIBILITY_LABELS", "staff beta")
+
+    settings = Settings()
+
+    assert settings.platform_cohorts == "spring-2026, alumni"
+    assert settings.platform_extra_visibility_labels == "staff beta"
 
 
 def test_settings_docs_dir_can_be_overridden_by_prefixed_env(

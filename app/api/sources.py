@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Annotated, Any, cast
+from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -8,10 +8,11 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import Session, load_only, selectinload
 
-from app.api.dependencies import get_request_db_session, require_platform_access
+from app.api.dependencies import get_request_db_session, get_source_principal
 from app.models.tables import Document, Section
+from app.source_access import SourcePrincipal, source_visibility_filter
 
-router = APIRouter(dependencies=[Depends(require_platform_access)])
+router = APIRouter()
 
 
 class SectionSummaryResponse(BaseModel):
@@ -56,6 +57,7 @@ class SourcesResponse(BaseModel):
 @router.get("/sources", response_model=SourcesResponse)
 def list_sources(
     session: Annotated[Session, Depends(get_request_db_session)],
+    principal: Annotated[SourcePrincipal, Depends(get_source_principal)],
 ) -> SourcesResponse:
     documents = session.scalars(
         select(Document)
@@ -71,7 +73,7 @@ def list_sources(
             ),
             selectinload(Document.sections).load_only(Section.id),
         )
-        .where(cast(Any, Document.visibility).contains(["public"]))
+        .where(source_visibility_filter(Document.visibility, principal))
         .order_by(Document.filename.asc(), Document.id.asc())
     ).all()
     return SourcesResponse(documents=[document_summary(document) for document in documents])
@@ -81,6 +83,7 @@ def list_sources(
 def get_source(
     document_id: UUID,
     session: Annotated[Session, Depends(get_request_db_session)],
+    principal: Annotated[SourcePrincipal, Depends(get_source_principal)],
 ) -> DocumentResponse:
     document = session.scalar(
         select(Document)
@@ -95,7 +98,7 @@ def get_source(
             )
         )
         .where(Document.id == document_id)
-        .where(cast(Any, Document.visibility).contains(["public"]))
+        .where(source_visibility_filter(Document.visibility, principal))
     )
     if document is None:
         raise HTTPException(status_code=404, detail="Document not found.")
@@ -107,13 +110,14 @@ def get_source_section(
     document_id: UUID,
     section_id: UUID,
     session: Annotated[Session, Depends(get_request_db_session)],
+    principal: Annotated[SourcePrincipal, Depends(get_source_principal)],
 ) -> SectionResponse:
     section = session.scalar(
         select(Section)
         .join(Document, Document.id == Section.document_id)
         .where(Section.document_id == document_id)
         .where(Section.id == section_id)
-        .where(cast(Any, Document.visibility).contains(["public"]))
+        .where(source_visibility_filter(Document.visibility, principal))
     )
     if section is None:
         raise HTTPException(status_code=404, detail="Section not found.")

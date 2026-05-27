@@ -24,6 +24,8 @@ class InMemoryMetrics:
         self._latency_total_ms = 0
         self._responses_by_status: Counter[str] = Counter()
         self._responses_by_route: Counter[str] = Counter()
+        self._rate_limited_by_policy: Counter[str] = Counter()
+        self._concurrency_limited_by_policy: Counter[str] = Counter()
         self._latest_requests: deque[RequestMetric] = deque(maxlen=latest_limit)
 
     def record_request(self, metric: RequestMetric, *, error: bool = False) -> None:
@@ -36,6 +38,14 @@ class InMemoryMetrics:
             self._responses_by_route[metric.route] += 1
             self._latest_requests.appendleft(metric)
 
+    def record_rate_limited(self, policy: str) -> None:
+        with self._lock:
+            self._rate_limited_by_policy[policy] += 1
+
+    def record_concurrency_limited(self, policy: str) -> None:
+        with self._lock:
+            self._concurrency_limited_by_policy[policy] += 1
+
     def snapshot(self) -> dict[str, Any]:
         with self._lock:
             average_latency = (
@@ -45,6 +55,14 @@ class InMemoryMetrics:
                 "requests_total": self._requests_total,
                 "responses_by_status": dict(self._responses_by_status),
                 "responses_by_route": dict(self._responses_by_route),
+                "rate_limited_total": sum(self._rate_limited_by_policy.values()),
+                "rate_limited_by_policy": dict(self._rate_limited_by_policy),
+                "concurrency_limited_total": sum(
+                    self._concurrency_limited_by_policy.values()
+                ),
+                "concurrency_limited_by_policy": dict(
+                    self._concurrency_limited_by_policy
+                ),
                 "errors_total": self._errors_total,
                 "average_latency_ms": round(average_latency, 2),
                 "latest_requests": [

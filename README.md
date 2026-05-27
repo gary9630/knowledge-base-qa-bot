@@ -62,9 +62,18 @@ Settings use the `KB_` prefix unless noted.
 | `KB_AUTH_SECRET_KEY` | unset | HMAC secret for platform login sessions; production/staging require it. |
 | `KB_PLATFORM_USERNAME` | unset | Single platform username for course-facing login. |
 | `KB_PLATFORM_PASSWORD` | unset | Single platform password for course-facing login. |
+| `KB_PLATFORM_COHORTS` | unset | Comma/space-separated cohort names granted to the platform learner, exposed as `cohort:<name>` source labels. |
+| `KB_PLATFORM_EXTRA_VISIBILITY_LABELS` | unset | Extra source visibility labels granted to the platform learner, for example `staff`. |
 | `KB_PLATFORM_SESSION_TTL_SECONDS` | `86400` | Platform session lifetime in seconds. |
 | `KB_ADMIN_API_KEY` | unset | Optional admin key required for upload/index endpoints; production requires it. |
 | `KB_MAX_UPLOAD_BYTES` | `10000000` | Maximum upload size accepted by `/imports`. |
+| `KB_RATE_LIMIT_ENABLED` | `true` | Enables app-native rate limiting and upload concurrency guards. |
+| `KB_RATE_LIMIT_WINDOW_SECONDS` | `60` | Fixed rate-limit window size in seconds. |
+| `KB_RATE_LIMIT_LOGIN_REQUESTS` | `10` | Login attempts allowed per client identity per window. |
+| `KB_RATE_LIMIT_CHAT_REQUESTS` | `60` | Chat and streaming chat requests allowed per client/session per window. |
+| `KB_RATE_LIMIT_ADMIN_REQUESTS` | `60` | Admin write requests allowed per client/admin key per window. |
+| `KB_RATE_LIMIT_UPLOAD_REQUESTS` | `10` | Upload requests allowed per client/admin key per window. |
+| `KB_MAX_CONCURRENT_UPLOADS` | `2` | Concurrent upload requests allowed per app process. |
 | `KB_EMBEDDING_PROVIDER` | `fake` | Use `fake` for deterministic dev/test or `openai` for real embeddings. |
 | `KB_ANSWER_PROVIDER` | `fake` | Use `fake` for deterministic dev/test or `openai` for generated answers. |
 | `OPENAI_API_KEY` | unset | Required by OpenAI providers. |
@@ -113,6 +122,26 @@ When platform auth is configured, use the browser login flow for chat/search/sou
 inspection. The platform login is intentionally a single configured user, not registration
 or RBAC. Admin operations remain separate and require `X-KB-Admin-Key`.
 
+Source access is enforced before search, chat, source preview, and mindmap responses are
+returned. Canonical Markdown frontmatter can set `visibility`; omitted visibility defaults
+to `public`. A platform learner can see `public`, `role:<role>`, `user:<username>`,
+`cohort:<name>` labels from `KB_PLATFORM_COHORTS`, and any labels configured in
+`KB_PLATFORM_EXTRA_VISIBILITY_LABELS`. Examples:
+
+```markdown
+---
+visibility: public
+---
+
+---
+visibility: cohort:spring-2026
+---
+
+---
+visibility: staff
+---
+```
+
 Useful read endpoints:
 
 - `GET /imports/status`, `GET /imports/{job_id}`, and `POST /imports/{job_id}/retry`
@@ -142,14 +171,17 @@ KB_DOCKER_E2E=1 make test-e2e
 docker compose --profile worker run --rm worker
 ```
 
+Continuous integration is defined in `.github/workflows/ci.yml`. It runs lint/typecheck,
+local tests, Docker Compose config validation, and Docker-backed tests.
+
 ## Operations
 
 App-native operations endpoints are built into the FastAPI service:
 
 - `GET /health` is a lightweight liveness check.
 - `GET /ready` verifies database connectivity, pgvector availability, Alembic migration
-  state, indexed document counts, and production platform-auth configuration. It returns
-  HTTP 503 when any readiness check fails.
+  state, indexed document counts, production platform-auth configuration, and storage
+  path writability/creatability. It returns HTTP 503 when any readiness check fails.
 - `GET /metrics` returns in-process JSON counters and recent request samples for quick
   triage without a Prometheus/OpenTelemetry stack. It is protected by the admin API key
   when `KB_ADMIN_API_KEY` is configured.
@@ -158,6 +190,14 @@ Every response includes an `X-Request-ID` header. Clients can send their own req
 with that header, or the app will generate one. Completed and failed requests emit
 structured JSON log lines with the request ID, method, path, status code, duration, and
 client host so support can correlate browser/API reports to server logs.
+
+App-native abuse controls are enabled by default. `POST /auth/login`, `POST /chat`,
+`POST /chat/stream`, upload, and admin write routes return HTTP 429 with `Retry-After`
+and `X-RateLimit-*` headers when their configured per-window limit is exceeded. Uploads
+also have a per-process concurrency guard controlled by `KB_MAX_CONCURRENT_UPLOADS`.
+These limits are intentionally in-memory for the first single-process deploy model; use a
+gateway, Redis-backed limiter, or reverse proxy policy before running multiple app
+replicas.
 
 Run the deployment smoke check against a local or deployed API with:
 
@@ -168,17 +208,32 @@ make ops-check API_URL=http://localhost:8000 KB_ADMIN_API_KEY=local-admin-key
 If readiness fails, check the named item in the `checks` object first. `database` means the
 app cannot query Postgres, `pgvector` means the vector extension is missing, `migrations`
 means the database revision is not at the Alembic head, `index` reports whether any
-documents/chunks have been indexed, and `platform_auth` reports missing production login
-configuration.
+documents/chunks have been indexed, `platform_auth` reports missing production login
+configuration, and `storage` reports unusable `docs`, `raw`, or `.kb` paths.
+
+Create local Compose backups with:
+
+```bash
+make backup BACKUP_DIR=backups/$(date -u +%Y%m%dT%H%M%SZ)
+```
+
+This captures a `pg_dump --format=custom` database dump plus a tar archive for the
+`docs_data`, `raw_data`, and `kb_data` volumes. Restore operations require
+`CONFIRM_RESTORE=yes`; see `ops/backup-restore.md` before restoring.
+
+For production rollout steps, required secrets, smoke checks, and rollback procedure, see
+`ops/deploy.md`.
 
 ## Production Notes
 
 Use managed Postgres with pgvector enabled, real credentials, backups, and a migration step
-that runs once per deploy. Set `KB_AUTH_SECRET_KEY`, `KB_PLATFORM_USERNAME`,
+that runs once per deploy. Keep raw uploads, canonical Markdown, and `.kb` artifacts on
+durable mounted storage or managed object storage, and verify those paths through `/ready`.
+Set `KB_AUTH_SECRET_KEY`, `KB_PLATFORM_USERNAME`,
 `KB_PLATFORM_PASSWORD`, and `KB_ADMIN_API_KEY`; production/staging fail closed when platform
 auth is incomplete. Keep the platform login separate from admin access, and do not expose
-admin endpoints publicly without the admin key or an authenticated gateway. Store raw uploads
-and canonical Markdown in durable storage or mounted volumes. Use OpenAI or another
-production embedding provider with a stable vector dimension before indexing production data.
+admin endpoints publicly without the admin key or an authenticated gateway. Use OpenAI or
+another production embedding provider with a stable vector dimension before indexing production data.
 Wire application logs to the hosting provider's log sink and run `make ops-check` after each
-deploy. Add rate limits and source-level access control before exposing the app publicly.
+deploy. Tune the built-in rate limits and source-level access labels before exposing the
+app publicly.

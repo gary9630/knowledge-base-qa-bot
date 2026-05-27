@@ -19,6 +19,17 @@ def test_packaging_files_exist() -> None:
         assert (ROOT / path).is_file(), f"{path} should exist for deploy packaging"
 
 
+def test_ci_workflow_runs_lint_tests_and_docker_checks() -> None:
+    workflow = read_project_file(".github/workflows/ci.yml")
+
+    assert "python-version: \"3.12\"" in workflow
+    assert "uv sync --python 3.12 --group dev" in workflow
+    assert "make lint" in workflow
+    assert "make test" in workflow
+    assert "docker compose --profile worker --profile test config" in workflow
+    assert "make docker-test" in workflow
+
+
 def test_dockerfile_packages_python_312_fastapi_app() -> None:
     dockerfile = read_project_file("Dockerfile")
     runtime_stage = dockerfile.split("FROM app AS test", 1)[0]
@@ -93,6 +104,9 @@ def test_dockerignore_excludes_development_docs_from_runtime_image() -> None:
 def test_makefile_exposes_dev_test_lint_migration_and_docker_targets() -> None:
     makefile = read_project_file("Makefile")
     expected_targets = (
+        "backup",
+        "backup-db",
+        "backup-files",
         "dev",
         "test",
         "test-unit",
@@ -106,6 +120,8 @@ def test_makefile_exposes_dev_test_lint_migration_and_docker_targets() -> None:
         "docker-build",
         "docker-up",
         "docker-test",
+        "restore-db",
+        "restore-files",
     )
 
     for target in expected_targets:
@@ -122,6 +138,33 @@ def test_makefile_exposes_dev_test_lint_migration_and_docker_targets() -> None:
     assert "SELECT 1 FROM pg_database" in makefile
     docker_test_body = makefile.split("docker-test:", 1)[1]
     assert "$(COMPOSE) build test" in docker_test_body
+    assert "pg_dump" in makefile
+    assert "pg_restore" in makefile
+    assert "CONFIRM_RESTORE=yes" in makefile
+
+
+def test_backup_restore_runbook_documents_database_and_file_restore() -> None:
+    runbook = read_project_file("ops/backup-restore.md")
+
+    assert "pg_dump" in runbook
+    assert "pg_restore" in runbook
+    assert "docs_data" in runbook
+    assert "raw_data" in runbook
+    assert "kb_data" in runbook
+    assert "make ops-check" in runbook
+    assert "CONFIRM_RESTORE=yes" in runbook
+
+
+def test_production_deploy_runbook_documents_release_sequence() -> None:
+    runbook = read_project_file("ops/deploy.md")
+
+    assert "KB_AUTH_SECRET_KEY" in runbook
+    assert "KB_ADMIN_API_KEY" in runbook
+    assert "make backup" in runbook
+    assert "make migrate" in runbook
+    assert "make ops-check" in runbook
+    assert "docker compose" in runbook
+    assert "rollback" in runbook.lower()
 
 
 def test_compose_config_is_valid_when_docker_cli_is_available() -> None:

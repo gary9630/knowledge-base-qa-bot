@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Iterable
+from collections.abc import Iterable, Sequence
 from dataclasses import replace
 from typing import Protocol
 
@@ -29,15 +29,20 @@ class HybridRetriever:
         embedding_provider: EmbeddingProvider | None = None,
         lexical_retriever: Retriever | None = None,
         vector_retriever: Retriever | None = None,
+        visibility_labels: Sequence[str] | None = ("public",),
         score_threshold: float = 0.10,
     ) -> None:
         if score_threshold < 0.0:
             raise ValueError("score_threshold must be non-negative")
 
-        self.lexical_retriever = lexical_retriever or _build_lexical_retriever(session)
+        self.lexical_retriever = lexical_retriever or _build_lexical_retriever(
+            session,
+            visibility_labels,
+        )
         self.vector_retriever = vector_retriever or _build_vector_retriever(
             session,
             embedding_provider,
+            visibility_labels,
         )
         self.score_threshold = score_threshold
 
@@ -144,18 +149,26 @@ def _score_with_source_priority(
     }
 
 
-def _build_lexical_retriever(session: Session | None) -> LexicalRetriever:
+def _build_lexical_retriever(
+    session: Session | None,
+    visibility_labels: Sequence[str] | None,
+) -> LexicalRetriever:
     if session is None:
         raise ValueError("session is required when lexical_retriever is not provided")
-    return LexicalRetriever(session=session)
+    return LexicalRetriever(session=session, visibility_labels=visibility_labels)
 
 
 def _build_vector_retriever(
     session: Session | None,
     embedding_provider: EmbeddingProvider | None,
+    visibility_labels: Sequence[str] | None,
 ) -> VectorRetriever:
     if session is None:
         raise ValueError("session is required when vector_retriever is not provided")
     if embedding_provider is None:
         raise ValueError("embedding_provider is required when vector_retriever is not provided")
-    return VectorRetriever(session=session, embedding_provider=embedding_provider)
+    return VectorRetriever(
+        session=session,
+        embedding_provider=embedding_provider,
+        visibility_labels=visibility_labels,
+    )

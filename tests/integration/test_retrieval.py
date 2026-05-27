@@ -137,6 +137,42 @@ def test_retriever_excludes_non_public_documents_by_default(
     assert results.candidates == []
 
 
+def test_retriever_allows_configured_visibility_labels(
+    db_session: Session,
+    tmp_path: Path,
+) -> None:
+    docs_dir = tmp_path / "docs"
+    docs_dir.mkdir()
+    (docs_dir / "staff-only.md").write_text(
+        "---\n"
+        "source_type: transcript\n"
+        "visibility: staff\n"
+        "---\n\n"
+        "# Staff Only\n\n"
+        "staffonlytoken should be visible to staff search.\n",
+        encoding="utf-8",
+    )
+    embedding_provider = FakeEmbeddingProvider(dimension=1536)
+    service = IndexingService(
+        session=db_session,
+        docs_dir=docs_dir,
+        kb_dir=tmp_path / ".kb",
+        embedding_provider=embedding_provider,
+    )
+    service.rebuild_index()
+
+    retriever = HybridRetriever(
+        session=db_session,
+        embedding_provider=embedding_provider,
+        visibility_labels=("public", "staff"),
+        score_threshold=0.0,
+    )
+    results = retriever.search("staffonlytoken", strategy="lexical", limit=3)
+
+    assert results.decision == "can_answer"
+    assert results.candidates[0].source_id == "staff-only.md#staff-only"
+
+
 def test_vector_retriever_fetches_more_rows_until_limit_unique_sections(
     db_session: Session,
 ) -> None:

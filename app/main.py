@@ -23,6 +23,7 @@ from app.observability.middleware import (
     RequestObservabilityMiddleware,
     request_id_exception_handler,
 )
+from app.observability.rate_limit import RateLimitMiddleware
 from app.retrieval.embeddings import EmbeddingProvider, create_embedding_provider
 
 SessionFactory = Callable[[], Session]
@@ -49,6 +50,7 @@ def create_app(
     )
     app.state.answer_provider = answer_provider or create_answer_provider(resolved_settings)
     app.state.metrics = InMemoryMetrics()
+    app.add_middleware(RateLimitMiddleware)
     app.add_middleware(RequestObservabilityMiddleware)
     app.add_exception_handler(Exception, request_id_exception_handler)
 

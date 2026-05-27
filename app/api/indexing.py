@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from tempfile import TemporaryFile
 from typing import Annotated, Any
 from uuid import UUID
 
@@ -153,6 +154,7 @@ def readiness_checks(session: Session, *, settings: Settings) -> dict[str, Ready
     checks["migrations"] = migration_ready_check(session)
     checks["index"] = index_ready_check(session)
     checks["platform_auth"] = platform_auth_ready_check(settings)
+    checks["storage"] = storage_ready_check(settings)
     return checks
 
 
@@ -219,6 +221,70 @@ def platform_auth_ready_check(settings: Settings) -> ReadyCheck:
             detail="Platform auth is required but not configured.",
         )
     return ReadyCheck(ok=True, detail="Platform auth is not configured in development.")
+
+
+def storage_ready_check(settings: Settings) -> ReadyCheck:
+    failures: list[str] = []
+    requirements = (
+        ("docs_dir", Path(settings.docs_dir), True),
+        ("raw_dir", Path(settings.raw_dir), False),
+        ("kb_dir", Path(settings.kb_dir), False),
+    )
+    for name, path, require_existing in requirements:
+        ok, detail = storage_path_ready(
+            name=name,
+            path=path,
+            require_existing=require_existing,
+        )
+        if not ok:
+            failures.append(detail)
+
+    if failures:
+        return ReadyCheck(ok=False, detail="; ".join(failures))
+    return ReadyCheck(ok=True, detail="Storage paths are writable or creatable.")
+
+
+def storage_path_ready(
+    *,
+    name: str,
+    path: Path,
+    require_existing: bool,
+) -> tuple[bool, str]:
+    try:
+        path_exists = path.exists()
+    except OSError as error:
+        return False, f"{name} cannot be inspected: {error.__class__.__name__}"
+
+    if path_exists:
+        if not path.is_dir():
+            return False, f"{name} is not a directory: {path}"
+        return _directory_is_writable(name, path)
+
+    if require_existing:
+        return False, f"{name} does not exist: {path}"
+
+    parent = _existing_parent(path)
+    if parent is None:
+        return False, f"{name} has no existing parent directory: {path}"
+    return _directory_is_writable(name, parent)
+
+
+def _directory_is_writable(name: str, path: Path) -> tuple[bool, str]:
+    try:
+        with TemporaryFile(dir=path):
+            pass
+    except OSError as error:
+        return False, f"{name} is not writable: {error.__class__.__name__}: {path}"
+    return True, f"{name} is writable: {path}"
+
+
+def _existing_parent(path: Path) -> Path | None:
+    current = path.parent
+    while not current.exists():
+        if current == current.parent:
+            return None
+        current = current.parent
+    return current if current.is_dir() else None
 
 
 def readiness_check_failed(name: str, error: Exception) -> ReadyCheck:

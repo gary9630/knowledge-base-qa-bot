@@ -19,9 +19,18 @@ class Settings(BaseSettings):
     auth_secret_key: str | None = None
     platform_username: str | None = None
     platform_password: str | None = None
+    platform_cohorts: str = ""
+    platform_extra_visibility_labels: str = ""
     platform_session_ttl_seconds: int = 86_400
     admin_api_key: str | None = None
     max_upload_bytes: int = 10_000_000
+    rate_limit_enabled: bool = True
+    rate_limit_window_seconds: int = Field(default=60, ge=1)
+    rate_limit_login_requests: int = Field(default=10, ge=1)
+    rate_limit_chat_requests: int = Field(default=60, ge=1)
+    rate_limit_admin_requests: int = Field(default=60, ge=1)
+    rate_limit_upload_requests: int = Field(default=10, ge=1)
+    max_concurrent_uploads: int = Field(default=2, ge=1)
     embedding_provider: str = "fake"
     answer_provider: str = "fake"
     openai_api_key: str | None = Field(

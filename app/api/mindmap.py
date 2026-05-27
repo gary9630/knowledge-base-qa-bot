@@ -1,17 +1,18 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
-from typing import Annotated, Any, Literal, cast
+from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session, load_only, selectinload
 
-from app.api.dependencies import get_request_db_session, require_platform_access
+from app.api.dependencies import get_request_db_session, get_source_principal
 from app.models.tables import Document, Section
+from app.source_access import SourcePrincipal, source_visibility_filter
 
-router = APIRouter(dependencies=[Depends(require_platform_access)])
+router = APIRouter()
 
 
 class MindmapNode(BaseModel):
@@ -40,7 +41,10 @@ class MindmapResponse(BaseModel):
 
 
 @router.get("/mindmap", response_model=MindmapResponse)
-def mindmap(session: Annotated[Session, Depends(get_request_db_session)]) -> MindmapResponse:
+def mindmap(
+    session: Annotated[Session, Depends(get_request_db_session)],
+    principal: Annotated[SourcePrincipal, Depends(get_source_principal)],
+) -> MindmapResponse:
     documents = session.scalars(
         select(Document)
         .options(
@@ -61,7 +65,7 @@ def mindmap(session: Annotated[Session, Depends(get_request_db_session)]) -> Min
                 Section.token_count,
             ),
         )
-        .where(cast(Any, Document.visibility).contains(["public"]))
+        .where(source_visibility_filter(Document.visibility, principal))
         .order_by(Document.filename.asc(), Document.id.asc())
     ).all()
     return build_mindmap_response(documents)

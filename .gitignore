@@ -209,6 +209,9 @@ tempCodeRunnerFile.py
 # Browser MCP / Playwright inspection artifacts
 .playwright-mcp/
 
+# Local backup artifacts
+backups/
+
 # PyPI configuration file
 .pypirc
 

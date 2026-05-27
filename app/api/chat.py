@@ -18,7 +18,7 @@ from app.api.dependencies import (
     get_answer_provider,
     get_embedding_provider,
     get_request_db_session,
-    require_platform_access,
+    get_source_principal,
 )
 from app.api.indexing import index_is_ready
 from app.api.search import (
@@ -30,6 +30,7 @@ from app.models.tables import Conversation, Message, RetrievalEvent
 from app.observability.middleware import mark_stream_error
 from app.retrieval.hybrid import HybridRetriever
 from app.retrieval.models import RetrievalDecision, RetrievalStrategy, RetrievedCandidate
+from app.source_access import SourcePrincipal, visibility_labels_for_principal
 
 router = APIRouter()
 
@@ -54,28 +55,36 @@ class ChatResponse(BaseModel):
     selected_sources: list[CandidateResponse]
 
 
-@router.post(
-    "/chat",
-    response_model=ChatResponse,
-    dependencies=[Depends(require_platform_access)],
-)
+@router.post("/chat", response_model=ChatResponse)
 def chat(
     payload: ChatRequest,
     request: Request,
     session: Annotated[Session, Depends(get_request_db_session)],
+    principal: Annotated[SourcePrincipal, Depends(get_source_principal)],
 ) -> ChatResponse:
-    return _build_chat_response(payload=payload, request=request, session=session)
+    return _build_chat_response(
+        payload=payload,
+        request=request,
+        session=session,
+        principal=principal,
+    )
 
 
-@router.post("/chat/stream", dependencies=[Depends(require_platform_access)])
+@router.post("/chat/stream")
 def chat_stream(
     payload: ChatRequest,
     request: Request,
     session: Annotated[Session, Depends(get_request_db_session)],
+    principal: Annotated[SourcePrincipal, Depends(get_source_principal)],
 ) -> EventSourceResponse:
     _validate_stream_request(payload=payload, session=session)
     return EventSourceResponse(
-        _chat_stream_response_events(payload=payload, request=request, session=session)
+        _chat_stream_response_events(
+            payload=payload,
+            request=request,
+            session=session,
+            principal=principal,
+        )
     )
 
 
@@ -84,6 +93,7 @@ def _build_chat_response(
     payload: ChatRequest,
     request: Request,
     session: Session,
+    principal: SourcePrincipal,
 ) -> ChatResponse:
     started_at = perf_counter()
     conversation = _conversation_for_request(payload, session)
@@ -112,6 +122,7 @@ def _build_chat_response(
     retriever = HybridRetriever(
         session=session,
         embedding_provider=get_embedding_provider(request),
+        visibility_labels=visibility_labels_for_principal(principal),
         score_threshold=API_RETRIEVAL_SCORE_THRESHOLD,
     )
     retrieval_result = retriever.search(
@@ -176,12 +187,14 @@ def _chat_stream_response_events(
     payload: ChatRequest,
     request: Request,
     session: Session,
+    principal: SourcePrincipal,
 ) -> Iterator[dict[str, str]]:
     try:
         yield from _unsafe_chat_stream_response_events(
             payload=payload,
             request=request,
             session=session,
+            principal=principal,
         )
     except HTTPException as error:
         mark_stream_error(request, error, detail=str(error.detail))
@@ -198,6 +211,7 @@ def _unsafe_chat_stream_response_events(
     payload: ChatRequest,
     request: Request,
     session: Session,
+    principal: SourcePrincipal,
 ) -> Iterator[dict[str, str]]:
     started_at = perf_counter()
     conversation = _conversation_for_request(payload, session)
@@ -228,6 +242,7 @@ def _unsafe_chat_stream_response_events(
     retriever = HybridRetriever(
         session=session,
         embedding_provider=get_embedding_provider(request),
+        visibility_labels=visibility_labels_for_principal(principal),
         score_threshold=API_RETRIEVAL_SCORE_THRESHOLD,
     )
     retrieval_result = retriever.search(

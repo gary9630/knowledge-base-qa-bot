@@ -3,8 +3,33 @@ COMPOSE ?= docker compose
 API_URL ?= http://localhost:8000
 KB_ADMIN_API_KEY ?= local-admin-key
 KB_TEST_DATABASE_URL ?= postgresql+psycopg://kb:kb@postgres:5432/kb_test
+BACKUP_DIR ?= backups/$(shell date -u +%Y%m%dT%H%M%SZ)
+BACKUP_DB_FILE ?= $(BACKUP_DIR)/postgres.dump
+BACKUP_FILES_FILE ?= $(BACKUP_DIR)/runtime-files.tar.gz
+RESTORE_DB_FILE ?= $(BACKUP_DB_FILE)
+RESTORE_FILES_FILE ?= $(BACKUP_FILES_FILE)
 
-.PHONY: dev test test-unit test-integration test-e2e lint format migrate index eval-seed eval-run ops-check docker-build docker-up docker-down docker-logs docker-test
+.PHONY: backup backup-db backup-files dev test test-unit test-integration test-e2e lint format migrate index eval-seed eval-run ops-check docker-build docker-up docker-down docker-logs docker-test restore-db restore-files
+
+backup: backup-db backup-files
+
+backup-db:
+	mkdir -p "$(BACKUP_DIR)"
+	$(COMPOSE) exec -T postgres sh -c 'pg_dump -U "$$POSTGRES_USER" -d "$$POSTGRES_DB" --format=custom' > "$(BACKUP_DB_FILE)"
+
+backup-files:
+	mkdir -p "$(BACKUP_DIR)"
+	$(COMPOSE) run --rm --no-deps --entrypoint sh app -c 'tar -czf - -C /app docs raw .kb' > "$(BACKUP_FILES_FILE)"
+
+restore-db:
+	@test "$(CONFIRM_RESTORE)" = "yes" || (echo "Set CONFIRM_RESTORE=yes to restore the database."; exit 1)
+	@test -f "$(RESTORE_DB_FILE)" || (echo "Missing RESTORE_DB_FILE=$(RESTORE_DB_FILE)"; exit 1)
+	$(COMPOSE) exec -T postgres sh -c 'pg_restore --clean --if-exists -U "$$POSTGRES_USER" -d "$$POSTGRES_DB"' < "$(RESTORE_DB_FILE)"
+
+restore-files:
+	@test "$(CONFIRM_RESTORE)" = "yes" || (echo "Set CONFIRM_RESTORE=yes to restore runtime files."; exit 1)
+	@test -f "$(RESTORE_FILES_FILE)" || (echo "Missing RESTORE_FILES_FILE=$(RESTORE_FILES_FILE)"; exit 1)
+	$(COMPOSE) run --rm --no-deps --entrypoint sh app -c 'tar -xzf - -C /app' < "$(RESTORE_FILES_FILE)"
 
 dev:
 	$(UV) uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
