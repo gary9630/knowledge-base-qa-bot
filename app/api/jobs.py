@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import UTC, datetime, timedelta
 from typing import Annotated
 from uuid import UUID
 
@@ -14,6 +15,7 @@ from app.background_jobs.service import (
     BackgroundJobInvalidTransitionError,
     BackgroundJobService,
 )
+from app.core.config import Settings
 from app.models.tables import BackgroundJob
 
 router = APIRouter(prefix="/admin", dependencies=[Depends(require_admin_access)])
@@ -49,6 +51,7 @@ class BackgroundJobResponse(BaseModel):
     error: str | None
     locked_by: str | None
     locked_at: str | None
+    is_stale: bool = False
     available_at: str
     started_at: str | None
     finished_at: str | None
@@ -63,11 +66,20 @@ class BackgroundJobsResponse(BaseModel):
 @router.get("/jobs", response_model=BackgroundJobsResponse)
 def list_background_jobs(
     session: Annotated[Session, Depends(get_request_db_session)],
+    settings: Annotated[Settings, Depends(get_app_settings)],
     limit: Annotated[int, Query(ge=1, le=100)] = 50,
     status: str | None = None,
 ) -> BackgroundJobsResponse:
     jobs = BackgroundJobService(session).list_recent(limit=limit, status=status)
-    return BackgroundJobsResponse(jobs=[background_job_response(job) for job in jobs])
+    return BackgroundJobsResponse(
+        jobs=[
+            background_job_response(
+                job,
+                stale_after_seconds=settings.background_job_stale_after_seconds,
+            )
+            for job in jobs
+        ],
+    )
 
 
 @router.post(
@@ -110,10 +122,9 @@ def recover_stale_background_jobs(
     session: Annotated[Session, Depends(get_request_db_session)],
 ) -> BackgroundJobsResponse:
     settings = get_app_settings(request)
+    stale_after_seconds = payload.stale_after_seconds or settings.background_job_stale_after_seconds
     jobs = BackgroundJobService(session).recover_stale_running_jobs(
-        stale_after_seconds=(
-            payload.stale_after_seconds or settings.background_job_stale_after_seconds
-        ),
+        stale_after_seconds=stale_after_seconds,
         retry_delay_seconds=payload.retry_delay_seconds,
         limit=payload.limit,
     )
@@ -126,18 +137,27 @@ def recover_stale_background_jobs(
         resource_id="background_jobs",
         metadata={"recovered_count": len(jobs)},
     )
-    return BackgroundJobsResponse(jobs=[background_job_response(job) for job in jobs])
+    return BackgroundJobsResponse(
+        jobs=[
+            background_job_response(job, stale_after_seconds=stale_after_seconds)
+            for job in jobs
+        ],
+    )
 
 
 @router.get("/jobs/{job_id}", response_model=BackgroundJobResponse)
 def get_background_job(
     job_id: UUID,
     session: Annotated[Session, Depends(get_request_db_session)],
+    settings: Annotated[Settings, Depends(get_app_settings)],
 ) -> BackgroundJobResponse:
     job = BackgroundJobService(session).get(job_id)
     if job is None:
         raise HTTPException(status_code=404, detail="Background job not found.")
-    return background_job_response(job)
+    return background_job_response(
+        job,
+        stale_after_seconds=settings.background_job_stale_after_seconds,
+    )
 
 
 @router.post(
@@ -196,7 +216,11 @@ def cancel_background_job(
     return background_job_response(job)
 
 
-def background_job_response(job: BackgroundJob) -> BackgroundJobResponse:
+def background_job_response(
+    job: BackgroundJob,
+    *,
+    stale_after_seconds: int | None = None,
+) -> BackgroundJobResponse:
     return BackgroundJobResponse(
         id=job.id,
         task_type=job.task_type,
@@ -209,9 +233,26 @@ def background_job_response(job: BackgroundJob) -> BackgroundJobResponse:
         error=job.error,
         locked_by=job.locked_by,
         locked_at=job.locked_at.isoformat() if job.locked_at else None,
+        is_stale=background_job_is_stale(job, stale_after_seconds=stale_after_seconds),
         available_at=job.available_at.isoformat(),
         started_at=job.started_at.isoformat() if job.started_at else None,
         finished_at=job.finished_at.isoformat() if job.finished_at else None,
         created_at=job.created_at.isoformat(),
         updated_at=job.updated_at.isoformat(),
     )
+
+
+def background_job_is_stale(
+    job: BackgroundJob,
+    *,
+    stale_after_seconds: int | None,
+) -> bool:
+    if stale_after_seconds is None or job.status != "running":
+        return False
+    if job.locked_at is None:
+        return True
+    locked_at = job.locked_at
+    if locked_at.tzinfo is None:
+        locked_at = locked_at.replace(tzinfo=UTC)
+    stale_before = datetime.now(UTC) - timedelta(seconds=stale_after_seconds)
+    return locked_at <= stale_before

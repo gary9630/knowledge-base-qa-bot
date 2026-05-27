@@ -163,6 +163,46 @@
                 <button class="text-button" type="button" id="refresh-background-jobs">Refresh</button>
               </div>
             </div>
+            <div class="ops-summary" id="background-job-summary" aria-live="polite">
+              <div class="ops-summary-card">
+                <span>Total</span>
+                <strong>0</strong>
+              </div>
+              <div class="ops-summary-card">
+                <span>Queued</span>
+                <strong>0</strong>
+              </div>
+              <div class="ops-summary-card">
+                <span>Running</span>
+                <strong>0</strong>
+              </div>
+              <div class="ops-summary-card">
+                <span>Needs Action</span>
+                <strong>0</strong>
+              </div>
+            </div>
+            <div class="job-controls" aria-label="Background job filters">
+              <label class="inline-control" for="background-job-status-filter">
+                Status
+                <select id="background-job-status-filter" name="background-job-status-filter">
+                  <option value="">All</option>
+                  <option value="queued">Queued</option>
+                  <option value="running">Running</option>
+                  <option value="succeeded">Succeeded</option>
+                  <option value="failed">Failed</option>
+                  <option value="canceled">Canceled</option>
+                </select>
+              </label>
+              <label class="inline-control" for="background-job-limit">
+                Limit
+                <select id="background-job-limit" name="background-job-limit">
+                  <option value="10">10</option>
+                  <option value="25">25</option>
+                  <option value="50" selected>50</option>
+                  <option value="100">100</option>
+                </select>
+              </label>
+            </div>
             <div class="background-jobs" id="background-jobs" aria-live="polite">
               <p class="muted">No background jobs loaded.</p>
             </div>

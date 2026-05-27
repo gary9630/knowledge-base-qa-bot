@@ -69,6 +69,9 @@
     queueIndexJob: $("#queue-index-job"),
     recoverStaleJobs: $("#recover-stale-jobs"),
     refreshBackgroundJobs: $("#refresh-background-jobs"),
+    backgroundJobSummary: $("#background-job-summary"),
+    backgroundJobStatusFilter: $("#background-job-status-filter"),
+    backgroundJobLimit: $("#background-job-limit"),
     backgroundJobs: $("#background-jobs"),
     operationLog: $("#operation-log"),
     evalForm: $("#eval-form"),
@@ -813,6 +816,8 @@
     elements.refreshStatus.addEventListener("click", refreshStatus);
     elements.refreshImports.addEventListener("click", refreshImportJobs);
     elements.refreshBackgroundJobs.addEventListener("click", refreshBackgroundJobs);
+    elements.backgroundJobStatusFilter.addEventListener("change", refreshBackgroundJobs);
+    elements.backgroundJobLimit.addEventListener("change", refreshBackgroundJobs);
     elements.refreshAudit.addEventListener("click", refreshAuditEvents);
   }
 
@@ -924,7 +929,7 @@
 
   async function refreshBackgroundJobs() {
     try {
-      const response = await fetch("/admin/jobs", {
+      const response = await fetch("/admin/jobs?" + backgroundJobQueryParams(), {
         headers: adminHeaders(),
       });
       if (!response.ok) {
@@ -934,10 +939,28 @@
       renderBackgroundJobs(payload.jobs || []);
     } catch (error) {
       state.backgroundJobs = [];
+      renderBackgroundJobSummary([]);
       elements.backgroundJobs.replaceChildren(
         emptyText(`Background jobs unavailable: ${errorMessage(error)}`),
       );
     }
+  }
+
+  function backgroundJobQueryParams() {
+    const params = new URLSearchParams();
+    params.set("limit", String(backgroundJobLimit()));
+    if (elements.backgroundJobStatusFilter.value) {
+      params.set("status", elements.backgroundJobStatusFilter.value);
+    }
+    return params.toString();
+  }
+
+  function backgroundJobLimit() {
+    const rawLimit = Number(elements.backgroundJobLimit.value || 50);
+    const normalizedLimit = Number.isFinite(rawLimit) ? Math.round(rawLimit) : 50;
+    const clampedLimit = Math.min(100, Math.max(1, normalizedLimit));
+    elements.backgroundJobLimit.value = String(clampedLimit);
+    return clampedLimit;
   }
 
   async function refreshBackgroundJob(jobId) {
@@ -976,6 +999,7 @@
 
   function renderBackgroundJobs(jobs) {
     state.backgroundJobs = Array.isArray(jobs) ? jobs : [];
+    renderBackgroundJobSummary(state.backgroundJobs);
     elements.backgroundJobs.replaceChildren();
 
     if (state.backgroundJobs.length === 0) {
@@ -983,48 +1007,168 @@
       return;
     }
 
-    state.backgroundJobs.slice(0, 10).forEach((job) => {
-      const row = document.createElement("div");
-      row.className = `job-row is-${job.status || "unknown"}`;
-
-      const body = document.createElement("div");
-      body.className = "job-body";
-      const title = document.createElement("strong");
-      title.textContent = job.task_type || "background.job";
-      const meta = document.createElement("span");
-      meta.className = "source-meta";
-      meta.textContent = [
-        job.status,
-        `${job.attempts || 0}/${job.max_attempts || 0} attempts`,
-        formatDateTime(job.updated_at),
-      ]
-        .filter(Boolean)
-        .join(" · ");
-      const details = document.createElement("span");
-      details.className = "source-meta";
-      details.textContent = job.error || backgroundJobResultSummary(job.result || {});
-      body.append(title, meta, details);
-      row.append(body);
-
-      if (job.status === "queued") {
-        const cancel = document.createElement("button");
-        cancel.type = "button";
-        cancel.className = "secondary-button";
-        cancel.textContent = "Cancel";
-        cancel.addEventListener("click", () => cancelBackgroundJob(job.id));
-        row.append(cancel);
-      }
-      if (["failed", "canceled"].includes(job.status)) {
-        const requeue = document.createElement("button");
-        requeue.type = "button";
-        requeue.className = "secondary-button";
-        requeue.textContent = "Requeue";
-        requeue.addEventListener("click", () => requeueBackgroundJob(job.id));
-        row.append(requeue);
-      }
-
-      elements.backgroundJobs.append(row);
+    state.backgroundJobs.forEach((job) => {
+      elements.backgroundJobs.append(backgroundJobRow(job));
     });
+  }
+
+  function renderBackgroundJobSummary(jobs) {
+    const safeJobs = Array.isArray(jobs) ? jobs : [];
+    const summary = {
+      total: safeJobs.length,
+      queued: safeJobs.filter((job) => job.status === "queued").length,
+      running: safeJobs.filter((job) => job.status === "running").length,
+      succeeded: safeJobs.filter((job) => job.status === "succeeded").length,
+      needsAction: safeJobs.filter(
+        (job) => ["failed", "canceled"].includes(job.status) || isBackgroundJobStale(job),
+      ).length,
+    };
+    const cards = [
+      ["Total", summary.total, ""],
+      ["Queued", summary.queued, ""],
+      ["Running", summary.running, ""],
+      ["Needs Action", summary.needsAction, summary.needsAction > 0 ? "is-danger" : ""],
+      ["Succeeded", summary.succeeded, "is-success"],
+    ];
+
+    elements.backgroundJobSummary.replaceChildren();
+    cards.forEach(([label, value, modifier]) => {
+      const card = document.createElement("div");
+      card.className = ["ops-summary-card", modifier].filter(Boolean).join(" ");
+      const title = document.createElement("span");
+      title.textContent = label;
+      const count = document.createElement("strong");
+      count.textContent = String(value);
+      card.append(title, count);
+      elements.backgroundJobSummary.append(card);
+    });
+  }
+
+  function backgroundJobRow(job) {
+    const row = document.createElement("div");
+    row.className = `job-row ${backgroundJobRowClass(job)}`;
+
+    const body = document.createElement("div");
+    body.className = "job-body";
+
+    const heading = document.createElement("div");
+    heading.className = "job-row-heading";
+    const title = document.createElement("strong");
+    title.textContent = job.task_type || "background.job";
+    const badges = document.createElement("div");
+    badges.className = "job-badges";
+    badges.append(backgroundJobBadge(job.status || "unknown", job.status || "unknown"));
+    if (isBackgroundJobStale(job)) {
+      badges.append(backgroundJobBadge("stale", "stale"));
+    }
+    heading.append(title, badges);
+
+    const meta = document.createElement("span");
+    meta.className = "source-meta";
+    meta.textContent = [
+      `${job.attempts || 0}/${job.max_attempts || 0} attempts`,
+      `priority ${job.priority ?? 0}`,
+      backgroundJobAgeLabel(job.updated_at, "updated"),
+    ]
+      .filter(Boolean)
+      .join(" · ");
+
+    const timing = document.createElement("span");
+    timing.className = "source-meta";
+    timing.textContent = backgroundJobTimingSummary(job);
+
+    const details = document.createElement("span");
+    details.className = `job-detail ${job.error ? "is-danger" : ""}`;
+    details.textContent = job.error
+      ? `error: ${job.error}`
+      : `result: ${backgroundJobResultSummary(job.result || {})}`;
+
+    const payload = document.createElement("span");
+    payload.className = "source-meta";
+    payload.textContent = `payload: ${backgroundJobResultSummary(job.payload || {}, "{}")}`;
+
+    body.append(heading, meta, timing, details, payload);
+    row.append(body);
+
+    const actions = document.createElement("div");
+    actions.className = "job-actions button-row";
+    if (job.status === "queued") {
+      actions.append(backgroundJobActionButton("Cancel", () => cancelBackgroundJob(job.id)));
+    }
+    if (["failed", "canceled"].includes(job.status)) {
+      actions.append(backgroundJobActionButton("Requeue", () => requeueBackgroundJob(job.id)));
+    }
+    if (isBackgroundJobStale(job)) {
+      actions.append(backgroundJobActionButton("Recover Stale", recoverStaleJobs));
+    }
+    if (actions.children.length > 0) {
+      row.append(actions);
+    }
+
+    return row;
+  }
+
+  function backgroundJobRowClass(job) {
+    const statusClass = `is-${job.status || "unknown"}`;
+    return isBackgroundJobStale(job) ? `${statusClass} is-stale` : statusClass;
+  }
+
+  function backgroundJobBadge(label, status) {
+    const badge = document.createElement("span");
+    badge.className = `status-badge is-${status}`;
+    badge.textContent = label;
+    return badge;
+  }
+
+  function backgroundJobActionButton(label, onClick) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "secondary-button";
+    button.textContent = label;
+    button.addEventListener("click", onClick);
+    return button;
+  }
+
+  function backgroundJobTimingSummary(job) {
+    return [
+      job.locked_by ? `worker ${job.locked_by}` : null,
+      job.locked_at ? backgroundJobAgeLabel(job.locked_at, "locked") : null,
+      job.available_at ? `available ${formatDateTime(job.available_at)}` : null,
+      job.started_at ? backgroundJobAgeLabel(job.started_at, "started") : null,
+      job.finished_at ? backgroundJobAgeLabel(job.finished_at, "finished") : null,
+    ]
+      .filter(Boolean)
+      .join(" · ") || "not claimed by a worker";
+  }
+
+  function isBackgroundJobStale(job) {
+    return Boolean(job.is_stale);
+  }
+
+  function backgroundJobAgeLabel(timestamp, label) {
+    if (!timestamp) {
+      return null;
+    }
+    const parsed = Date.parse(timestamp);
+    if (!Number.isFinite(parsed)) {
+      return `${label} ${timestamp}`;
+    }
+    const diffMs = Date.now() - parsed;
+    if (diffMs < -60 * 1000) {
+      return `${label} ${formatDateTime(timestamp)}`;
+    }
+    const minutes = Math.max(0, Math.floor(diffMs / (60 * 1000)));
+    if (minutes < 1) {
+      return `${label} just now`;
+    }
+    if (minutes < 60) {
+      return `${label} ${minutes}m ago`;
+    }
+    const hours = Math.floor(minutes / 60);
+    if (hours < 48) {
+      return `${label} ${hours}h ago`;
+    }
+    return `${label} ${formatDateTime(timestamp)}`;
   }
 
   async function requeueBackgroundJob(jobId) {
@@ -1062,10 +1206,10 @@
     }
   }
 
-  function backgroundJobResultSummary(result) {
+  function backgroundJobResultSummary(result, emptyLabel = "waiting for worker") {
     const entries = Object.entries(result || {});
     if (entries.length === 0) {
-      return "waiting for worker";
+      return emptyLabel;
     }
     return entries
       .slice(0, 4)

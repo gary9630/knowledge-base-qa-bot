@@ -135,13 +135,25 @@ def test_ui_exposes_background_jobs_wiring() -> None:
     assert 'id="queue-index-job"' in response.text
     assert 'id="recover-stale-jobs"' in response.text
     assert 'id="refresh-background-jobs"' in response.text
+    assert 'id="background-job-summary"' in response.text
+    assert 'id="background-job-status-filter"' in response.text
+    assert 'id="background-job-limit"' in response.text
     assert 'id="background-jobs"' in response.text
     assert "fetch(\"/admin/jobs\"" in js_response.text
+    assert "backgroundJobQueryParams" in js_response.text
+    assert "renderBackgroundJobSummary" in js_response.text
+    assert "backgroundJobAgeLabel" in js_response.text
     assert "fetch(\"/admin/jobs/recover-stale\"" in js_response.text
     assert "fetch(`/admin/jobs/${jobId}/requeue`" in js_response.text
     assert "fetch(`/admin/jobs/${jobId}`" in js_response.text
     assert "renderBackgroundJobs" in js_response.text
     assert "elements.backgroundJobs" in js_response.text
+    assert "elements.backgroundJobStatusFilter" in js_response.text
+    assert "elements.backgroundJobLimit" in js_response.text
+    assert "job.locked_by" in js_response.text
+    assert "job.available_at" in js_response.text
+    assert "job.priority" in js_response.text
+    assert "job.is_stale" in js_response.text
     assert "queueDocumentReindexJob" in js_response.text
 
 

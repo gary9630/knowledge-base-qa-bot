@@ -330,6 +330,119 @@ button.selected-source {
   align-items: center;
 }
 
+.ops-summary {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.ops-summary-card {
+  display: grid;
+  gap: 2px;
+  min-height: 64px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  padding: 10px;
+  box-shadow: var(--shadow);
+}
+
+.ops-summary-card span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.ops-summary-card strong {
+  font-size: 22px;
+  line-height: 1.1;
+}
+
+.ops-summary-card.is-danger {
+  border-color: #f0b8b1;
+}
+
+.ops-summary-card.is-success {
+  border-color: #b7dbc7;
+}
+
+.job-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.job-controls .inline-control {
+  align-items: start;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.job-controls select {
+  min-height: 36px;
+}
+
+.job-row-heading,
+.job-badges,
+.job-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.job-row-heading {
+  justify-content: space-between;
+}
+
+.job-badges {
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.job-detail {
+  color: var(--muted);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.status-badge {
+  display: inline-grid;
+  min-height: 24px;
+  align-items: center;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface-muted);
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 1;
+  padding: 4px 8px;
+}
+
+.status-badge.is-succeeded {
+  border-color: #b7dbc7;
+  background: #edf8f1;
+  color: var(--success);
+}
+
+.status-badge.is-running,
+.status-badge.is-stale {
+  border-color: #f2d08a;
+  background: #fff7e6;
+  color: var(--warning);
+}
+
+.status-badge.is-failed {
+  border-color: #f0b8b1;
+  background: #fff1ef;
+  color: var(--danger);
+}
+
+.status-badge.is-canceled {
+  border-color: var(--border-strong);
+}
+
 .job-body {
   display: grid;
   gap: 4px;
@@ -349,7 +462,8 @@ button.selected-source {
   border-color: #f2d08a;
 }
 
-.job-row.is-failed {
+.job-row.is-failed,
+.job-row.is-stale {
   border-color: #f0b8b1;
 }
 

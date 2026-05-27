@@ -254,6 +254,33 @@ def test_admin_can_recover_stale_jobs(
     assert audit_event.metadata_json["recovered_count"] == 1
 
 
+def test_admin_jobs_api_marks_stale_running_jobs_from_settings(
+    db_session: Session,
+    tmp_path: Path,
+) -> None:
+    app = _jobs_app(db_session, tmp_path, stale_after_seconds=60)
+    client = TestClient(app)
+    admin_headers = {"X-KB-Admin-Key": "secret"}
+    service = BackgroundJobService(db_session)
+    job = service.enqueue(task_type=TASK_INDEX_REBUILD, max_attempts=3)
+    db_session.commit()
+    claimed = service.claim_next(
+        worker_id="dead-worker",
+        now=job.available_at + timedelta(seconds=1),
+    )
+    assert claimed is not None
+    claimed.locked_at = datetime.now(UTC) - timedelta(seconds=120)
+    db_session.commit()
+
+    list_response = client.get("/admin/jobs", headers=admin_headers)
+    detail_response = client.get(f"/admin/jobs/{job.id}", headers=admin_headers)
+
+    assert list_response.status_code == 200
+    assert list_response.json()["jobs"][0]["is_stale"] is True
+    assert detail_response.status_code == 200
+    assert detail_response.json()["is_stale"] is True
+
+
 def test_admin_can_requeue_failed_job(
     db_session: Session,
     tmp_path: Path,
