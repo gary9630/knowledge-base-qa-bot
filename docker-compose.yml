@@ -19,6 +19,12 @@ x-app-environment: &app-environment
   - KB_RATE_LIMIT_ADMIN_REQUESTS=${KB_RATE_LIMIT_ADMIN_REQUESTS:-60}
   - KB_RATE_LIMIT_UPLOAD_REQUESTS=${KB_RATE_LIMIT_UPLOAD_REQUESTS:-10}
   - KB_MAX_CONCURRENT_UPLOADS=${KB_MAX_CONCURRENT_UPLOADS:-2}
+  - KB_EMBEDDING_PROVIDER=${KB_EMBEDDING_PROVIDER:-fake}
+  - KB_ANSWER_PROVIDER=${KB_ANSWER_PROVIDER:-fake}
+  - KB_OPENAI_EMBEDDING_MODEL=${KB_OPENAI_EMBEDDING_MODEL:-}
+  - KB_OPENAI_CHAT_MODEL=${KB_OPENAI_CHAT_MODEL:-}
+  - KB_EMBEDDING_DIMENSION=${KB_EMBEDDING_DIMENSION:-1536}
+  - OPENAI_API_KEY=${OPENAI_API_KEY:-}
 
 x-app-volumes: &app-volumes
   - type: volume
@@ -99,8 +105,7 @@ services:
       migrate:
         condition: service_completed_successfully
     volumes: *app-volumes
-    command: >
-      python -c "from pathlib import Path; from app.core.config import Settings; from app.core.database import SessionLocal; from app.indexing.service import IndexingService; from app.retrieval.embeddings import create_embedding_provider; settings=Settings(); session=SessionLocal(); result=IndexingService(session=session, docs_dir=Path(settings.docs_dir), kb_dir=Path(settings.kb_dir), embedding_provider=create_embedding_provider(settings)).rebuild_index(); session.close(); print(f'indexed {result.files_indexed} files, {result.sections_indexed} sections, {result.chunks_indexed} chunks')"
+    command: python -m scripts.run_background_worker --poll-seconds 5
 
   eval-runner:
     build:

@@ -1,6 +1,7 @@
 from uuid import uuid4
 
 from app.models import (
+    BackgroundJob,
     Chunk,
     Document,
     EvalCase,
@@ -35,6 +36,7 @@ def test_json_defaults_are_available_before_flush() -> None:
         body_text="Body",
         content_hash="chunk-hash",
     )
+    background_job = BackgroundJob(task_type="index.rebuild")
     indexing_job = IndexingJob(kind="index", status="pending")
     message = Message(conversation_id=uuid4(), role="assistant", content="Answer")
     retrieval_event = RetrievalEvent(
@@ -67,6 +69,12 @@ def test_json_defaults_are_available_before_flush() -> None:
     assert document.lifecycle_reason is None
     assert section.metadata_json == {}
     assert chunk.metadata_json == {}
+    assert background_job.status == "queued"
+    assert background_job.priority == 100
+    assert background_job.attempts == 0
+    assert background_job.max_attempts == 3
+    assert background_job.payload_json == {}
+    assert background_job.result_json == {}
     assert indexing_job.stats_json == {}
     assert message.sources_json == []
     assert retrieval_event.selected_sources_json == []

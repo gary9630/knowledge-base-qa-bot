@@ -26,6 +26,7 @@
 - Seed sample docs: `uv run --python 3.12 python -m scripts.seed_sample_docs`
 - Start app: `make dev`
 - Rebuild index: `make index`
+- Process one background job: `make worker-once`
 - Unit tests: `make test-unit`
 - Integration tests: `make test-integration`
 - E2E tests: `make test-e2e`
@@ -48,6 +49,7 @@
 - `/ready` includes a storage check for `docs`, `raw`, and `.kb` path usability.
 - Admin/security audit events are DB-backed in `audit_events` and exposed through protected `GET /admin/audit-events`.
 - Document lifecycle is managed through protected `/admin/documents` routes. Non-active documents must stay hidden from sources, search/chat retrieval, and mindmap.
+- Async orchestration is DB-backed in `background_jobs`; `POST /admin/jobs` can enqueue `index.rebuild`, `document.reindex`, and `eval.run`, and `python -m scripts.run_background_worker` processes them.
 
 ## Testing Expectations
 
@@ -80,6 +82,7 @@ intentionally deferred until traffic or multi-replica deployment requires it.
 - Do not expose admin endpoints publicly without the admin key or an authenticated gateway.
 - Never store raw admin keys or platform passwords in audit metadata; use `fingerprint_secret()` for admin-key actor IDs.
 - `DELETE /admin/documents/{document_id}` deletes DB index rows only; it must not remove canonical Markdown or raw upload files.
+- Keep the background worker running in production. `IndexingJob` and `EvalRun` remain domain history; `BackgroundJob` is orchestration state.
 - Run Alembic migrations once per deploy, then run `make ops-check`.
 - If switching to real embeddings, lock the model and vector dimension before indexing production data.
 - Sample content lives in `sample-docs/`; do not treat it as production data.

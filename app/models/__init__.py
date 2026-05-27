@@ -1,5 +1,6 @@
 from app.models.tables import (
     AuditEvent,
+    BackgroundJob,
     Chunk,
     Conversation,
     Document,
@@ -15,6 +16,7 @@ from app.models.tables import (
 
 __all__ = [
     "AuditEvent",
+    "BackgroundJob",
     "Chunk",
     "Conversation",
     "Document",

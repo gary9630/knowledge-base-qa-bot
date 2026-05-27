@@ -30,12 +30,13 @@ paths, skips existing files, and never deletes source or destination files.
 
 ## Docker Compose
 
-Compose defines `postgres`, a one-shot `migrate` service, `app`, optional `worker`, and
-optional `test` profiles. It uses the `pgvector/pgvector:pg16` Postgres image.
+Compose defines `postgres`, a one-shot `migrate` service, `app`, optional queue
+`worker`, optional `eval-runner`, and optional `test` profiles. It uses the
+`pgvector/pgvector:pg16` Postgres image.
 
 ```bash
 docker compose up --build app
-docker compose --profile worker run --rm worker
+docker compose --profile worker up -d worker
 docker compose --profile test run --rm test
 ```
 
@@ -102,12 +103,24 @@ curl -H "X-KB-Admin-Key: $KB_ADMIN_API_KEY" \
   -X POST http://localhost:8000/imports/<job-id>/retry
 ```
 
-Rebuild the DB index from `docs/`:
+Rebuild the DB index from `docs/` synchronously:
 
 ```bash
 curl -H "X-KB-Admin-Key: $KB_ADMIN_API_KEY" \
   -X POST http://localhost:8000/index
 curl http://localhost:8000/index/status
+```
+
+Queue long-running work for the background worker:
+
+```bash
+curl -H "X-KB-Admin-Key: $KB_ADMIN_API_KEY" \
+  -H "content-type: application/json" \
+  -d '{"task_type":"index.rebuild","payload":{}}' \
+  http://localhost:8000/admin/jobs
+curl -H "X-KB-Admin-Key: $KB_ADMIN_API_KEY" \
+  http://localhost:8000/admin/jobs
+make worker-once
 ```
 
 Ask grounded questions:
@@ -145,6 +158,8 @@ visibility: staff
 Useful read endpoints:
 
 - `GET /imports/status`, `GET /imports/{job_id}`, and `POST /imports/{job_id}/retry`
+- `GET /admin/jobs`, `GET /admin/jobs/{job_id}`, and `POST /admin/jobs` for
+  background job orchestration
 - `GET /sources` and `GET /sources/{document_id}`
 - `GET /sources/{document_id}/sections/{section_id}`
 - `GET /mindmap`
@@ -170,7 +185,8 @@ database. Docker packaging checks can be run with:
 docker compose --profile worker --profile test config
 docker compose up --build -d app
 KB_DOCKER_E2E=1 make test-e2e
-docker compose --profile worker run --rm worker
+docker compose --profile worker up -d worker
+make worker-once
 ```
 
 Continuous integration is defined in `.github/workflows/ci.yml`. It runs lint/typecheck,
@@ -215,6 +231,12 @@ and `POST /admin/documents/{document_id}/reindex`. Lifecycle states are `active`
 `disabled`, and `deleted`. Non-active documents are hidden from sources, search, chat
 retrieval, and mindmap responses. Delete means "delete from the DB index"; source files
 remain on disk and can be restored with single-document reindex.
+
+Background jobs are stored in `background_jobs` and processed by
+`python -m scripts.run_background_worker`. Supported task types are `index.rebuild`,
+`document.reindex`, and `eval.run`. The worker updates job status, attempts, result
+metadata, and errors in the DB, while the underlying indexing and eval subsystems still
+write their own domain history rows.
 
 Run the deployment smoke check against a local or deployed API with:
 

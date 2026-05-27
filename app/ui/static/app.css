@@ -267,6 +267,7 @@ button {
 .selected-sources,
 .source-table,
 .import-jobs,
+.background-jobs,
 .admin-documents,
 .audit-events,
 .eval-cases,
@@ -340,8 +341,20 @@ button.selected-source {
   border-color: #b7dbc7;
 }
 
+.job-row.is-queued {
+  border-color: #b7d2e8;
+}
+
+.job-row.is-running {
+  border-color: #f2d08a;
+}
+
 .job-row.is-failed {
   border-color: #f0b8b1;
+}
+
+.job-row.is-canceled {
+  border-color: var(--border-strong);
 }
 
 .document-row.is-indexed {

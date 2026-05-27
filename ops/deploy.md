@@ -1,8 +1,8 @@
 # Production Deploy Runbook
 
 This runbook describes the current single-host or simple VM deployment model. The app
-runs as one FastAPI container plus Postgres with pgvector. The same image can run the app,
-migration, worker, and scheduled eval commands.
+runs as one FastAPI container, one queue worker container, and Postgres with pgvector. The
+same image can run the app, migration, worker, and scheduled eval commands.
 
 ## Required Secrets And Settings
 
@@ -47,7 +47,7 @@ docker compose build app migrate worker eval-runner
 docker compose up -d postgres
 docker compose run --rm migrate
 docker compose up -d app
-docker compose --profile worker run --rm worker
+docker compose --profile worker up -d worker
 make ops-check API_URL=https://your-app.example.com KB_ADMIN_API_KEY=$KB_ADMIN_API_KEY
 ```
 
@@ -63,7 +63,9 @@ starting the app process.
 4. Login works with the configured platform user.
 5. A known chat/search query returns expected source IDs.
 6. Upload and reindex work with `X-KB-Admin-Key`.
-7. Scheduled eval runner can run `python -m scripts.run_evals --trigger scheduled`.
+7. A protected `POST /admin/jobs` can enqueue `index.rebuild`, and the worker marks it
+   succeeded.
+8. Scheduled eval runner can run `python -m scripts.run_evals --trigger scheduled`.
 
 ## Rollback
 

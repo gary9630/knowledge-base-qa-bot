@@ -11,6 +11,7 @@
     },
     mindmapLoaded: false,
     importJobs: [],
+    backgroundJobs: [],
     adminDocuments: [],
     auditEvents: [],
     evalCases: [],
@@ -65,6 +66,9 @@
     refreshImports: $("#refresh-imports"),
     importJobs: $("#import-jobs"),
     rebuildIndex: $("#rebuild-index"),
+    queueIndexJob: $("#queue-index-job"),
+    refreshBackgroundJobs: $("#refresh-background-jobs"),
+    backgroundJobs: $("#background-jobs"),
     operationLog: $("#operation-log"),
     evalForm: $("#eval-form"),
     evalName: $("#eval-name"),
@@ -534,6 +538,9 @@
         );
       }
       actions.append(documentActionButton("Reindex", () => reindexDocument(documentItem.id)));
+      actions.append(
+        documentActionButton("Queue Reindex", () => queueDocumentReindexJob(documentItem.id)),
+      );
       actions.append(documentActionButton("Delete Index", () => deleteDocumentIndex(documentItem.id)));
       row.append(body, actions);
       elements.adminDocuments.append(row);
@@ -800,8 +807,10 @@
   function bindAdmin() {
     elements.uploadForm.addEventListener("submit", uploadFile);
     elements.rebuildIndex.addEventListener("click", rebuildIndex);
+    elements.queueIndexJob.addEventListener("click", queueIndexJob);
     elements.refreshStatus.addEventListener("click", refreshStatus);
     elements.refreshImports.addEventListener("click", refreshImportJobs);
+    elements.refreshBackgroundJobs.addEventListener("click", refreshBackgroundJobs);
     elements.refreshAudit.addEventListener("click", refreshAuditEvents);
   }
 
@@ -866,6 +875,150 @@
     } finally {
       elements.rebuildIndex.disabled = false;
     }
+  }
+
+  async function queueIndexJob() {
+    elements.queueIndexJob.disabled = true;
+    try {
+      const job = await queueBackgroundJob("index.rebuild", { source: "ui" });
+      appendOperation(`Queued background job: ${job.task_type} (${job.id})`);
+      renderBackgroundJobs([job, ...state.backgroundJobs]);
+      await refreshBackgroundJob(job.id);
+    } catch (error) {
+      appendOperation(`Queue index job failed: ${errorMessage(error)}`);
+    } finally {
+      elements.queueIndexJob.disabled = false;
+    }
+  }
+
+  async function queueDocumentReindexJob(documentId) {
+    try {
+      const job = await queueBackgroundJob("document.reindex", { document_id: documentId });
+      appendOperation(`Queued document reindex job: ${job.id}`);
+      renderBackgroundJobs([job, ...state.backgroundJobs]);
+      await refreshBackgroundJob(job.id);
+    } catch (error) {
+      appendOperation(`Queue document reindex failed: ${errorMessage(error)}`);
+    }
+  }
+
+  async function queueBackgroundJob(taskType, payload) {
+    const response = await fetch("/admin/jobs", {
+      method: "POST",
+      headers: jsonAdminHeaders(),
+      body: JSON.stringify({
+        task_type: taskType,
+        payload: payload || {},
+      }),
+    });
+    if (!response.ok) {
+      throw new Error(await responseError(response));
+    }
+    return response.json();
+  }
+
+  async function refreshBackgroundJobs() {
+    try {
+      const response = await fetch("/admin/jobs", {
+        headers: adminHeaders(),
+      });
+      if (!response.ok) {
+        throw new Error(await responseError(response));
+      }
+      const payload = await response.json();
+      renderBackgroundJobs(payload.jobs || []);
+    } catch (error) {
+      state.backgroundJobs = [];
+      elements.backgroundJobs.replaceChildren(
+        emptyText(`Background jobs unavailable: ${errorMessage(error)}`),
+      );
+    }
+  }
+
+  async function refreshBackgroundJob(jobId) {
+    const response = await fetch(`/admin/jobs/${jobId}`, {
+      headers: adminHeaders(),
+    });
+    if (!response.ok) {
+      throw new Error(await responseError(response));
+    }
+    const job = await response.json();
+    const remaining = state.backgroundJobs.filter((item) => item.id !== job.id);
+    renderBackgroundJobs([job, ...remaining]);
+    return job;
+  }
+
+  function renderBackgroundJobs(jobs) {
+    state.backgroundJobs = Array.isArray(jobs) ? jobs : [];
+    elements.backgroundJobs.replaceChildren();
+
+    if (state.backgroundJobs.length === 0) {
+      elements.backgroundJobs.append(emptyText("No background jobs loaded."));
+      return;
+    }
+
+    state.backgroundJobs.slice(0, 10).forEach((job) => {
+      const row = document.createElement("div");
+      row.className = `job-row is-${job.status || "unknown"}`;
+
+      const body = document.createElement("div");
+      body.className = "job-body";
+      const title = document.createElement("strong");
+      title.textContent = job.task_type || "background.job";
+      const meta = document.createElement("span");
+      meta.className = "source-meta";
+      meta.textContent = [
+        job.status,
+        `${job.attempts || 0}/${job.max_attempts || 0} attempts`,
+        formatDateTime(job.updated_at),
+      ]
+        .filter(Boolean)
+        .join(" · ");
+      const details = document.createElement("span");
+      details.className = "source-meta";
+      details.textContent = job.error || backgroundJobResultSummary(job.result || {});
+      body.append(title, meta, details);
+      row.append(body);
+
+      if (job.status === "queued") {
+        const cancel = document.createElement("button");
+        cancel.type = "button";
+        cancel.className = "secondary-button";
+        cancel.textContent = "Cancel";
+        cancel.addEventListener("click", () => cancelBackgroundJob(job.id));
+        row.append(cancel);
+      }
+
+      elements.backgroundJobs.append(row);
+    });
+  }
+
+  async function cancelBackgroundJob(jobId) {
+    try {
+      const response = await fetch(`/admin/jobs/${jobId}/cancel`, {
+        method: "POST",
+        headers: adminHeaders(),
+      });
+      if (!response.ok) {
+        throw new Error(await responseError(response));
+      }
+      const job = await response.json();
+      appendOperation(`Background job ${job.status}: ${job.id}`);
+      await refreshBackgroundJobs();
+    } catch (error) {
+      appendOperation(`Cancel background job failed: ${errorMessage(error)}`);
+    }
+  }
+
+  function backgroundJobResultSummary(result) {
+    const entries = Object.entries(result || {});
+    if (entries.length === 0) {
+      return "waiting for worker";
+    }
+    return entries
+      .slice(0, 4)
+      .map(([key, value]) => `${key}: ${String(value)}`)
+      .join(" · ");
   }
 
   async function refreshStatus() {
