@@ -3,6 +3,7 @@ from app.background_jobs.service import (
     TASK_DOCUMENT_REINDEX,
     TASK_EVAL_RUN,
     TASK_INDEX_REBUILD,
+    TASK_INGEST_UPLOAD,
 )
 from app.models import BackgroundJob
 
@@ -23,6 +24,7 @@ def test_background_job_defaults_are_available_before_flush() -> None:
 
 def test_background_job_task_contract_is_explicit() -> None:
     assert BACKGROUND_JOB_TASK_TYPES == {
+        TASK_INGEST_UPLOAD,
         TASK_INDEX_REBUILD,
         TASK_DOCUMENT_REINDEX,
         TASK_EVAL_RUN,

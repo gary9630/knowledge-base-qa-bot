@@ -92,13 +92,16 @@ Seed Markdown locally:
 uv run --python 3.12 python -m scripts.seed_sample_docs
 ```
 
-Upload PDF, Markdown, text, or HTML and convert it to canonical Markdown:
+Upload PDF, Markdown, text, or HTML. Uploads return `202 Accepted` after the raw artifact
+and queued import job are saved; the background worker converts the file to canonical
+Markdown and then queues an index rebuild:
 
 ```bash
 curl -H "X-KB-Admin-Key: $KB_ADMIN_API_KEY" \
   -F "file=@notes.pdf" http://localhost:8000/imports
 curl -H "X-KB-Admin-Key: $KB_ADMIN_API_KEY" \
   http://localhost:8000/imports/status
+make worker-once
 curl -H "X-KB-Admin-Key: $KB_ADMIN_API_KEY" \
   -X POST http://localhost:8000/imports/<job-id>/retry
 ```
@@ -233,10 +236,12 @@ retrieval, and mindmap responses. Delete means "delete from the DB index"; sourc
 remain on disk and can be restored with single-document reindex.
 
 Background jobs are stored in `background_jobs` and processed by
-`python -m scripts.run_background_worker`. Supported task types are `index.rebuild`,
-`document.reindex`, and `eval.run`. The worker updates job status, attempts, result
-metadata, and errors in the DB, while the underlying indexing and eval subsystems still
-write their own domain history rows.
+`python -m scripts.run_background_worker`. Supported task types are `ingest.upload`,
+`index.rebuild`, `document.reindex`, and `eval.run`. `POST /imports` creates
+`ingest.upload`; successful ingestion writes canonical Markdown and queues `index.rebuild`.
+The worker updates job status, attempts, result metadata, and errors in the DB, while the
+underlying ingestion, indexing, and eval subsystems still write their own domain history
+rows.
 
 Run the deployment smoke check against a local or deployed API with:
 

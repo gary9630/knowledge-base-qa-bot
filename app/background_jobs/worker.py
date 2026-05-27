@@ -19,6 +19,7 @@ from app.evals.runner import (
     run_eval_suite,
 )
 from app.indexing.service import IndexingResult, IndexingService
+from app.ingestion.pipeline import IngestionPipeline, SqlAlchemyIngestionJobStore
 from app.models.tables import BackgroundJob
 from app.retrieval.embeddings import EmbeddingProvider, create_embedding_provider
 from app.retrieval.models import RetrievalStrategy
@@ -27,6 +28,7 @@ from .service import (
     TASK_DOCUMENT_REINDEX,
     TASK_EVAL_RUN,
     TASK_INDEX_REBUILD,
+    TASK_INGEST_UPLOAD,
     BackgroundJobService,
 )
 
@@ -77,6 +79,8 @@ class BackgroundWorker:
     ) -> dict[str, object]:
         if task_type == TASK_INDEX_REBUILD:
             return self._run_index_rebuild()
+        if task_type == TASK_INGEST_UPLOAD:
+            return self._run_ingest_upload(payload)
         if task_type == TASK_DOCUMENT_REINDEX:
             return self._run_document_reindex(payload)
         if task_type == TASK_EVAL_RUN:
@@ -105,6 +109,45 @@ class BackgroundWorker:
         return {
             "document_id": str(document_id),
             **_indexing_result_payload(result),
+        }
+
+    def _run_ingest_upload(self, payload: dict[str, object]) -> dict[str, object]:
+        ingestion_job_id = _payload_uuid(payload, "ingestion_job_id")
+        index_after_import = _bool_payload(payload.get("index_after_import"), default=True)
+        with self.session_factory() as session:
+            pipeline = IngestionPipeline(
+                store=SqlAlchemyIngestionJobStore(session),
+                raw_dir=Path(self.settings.raw_dir),
+                docs_dir=Path(self.settings.docs_dir),
+            )
+            existing_job = pipeline.store.get(ingestion_job_id)
+            if existing_job is None:
+                raise ValueError(f"Import job not found: {ingestion_job_id}")
+            result = (
+                existing_job
+                if existing_job.status == "succeeded"
+                else pipeline.run_queued_job(job_id=ingestion_job_id).job
+            )
+
+            index_job_id: str | None = None
+            if result.status == "succeeded" and index_after_import:
+                index_job = BackgroundJobService(session).enqueue(
+                    task_type=TASK_INDEX_REBUILD,
+                    payload={
+                        "reason": TASK_INGEST_UPLOAD,
+                        "ingestion_job_id": str(result.id),
+                        "canonical_path": result.canonical_path,
+                    },
+                )
+                session.commit()
+                index_job_id = str(index_job.id)
+
+        return {
+            "ingestion_job_id": str(result.id),
+            "import_status": result.status,
+            "raw_path": result.raw_path,
+            "canonical_path": result.canonical_path,
+            "queued_index_job_id": index_job_id,
         }
 
     def _run_eval(self, payload: dict[str, object]) -> dict[str, object]:
@@ -200,6 +243,16 @@ def _int_payload(value: object, *, default: int) -> int:
         except ValueError as error:
             raise ValueError("limit must be an integer") from error
     raise ValueError("limit must be an integer")
+
+
+def _bool_payload(value: object, *, default: bool) -> bool:
+    if value is None:
+        return default
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        return value.strip().lower() in {"1", "true", "yes", "on"}
+    return bool(value)
 
 
 def _error_message(error: Exception) -> str:

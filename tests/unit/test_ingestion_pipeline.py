@@ -73,6 +73,56 @@ def test_ingestion_pipeline_deduplicates_same_content_without_rewriting(
     assert not (tmp_path / "docs" / "copy.md").exists()
 
 
+def test_async_ingestion_deduplicates_same_content_while_original_is_queued(
+    tmp_path: Path,
+) -> None:
+    store = InMemoryIngestionJobStore()
+    pipeline = IngestionPipeline(
+        store=store,
+        raw_dir=tmp_path / "raw",
+        docs_dir=tmp_path / "docs",
+    )
+
+    first = pipeline.queue_upload(
+        filename="guide.txt",
+        content_type="text/plain",
+        body=b"Same body",
+    )
+    second = pipeline.queue_upload(
+        filename="copy.txt",
+        content_type="text/plain",
+        body=b"Same body",
+    )
+
+    assert first.job.status == "queued"
+    assert second.job.status == "duplicate"
+    assert second.job.canonical_path == first.job.canonical_path
+    assert second.job.raw_path == first.job.raw_path
+    assert second.job.metadata["duplicate_of"] == str(first.job.id)
+    assert not (tmp_path / "raw" / "copy.txt").exists()
+    assert not (tmp_path / "docs" / "copy.md").exists()
+
+
+def test_async_ingestion_only_processes_queued_jobs(tmp_path: Path) -> None:
+    store = InMemoryIngestionJobStore()
+    pipeline = IngestionPipeline(
+        store=store,
+        raw_dir=tmp_path / "raw",
+        docs_dir=tmp_path / "docs",
+    )
+    queued = pipeline.queue_upload(
+        filename="guide.txt",
+        content_type="text/plain",
+        body=b"Body",
+    )
+    store.mark_running(queued.job.id)
+
+    with pytest.raises(IngestionRetryNotAllowedError, match="Only queued import jobs"):
+        pipeline.run_queued_job(job_id=queued.job.id, imported_at=IMPORTED_AT)
+
+    assert not (tmp_path / "docs" / "guide.md").exists()
+
+
 def test_ingestion_pipeline_keeps_failed_raw_upload_for_retry(tmp_path: Path) -> None:
     store = InMemoryIngestionJobStore()
     pipeline = IngestionPipeline(

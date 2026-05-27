@@ -62,7 +62,8 @@ starting the app process.
 3. Protected `GET /metrics` works with `X-KB-Admin-Key`.
 4. Login works with the configured platform user.
 5. A known chat/search query returns expected source IDs.
-6. Upload and reindex work with `X-KB-Admin-Key`.
+6. Upload returns `202 Accepted`, creates `ingest.upload`, and the worker converts it to
+   canonical Markdown plus a queued `index.rebuild`.
 7. A protected `POST /admin/jobs` can enqueue `index.rebuild`, and the worker marks it
    succeeded.
 8. Scheduled eval runner can run `python -m scripts.run_evals --trigger scheduled`.

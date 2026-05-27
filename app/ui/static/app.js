@@ -843,10 +843,13 @@
         throw new Error(await responseError(response));
       }
       const payload = await response.json();
-      appendOperation(`Import ${payload.status}: ${payload.filename} -> ${payload.canonical_path}`);
+      appendOperation(
+        `Import ${payload.status}: ${payload.filename} -> ${payload.canonical_path}`,
+      );
       elements.uploadFile.value = "";
       renderImportJobs([payload, ...state.importJobs]);
       await refreshImportJobs();
+      await refreshBackgroundJobs();
     } catch (error) {
       appendOperation(`Upload failed: ${errorMessage(error)}`);
     }
@@ -1189,6 +1192,7 @@
       const payload = await response.json();
       appendOperation(`Import retry ${payload.status}: ${payload.filename}`);
       await refreshImportJobs();
+      await refreshBackgroundJobs();
     } catch (error) {
       appendOperation(`Import retry failed: ${errorMessage(error)}`);
       await refreshImportJobs();

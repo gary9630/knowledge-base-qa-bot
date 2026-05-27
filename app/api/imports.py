@@ -1,12 +1,11 @@
 from __future__ import annotations
 
 from collections.abc import Iterator
-from datetime import UTC, datetime
 from pathlib import Path, PurePath
-from typing import Annotated
+from typing import Annotated, Protocol, cast
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
+from fastapi import APIRouter, Depends, File, HTTPException, Request, Response, UploadFile, status
 from pydantic import BaseModel
 from pypdf.errors import PdfReadError
 
@@ -15,16 +14,29 @@ from app.api.dependencies import (
     get_indexing_session_factory,
     require_admin_access,
 )
+from app.background_jobs.service import TASK_INGEST_UPLOAD, BackgroundJobService
 from app.ingestion.pipeline import (
     IngestionDestinationConflictError,
     IngestionJobNotFoundError,
     IngestionJobView,
     IngestionPipeline,
+    IngestionPipelineResult,
     IngestionRetryNotAllowedError,
     SqlAlchemyIngestionJobStore,
 )
 
 router = APIRouter()
+
+
+class BackgroundJobEnqueuer(Protocol):
+    def __call__(
+        self,
+        *,
+        task_type: str,
+        payload: dict[str, object],
+        priority: int = 100,
+        max_attempts: int = 3,
+    ) -> UUID: ...
 
 
 class ImportJobResponse(BaseModel):
@@ -84,6 +96,7 @@ def import_job_response(job: IngestionJobView) -> ImportJobResponse:
 @router.post("/imports", response_model=ImportJobResponse)
 async def import_upload(
     request: Request,
+    response: Response,
     file: Annotated[UploadFile, File()],
     pipeline: Annotated[IngestionPipeline, Depends(get_ingestion_pipeline)],
     _: Annotated[None, Depends(require_admin_access)] = None,
@@ -94,19 +107,24 @@ async def import_upload(
     body = await _read_upload_bytes(file, max_bytes=settings.max_upload_bytes)
 
     try:
-        result = pipeline.import_upload(
+        result = pipeline.queue_upload(
             filename=filename,
             content_type=file.content_type,
             body=body,
-            imported_at=datetime.now(UTC).isoformat(),
         )
     except IngestionDestinationConflictError as error:
         raise HTTPException(status_code=409, detail=str(error)) from error
-    except (ValueError, UnicodeError, PdfReadError) as error:
+    except (ValueError, OSError) as error:
         raise HTTPException(
             status_code=400,
             detail=f"Could not import file: {error}",
         ) from error
+
+    if result.job.status == "queued":
+        result = IngestionPipelineResult(
+            job=enqueue_import_background_job_or_fail(request, pipeline, result.job)
+        )
+        response.status_code = status.HTTP_202_ACCEPTED
 
     return import_job_response(result.job)
 
@@ -141,14 +159,13 @@ def import_job(
 @router.post("/imports/{job_id}/retry", response_model=ImportJobResponse)
 def retry_import_job(
     job_id: UUID,
+    response: Response,
+    request: Request,
     pipeline: Annotated[IngestionPipeline, Depends(get_ingestion_pipeline)],
     _: Annotated[None, Depends(require_admin_access)] = None,
 ) -> ImportJobResponse:
     try:
-        result = pipeline.retry_failed_job(
-            job_id=job_id,
-            imported_at=datetime.now(UTC).isoformat(),
-        )
+        result = pipeline.queue_failed_job_retry(job_id=job_id)
     except IngestionJobNotFoundError as error:
         raise HTTPException(status_code=404, detail=str(error)) from error
     except IngestionRetryNotAllowedError as error:
@@ -159,7 +176,60 @@ def retry_import_job(
             detail=f"Could not import file: {error}",
         ) from error
 
+    result = IngestionPipelineResult(
+        job=enqueue_import_background_job_or_fail(request, pipeline, result.job)
+    )
+    response.status_code = status.HTTP_202_ACCEPTED
     return import_job_response(result.job)
+
+
+def enqueue_import_background_job_or_fail(
+    request: Request,
+    pipeline: IngestionPipeline,
+    job: IngestionJobView,
+) -> IngestionJobView:
+    try:
+        background_job_id = enqueue_import_background_job(request, job)
+    except Exception as error:
+        pipeline.store.mark_failed(
+            job.id,
+            error=f"Background job enqueue failed: {type(error).__name__}: {error}",
+            raw_path=job.raw_path,
+            canonical_path=job.canonical_path,
+        )
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=f"Could not queue import job: {error}",
+        ) from error
+
+    return pipeline.store.add_metadata(
+        job.id,
+        metadata={"background_job_id": str(background_job_id)},
+    )
+
+
+def enqueue_import_background_job(request: Request, job: IngestionJobView) -> UUID:
+    payload = {
+        "ingestion_job_id": str(job.id),
+        "index_after_import": bool(job.metadata.get("index_after_import", True)),
+    }
+    enqueuer = getattr(request.app.state, "background_job_enqueuer", None)
+    if callable(enqueuer):
+        return cast(BackgroundJobEnqueuer, enqueuer)(
+            task_type=TASK_INGEST_UPLOAD,
+            payload=payload,
+            max_attempts=1,
+        )
+
+    session_factory = get_indexing_session_factory(request)
+    with session_factory() as session:
+        background_job = BackgroundJobService(session).enqueue(
+            task_type=TASK_INGEST_UPLOAD,
+            payload=payload,
+            max_attempts=1,
+        )
+        session.commit()
+        return background_job.id
 
 
 def _safe_filename(filename: str | None) -> str:

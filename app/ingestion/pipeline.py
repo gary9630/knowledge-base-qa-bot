@@ -49,6 +49,18 @@ class IngestionRetryNotAllowedError(Exception):
 
 
 class IngestionJobStore(Protocol):
+    def create_queued(
+        self,
+        *,
+        filename: str,
+        content_type: str | None,
+        content_hash: str,
+        size_bytes: int,
+        raw_path: str | None,
+        canonical_path: str | None,
+        metadata: dict[str, object] | None = None,
+    ) -> IngestionJobView: ...
+
     def create_running(
         self,
         *,
@@ -63,11 +75,33 @@ class IngestionJobStore(Protocol):
 
     def find_succeeded_by_content_hash(self, content_hash: str) -> IngestionJobView | None: ...
 
+    def find_by_content_hash(
+        self,
+        content_hash: str,
+        *,
+        statuses: set[str],
+        exclude_job_id: UUID | None = None,
+    ) -> IngestionJobView | None: ...
+
     def get(self, job_id: UUID) -> IngestionJobView | None: ...
 
     def list_recent(self, *, limit: int) -> list[IngestionJobView]: ...
 
+    def mark_queued(
+        self,
+        job_id: UUID,
+        *,
+        metadata: dict[str, object] | None = None,
+    ) -> IngestionJobView: ...
+
     def mark_running(self, job_id: UUID) -> IngestionJobView: ...
+
+    def add_metadata(
+        self,
+        job_id: UUID,
+        *,
+        metadata: dict[str, object],
+    ) -> IngestionJobView: ...
 
     def mark_duplicate(
         self,
@@ -134,9 +168,54 @@ class _MutableIngestionJob:
 class InMemoryIngestionJobStore:
     _jobs: dict[UUID, _MutableIngestionJob] = field(default_factory=dict)
 
+    def create_queued(
+        self,
+        *,
+        filename: str,
+        content_type: str | None,
+        content_hash: str,
+        size_bytes: int,
+        raw_path: str | None,
+        canonical_path: str | None,
+        metadata: dict[str, object] | None = None,
+    ) -> IngestionJobView:
+        return self._create(
+            status="queued",
+            filename=filename,
+            content_type=content_type,
+            content_hash=content_hash,
+            size_bytes=size_bytes,
+            raw_path=raw_path,
+            canonical_path=canonical_path,
+            metadata=metadata,
+        )
+
     def create_running(
         self,
         *,
+        filename: str,
+        content_type: str | None,
+        content_hash: str,
+        size_bytes: int,
+        raw_path: str | None,
+        canonical_path: str | None,
+        metadata: dict[str, object] | None = None,
+    ) -> IngestionJobView:
+        return self._create(
+            status="running",
+            filename=filename,
+            content_type=content_type,
+            content_hash=content_hash,
+            size_bytes=size_bytes,
+            raw_path=raw_path,
+            canonical_path=canonical_path,
+            metadata=metadata,
+        )
+
+    def _create(
+        self,
+        *,
+        status: str,
         filename: str,
         content_type: str | None,
         content_hash: str,
@@ -149,7 +228,7 @@ class InMemoryIngestionJobStore:
         job = _MutableIngestionJob(
             id=uuid4(),
             kind="upload",
-            status="running",
+            status=status,
             filename=filename,
             content_type=content_type,
             content_hash=content_hash,
@@ -165,8 +244,21 @@ class InMemoryIngestionJobStore:
         return job.snapshot()
 
     def find_succeeded_by_content_hash(self, content_hash: str) -> IngestionJobView | None:
+        return self.find_by_content_hash(content_hash, statuses={"succeeded"})
+
+    def find_by_content_hash(
+        self,
+        content_hash: str,
+        *,
+        statuses: set[str],
+        exclude_job_id: UUID | None = None,
+    ) -> IngestionJobView | None:
         for job in sorted(self._jobs.values(), key=lambda item: (item.created_at, item.id)):
-            if job.status == "succeeded" and job.content_hash == content_hash:
+            if (
+                job.content_hash == content_hash
+                and job.status in statuses
+                and job.id != exclude_job_id
+            ):
                 return job.snapshot()
         return None
 
@@ -182,8 +274,24 @@ class InMemoryIngestionJobStore:
         )
         return [job.snapshot() for job in jobs[:limit]]
 
+    def mark_queued(
+        self,
+        job_id: UUID,
+        *,
+        metadata: dict[str, object] | None = None,
+    ) -> IngestionJobView:
+        return self._update(job_id, status="queued", error=None, metadata=metadata)
+
     def mark_running(self, job_id: UUID) -> IngestionJobView:
         return self._update(job_id, status="running", error=None)
+
+    def add_metadata(
+        self,
+        job_id: UUID,
+        *,
+        metadata: dict[str, object],
+    ) -> IngestionJobView:
+        return self._update(job_id, metadata=metadata)
 
     def mark_duplicate(
         self,
@@ -251,6 +359,28 @@ class SqlAlchemyIngestionJobStore:
     def __init__(self, session: Session) -> None:
         self.session = session
 
+    def create_queued(
+        self,
+        *,
+        filename: str,
+        content_type: str | None,
+        content_hash: str,
+        size_bytes: int,
+        raw_path: str | None,
+        canonical_path: str | None,
+        metadata: dict[str, object] | None = None,
+    ) -> IngestionJobView:
+        return self._create(
+            status="queued",
+            filename=filename,
+            content_type=content_type,
+            content_hash=content_hash,
+            size_bytes=size_bytes,
+            raw_path=raw_path,
+            canonical_path=canonical_path,
+            metadata=metadata,
+        )
+
     def create_running(
         self,
         *,
@@ -262,9 +392,32 @@ class SqlAlchemyIngestionJobStore:
         canonical_path: str | None,
         metadata: dict[str, object] | None = None,
     ) -> IngestionJobView:
+        return self._create(
+            status="running",
+            filename=filename,
+            content_type=content_type,
+            content_hash=content_hash,
+            size_bytes=size_bytes,
+            raw_path=raw_path,
+            canonical_path=canonical_path,
+            metadata=metadata,
+        )
+
+    def _create(
+        self,
+        *,
+        status: str,
+        filename: str,
+        content_type: str | None,
+        content_hash: str,
+        size_bytes: int,
+        raw_path: str | None,
+        canonical_path: str | None,
+        metadata: dict[str, object] | None = None,
+    ) -> IngestionJobView:
         job = IngestionJob(
             kind="upload",
-            status="running",
+            status=status,
             filename=filename,
             content_type=content_type,
             content_hash=content_hash,
@@ -278,15 +431,27 @@ class SqlAlchemyIngestionJobStore:
         return _job_view(job)
 
     def find_succeeded_by_content_hash(self, content_hash: str) -> IngestionJobView | None:
-        job = self.session.scalars(
+        return self.find_by_content_hash(content_hash, statuses={"succeeded"})
+
+    def find_by_content_hash(
+        self,
+        content_hash: str,
+        *,
+        statuses: set[str],
+        exclude_job_id: UUID | None = None,
+    ) -> IngestionJobView | None:
+        statement = (
             select(IngestionJob)
             .where(
                 IngestionJob.content_hash == content_hash,
-                IngestionJob.status == "succeeded",
+                IngestionJob.status.in_(statuses),
             )
             .order_by(IngestionJob.created_at.asc(), IngestionJob.id.asc())
             .limit(1)
-        ).first()
+        )
+        if exclude_job_id is not None:
+            statement = statement.where(IngestionJob.id != exclude_job_id)
+        job = self.session.scalars(statement).first()
         return _job_view(job) if job else None
 
     def get(self, job_id: UUID) -> IngestionJobView | None:
@@ -301,8 +466,24 @@ class SqlAlchemyIngestionJobStore:
         ).all()
         return [_job_view(job) for job in jobs]
 
+    def mark_queued(
+        self,
+        job_id: UUID,
+        *,
+        metadata: dict[str, object] | None = None,
+    ) -> IngestionJobView:
+        return self._update(job_id, status="queued", error=None, metadata=metadata)
+
     def mark_running(self, job_id: UUID) -> IngestionJobView:
         return self._update(job_id, status="running", error=None)
+
+    def add_metadata(
+        self,
+        job_id: UUID,
+        *,
+        metadata: dict[str, object],
+    ) -> IngestionJobView:
+        return self._update(job_id, metadata=metadata)
 
     def mark_duplicate(
         self,
@@ -410,7 +591,11 @@ class IngestionPipeline:
             canonical_path=str(canonical_path),
         )
 
-        duplicate = self.store.find_succeeded_by_content_hash(content_hash)
+        duplicate = self.store.find_by_content_hash(
+            content_hash,
+            statuses={"queued", "running", "succeeded"},
+            exclude_job_id=job.id,
+        )
         if duplicate is not None:
             return IngestionPipelineResult(
                 job=self.store.mark_duplicate(job.id, duplicate_of=duplicate)
@@ -452,6 +637,147 @@ class IngestionPipeline:
                 job.id,
                 raw_path=str(raw_path),
                 canonical_path=str(canonical_path),
+            )
+        )
+
+    def queue_upload(
+        self,
+        *,
+        filename: str,
+        content_type: str | None,
+        body: bytes,
+        index_after_import: bool = True,
+    ) -> IngestionPipelineResult:
+        content_hash = _content_hash(body)
+        raw_path = self.raw_dir / filename
+        canonical_path = self.docs_dir / f"{Path(filename).stem or 'document'}.md"
+        job = self.store.create_queued(
+            filename=filename,
+            content_type=content_type,
+            content_hash=content_hash,
+            size_bytes=len(body),
+            raw_path=str(raw_path),
+            canonical_path=str(canonical_path),
+            metadata={
+                "async": True,
+                "index_after_import": index_after_import,
+            },
+        )
+
+        duplicate = self.store.find_by_content_hash(
+            content_hash,
+            statuses={"queued", "running", "succeeded"},
+            exclude_job_id=job.id,
+        )
+        if duplicate is not None:
+            return IngestionPipelineResult(
+                job=self.store.mark_duplicate(job.id, duplicate_of=duplicate)
+            )
+
+        if raw_path.exists() or canonical_path.exists():
+            error = "Import destination already exists."
+            self.store.mark_failed(
+                job.id,
+                error=error,
+                raw_path=str(raw_path),
+                canonical_path=str(canonical_path),
+            )
+            raise IngestionDestinationConflictError(error)
+
+        try:
+            self.raw_dir.mkdir(parents=True, exist_ok=True)
+            self.docs_dir.mkdir(parents=True, exist_ok=True)
+            raw_path.write_bytes(body)
+        except Exception as error:
+            self.store.mark_failed(
+                job.id,
+                error=f"{type(error).__name__}: {error}",
+                raw_path=str(raw_path),
+                canonical_path=str(canonical_path),
+            )
+            raise
+
+        return IngestionPipelineResult(job=job)
+
+    def run_queued_job(
+        self,
+        *,
+        job_id: UUID,
+        imported_at: str | datetime | None = None,
+    ) -> IngestionPipelineResult:
+        job = self.store.get(job_id)
+        if job is None:
+            raise IngestionJobNotFoundError(f"Import job not found: {job_id}")
+        if job.status != "queued":
+            raise IngestionRetryNotAllowedError("Only queued import jobs can be processed.")
+        if not job.raw_path or not job.canonical_path:
+            raise IngestionRetryNotAllowedError("Queued import job has no raw artifact.")
+
+        raw_path = Path(job.raw_path)
+        canonical_path = Path(job.canonical_path)
+        self.store.mark_running(job.id)
+        try:
+            body = raw_path.read_bytes()
+            content_hash = _content_hash(body)
+            if content_hash != job.content_hash:
+                raise ValueError("Raw artifact no longer matches import job.")
+            markdown = import_file_to_markdown(
+                job.filename,
+                body,
+                imported_at=imported_at or _utc_now().isoformat(),
+                content_hash=job.content_hash,
+                canonical_path=_display_path(canonical_path),
+            )
+            canonical_path.parent.mkdir(parents=True, exist_ok=True)
+            canonical_path.write_text(markdown, encoding="utf-8")
+        except Exception as error:
+            self.store.mark_failed(
+                job.id,
+                error=f"{type(error).__name__}: {error}",
+                raw_path=str(raw_path),
+                canonical_path=str(canonical_path),
+            )
+            raise
+
+        return IngestionPipelineResult(
+            job=self.store.mark_succeeded(
+                job.id,
+                raw_path=str(raw_path),
+                canonical_path=str(canonical_path),
+                metadata={"processed_async": True},
+            )
+        )
+
+    def queue_failed_job_retry(self, *, job_id: UUID) -> IngestionPipelineResult:
+        job = self.store.get(job_id)
+        if job is None:
+            raise IngestionJobNotFoundError(f"Import job not found: {job_id}")
+        if job.status != "failed":
+            raise IngestionRetryNotAllowedError("Only failed import jobs can be retried.")
+        if not job.raw_path or not job.canonical_path:
+            raise IngestionRetryNotAllowedError("Failed import job has no raw artifact to retry.")
+
+        raw_path = Path(job.raw_path)
+        try:
+            body = raw_path.read_bytes()
+        except OSError as error:
+            self.store.mark_failed(
+                job.id,
+                error=f"{type(error).__name__}: {error}",
+                raw_path=job.raw_path,
+                canonical_path=job.canonical_path,
+            )
+            raise IngestionRetryNotAllowedError(
+                "Raw artifact is not readable for this import job."
+            ) from error
+
+        if _content_hash(body) != job.content_hash:
+            raise IngestionRetryNotAllowedError("Raw artifact no longer matches failed import job.")
+
+        return IngestionPipelineResult(
+            job=self.store.mark_queued(
+                job.id,
+                metadata={"retried": True},
             )
         )
 

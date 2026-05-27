@@ -9,10 +9,12 @@ from sqlalchemy.orm import Session
 
 from app.models.tables import BackgroundJob
 
+TASK_INGEST_UPLOAD = "ingest.upload"
 TASK_INDEX_REBUILD = "index.rebuild"
 TASK_DOCUMENT_REINDEX = "document.reindex"
 TASK_EVAL_RUN = "eval.run"
 BACKGROUND_JOB_TASK_TYPES = {
+    TASK_INGEST_UPLOAD,
     TASK_INDEX_REBUILD,
     TASK_DOCUMENT_REINDEX,
     TASK_EVAL_RUN,

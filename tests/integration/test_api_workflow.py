@@ -10,9 +10,16 @@ from fastapi.testclient import TestClient
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.background_jobs.service import (
+    TASK_INDEX_REBUILD,
+    TASK_INGEST_UPLOAD,
+    BackgroundJobService,
+)
+from app.background_jobs.worker import BackgroundWorker
 from app.core.config import Settings
 from app.main import create_app
-from app.models.tables import Document, Feedback, IngestionJob, Section
+from app.models.tables import BackgroundJob, Document, Feedback, IngestionJob, Section
+from app.retrieval.embeddings import FakeEmbeddingProvider
 
 
 @pytest.fixture
@@ -205,13 +212,24 @@ def test_imports_upload_saves_raw_file_and_canonical_markdown(
         files={"file": ("upload.txt", b"Question\n\nAnswer", "text/plain")},
     )
 
-    assert response.status_code == 200
+    assert response.status_code == 202
     body = response.json()
     assert body["id"]
-    assert body["status"] == "succeeded"
+    assert body["status"] == "queued"
     assert body["filename"] == "upload.txt"
     assert Path(body["raw_path"]).read_bytes() == b"Question\n\nAnswer"
-    canonical_markdown = Path(body["canonical_path"]).read_text(encoding="utf-8")
+    assert not Path(body["canonical_path"]).exists()
+    assert body["metadata"]["background_job_id"]
+
+    processed = _worker(app_with_test_db, db_session).run_once()
+    assert processed is not None
+    assert processed.task_type == "ingest.upload"
+
+    status_response = client.get(f"/imports/{body['id']}")
+    assert status_response.status_code == 200
+    status_body = status_response.json()
+    assert status_body["status"] == "succeeded"
+    canonical_markdown = Path(status_body["canonical_path"]).read_text(encoding="utf-8")
     assert "source_original: raw/upload.txt" in canonical_markdown
     assert f"content_hash: {body['content_hash']}" in canonical_markdown
     assert "# upload" in canonical_markdown
@@ -234,12 +252,14 @@ def test_imports_upload_deduplicates_by_content_hash(
         "/imports",
         files={"file": ("upload.txt", b"Question\n\nAnswer", "text/plain")},
     )
+    first_worker_result = _worker(app_with_test_db, db_session).run_once()
+    assert first_worker_result is not None
     duplicate_response = client.post(
         "/imports",
         files={"file": ("copy.txt", b"Question\n\nAnswer", "text/plain")},
     )
 
-    assert first_response.status_code == 200
+    assert first_response.status_code == 202
     assert duplicate_response.status_code == 200
     first_body = first_response.json()
     duplicate_body = duplicate_response.json()
@@ -252,6 +272,40 @@ def test_imports_upload_deduplicates_by_content_hash(
     assert [job.status for job in jobs] == ["succeeded", "duplicate"]
 
 
+def test_imports_upload_deduplicates_by_queued_content_hash(
+    app_with_test_db: FastAPI,
+    db_session: Session,
+) -> None:
+    client = TestClient(app_with_test_db)
+
+    first_response = client.post(
+        "/imports",
+        files={"file": ("upload.txt", b"Question\n\nAnswer", "text/plain")},
+    )
+    duplicate_response = client.post(
+        "/imports",
+        files={"file": ("copy.txt", b"Question\n\nAnswer", "text/plain")},
+    )
+
+    assert first_response.status_code == 202
+    assert duplicate_response.status_code == 200
+    first_body = first_response.json()
+    duplicate_body = duplicate_response.json()
+    assert duplicate_body["status"] == "duplicate"
+    assert duplicate_body["canonical_path"] == first_body["canonical_path"]
+    assert duplicate_body["metadata"]["duplicate_of"] == first_body["id"]
+    assert not Path(duplicate_body["raw_path"]).with_name("copy.txt").exists()
+
+    ingestion_jobs = db_session.scalars(
+        select(IngestionJob).order_by(IngestionJob.created_at.asc())
+    ).all()
+    background_jobs = db_session.scalars(
+        select(BackgroundJob).where(BackgroundJob.task_type == TASK_INGEST_UPLOAD)
+    ).all()
+    assert [job.status for job in ingestion_jobs] == ["queued", "duplicate"]
+    assert len(background_jobs) == 1
+
+
 def test_imported_upload_enters_db_index_with_canonical_metadata(
     app_with_test_db: FastAPI,
     db_session: Session,
@@ -262,10 +316,15 @@ def test_imported_upload_enters_db_index_with_canonical_metadata(
         "/imports",
         files={"file": ("upload.txt", b"Question\n\nAnswer", "text/plain")},
     )
-    index_response = client.post("/index")
+    worker = _worker(app_with_test_db, db_session)
+    ingest_job = worker.run_once()
+    index_job = worker.run_once()
 
-    assert import_response.status_code == 200
-    assert index_response.status_code == 200
+    assert import_response.status_code == 202
+    assert ingest_job is not None
+    assert ingest_job.task_type == "ingest.upload"
+    assert index_job is not None
+    assert index_job.task_type == "index.rebuild"
     import_body = import_response.json()
     document = db_session.scalar(select(Document).where(Document.filename == "upload.md"))
     assert document is not None
@@ -273,6 +332,69 @@ def test_imported_upload_enters_db_index_with_canonical_metadata(
     assert document.imported_from == "raw/upload.txt"
     assert document.metadata_json["content_hash"] == import_body["content_hash"]
     assert document.metadata_json["canonical_path"] == import_body["canonical_path"]
+
+
+def test_worker_rerun_for_succeeded_import_still_queues_index_rebuild(
+    app_with_test_db: FastAPI,
+    db_session: Session,
+) -> None:
+    client = TestClient(app_with_test_db)
+    worker = _worker(app_with_test_db, db_session)
+
+    import_response = client.post(
+        "/imports",
+        files={"file": ("upload.txt", b"Question\n\nAnswer", "text/plain")},
+    )
+    ingest_job = worker.run_once()
+    import_body = import_response.json()
+    duplicate_ingest_job = BackgroundJobService(db_session).enqueue(
+        task_type=TASK_INGEST_UPLOAD,
+        payload={"ingestion_job_id": import_body["id"]},
+        priority=0,
+    )
+    db_session.commit()
+    rerun_job = worker.run_once()
+
+    assert import_response.status_code == 202
+    assert ingest_job is not None
+    assert ingest_job.status == "succeeded"
+    assert rerun_job is not None
+    assert rerun_job.id == duplicate_ingest_job.id
+    assert rerun_job.status == "succeeded"
+    assert rerun_job.result_json["queued_index_job_id"]
+
+    index_jobs = db_session.scalars(
+        select(BackgroundJob).where(BackgroundJob.task_type == TASK_INDEX_REBUILD)
+    ).all()
+    assert len(index_jobs) == 2
+
+
+def test_failed_async_import_can_be_retried(
+    app_with_test_db: FastAPI,
+    db_session: Session,
+) -> None:
+    client = TestClient(app_with_test_db)
+
+    import_response = client.post(
+        "/imports",
+        files={"file": ("broken.txt", b"\xff\xfe", "text/plain")},
+    )
+    first_processed = _worker(app_with_test_db, db_session).run_once()
+    failed_body = client.get(f"/imports/{import_response.json()['id']}").json()
+    retry_response = client.post(f"/imports/{failed_body['id']}/retry")
+
+    assert import_response.status_code == 202
+    assert first_processed is not None
+    assert first_processed.status == "failed"
+    assert failed_body["status"] == "failed"
+    assert "UnicodeDecodeError" in failed_body["error"]
+    assert retry_response.status_code == 202
+    assert retry_response.json()["status"] == "queued"
+
+    background_jobs = db_session.scalars(
+        select(BackgroundJob).where(BackgroundJob.task_type == "ingest.upload")
+    ).all()
+    assert len(background_jobs) == 2
 
 
 def test_sources_endpoints_hide_non_public_documents(
@@ -417,3 +539,13 @@ def _session_factory(db_session: Session) -> Callable[[], Session]:
         )
 
     return create_session
+
+
+def _worker(app: FastAPI, db_session: Session) -> BackgroundWorker:
+    return BackgroundWorker(
+        session_factory=_session_factory(db_session),
+        settings=app.state.settings,
+        embedding_provider=FakeEmbeddingProvider(),
+        answer_provider=app.state.answer_provider,
+        worker_id="test-worker",
+    )

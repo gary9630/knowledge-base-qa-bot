@@ -49,7 +49,7 @@
 - `/ready` includes a storage check for `docs`, `raw`, and `.kb` path usability.
 - Admin/security audit events are DB-backed in `audit_events` and exposed through protected `GET /admin/audit-events`.
 - Document lifecycle is managed through protected `/admin/documents` routes. Non-active documents must stay hidden from sources, search/chat retrieval, and mindmap.
-- Async orchestration is DB-backed in `background_jobs`; `POST /admin/jobs` can enqueue `index.rebuild`, `document.reindex`, and `eval.run`, and `python -m scripts.run_background_worker` processes them.
+- Async orchestration is DB-backed in `background_jobs`; `POST /imports` enqueues `ingest.upload`, `POST /admin/jobs` can enqueue `index.rebuild`, `document.reindex`, and `eval.run`, and `python -m scripts.run_background_worker` processes them.
 
 ## Testing Expectations
 
@@ -77,6 +77,7 @@ intentionally deferred until traffic or multi-replica deployment requires it.
 - Keep learner platform access separate from admin API key access.
 - Apply source access filtering consistently across search, chat, streaming chat, source preview, and mindmap. Admin eval routes are still admin-only and should be reviewed if learner-specific eval personas are added.
 - Store raw uploads and canonical Markdown on durable production storage before public launch.
+- `POST /imports` must stay lightweight: save the raw artifact, create a queued ingestion job, enqueue `ingest.upload`, and let the worker convert Markdown and enqueue index rebuilds.
 - Backup/restore runbook lives at `ops/backup-restore.md`; restore targets require `CONFIRM_RESTORE=yes` and do not remove stale files.
 - Production deploy runbook lives at `ops/deploy.md`.
 - Do not expose admin endpoints publicly without the admin key or an authenticated gateway.

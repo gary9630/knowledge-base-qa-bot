@@ -27,6 +27,7 @@ def test_ui_serves_three_column_workbench() -> None:
     assert "fetch(\"/imports\"" in js_response.text
     assert "fetch(\"/imports/status\"" in js_response.text
     assert "/retry`" in js_response.text
+    assert "await refreshBackgroundJobs();" in js_response.text
     assert "elements.uploadFile.value = \"\"" in js_response.text
     assert "elements.uploadForm.reset()" not in js_response.text
     assert "fetch(\"/index\"" in js_response.text

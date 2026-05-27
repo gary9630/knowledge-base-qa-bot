@@ -3,6 +3,7 @@ from app.background_jobs.service import (
     TASK_DOCUMENT_REINDEX,
     TASK_EVAL_RUN,
     TASK_INDEX_REBUILD,
+    TASK_INGEST_UPLOAD,
     BackgroundJobService,
 )
 from app.background_jobs.worker import BackgroundWorker
@@ -13,5 +14,6 @@ __all__ = [
     "BackgroundWorker",
     "TASK_DOCUMENT_REINDEX",
     "TASK_EVAL_RUN",
+    "TASK_INGEST_UPLOAD",
     "TASK_INDEX_REBUILD",
 ]
