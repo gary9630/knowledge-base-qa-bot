@@ -5,10 +5,12 @@ from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.config import Settings
 from app.main import create_app
+from app.models.tables import AuditEvent
 
 
 def test_platform_login_session_and_logout_workflow(
@@ -114,6 +116,53 @@ def test_platform_login_uses_generic_error_for_invalid_credentials(
 
     assert response.status_code == 401
     assert response.json()["detail"] == "Invalid credentials."
+
+
+def test_platform_auth_writes_audit_events(
+    db_session: Session,
+    tmp_path: Path,
+) -> None:
+    client = TestClient(_auth_app(db_session, tmp_path))
+
+    failed_response = client.post(
+        "/auth/login",
+        json={"username": "student", "password": "wrong"},
+        headers={"X-Request-ID": "login-failed-request"},
+    )
+    login_response = client.post(
+        "/auth/login",
+        json={"username": "student", "password": "pass"},
+        headers={"X-Request-ID": "login-success-request"},
+    )
+    logout_response = client.post(
+        "/auth/logout",
+        headers={"X-Request-ID": "logout-request"},
+    )
+
+    events = db_session.scalars(
+        select(AuditEvent).order_by(AuditEvent.created_at.asc(), AuditEvent.event_type.asc())
+    ).all()
+    event_map = {event.event_type: event for event in events}
+
+    assert failed_response.status_code == 401
+    assert login_response.status_code == 200
+    assert logout_response.status_code == 200
+    assert set(event_map) == {
+        "auth.login_failed",
+        "auth.login_succeeded",
+        "auth.logout",
+    }
+    assert event_map["auth.login_failed"].actor_type == "platform"
+    assert event_map["auth.login_failed"].actor_id == "student"
+    assert event_map["auth.login_failed"].outcome == "failure"
+    assert event_map["auth.login_failed"].request_id == "login-failed-request"
+    assert event_map["auth.login_failed"].metadata_json == {
+        "reason": "invalid_credentials"
+    }
+    assert event_map["auth.login_succeeded"].actor_id == "student"
+    assert event_map["auth.login_succeeded"].outcome == "success"
+    assert event_map["auth.logout"].actor_id == "student"
+    assert all("password" not in event.metadata_json for event in events)
 
 
 def _auth_app(

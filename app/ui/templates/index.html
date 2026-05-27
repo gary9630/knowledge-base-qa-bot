@@ -52,6 +52,12 @@
             </svg>
             Admin Uploads
           </button>
+          <button class="tab" id="tab-audit" type="button" role="tab" aria-selected="false" aria-controls="panel-audit" tabindex="-1" data-tab="audit">
+            <svg aria-hidden="true" viewBox="0 0 24 24">
+              <path d="M6 3h12l1 4v13H5V7zm0 4h12M9 11h6M9 15h4" />
+            </svg>
+            Audit Log
+          </button>
           <button class="tab" id="tab-sources" type="button" role="tab" aria-selected="false" aria-controls="panel-sources" tabindex="-1" data-tab="sources">
             <svg aria-hidden="true" viewBox="0 0 24 24">
               <path d="M6 5h12M6 12h12M6 19h12" />
@@ -149,6 +155,51 @@
           </section>
 
           <pre class="operation-log" id="operation-log" aria-live="polite">No admin operations yet.</pre>
+        </section>
+
+        <section class="workspace-panel" id="panel-audit" role="tabpanel" tabindex="0" data-panel="audit" aria-labelledby="tab-audit" hidden>
+          <header class="workspace-header">
+            <div>
+              <h2>Audit Log</h2>
+            </div>
+            <button class="secondary-button" type="button" id="refresh-audit">Refresh</button>
+          </header>
+
+          <form class="audit-form" id="audit-filters">
+            <label for="audit-admin-key">Admin Key</label>
+            <input id="audit-admin-key" name="audit-admin-key" type="password" autocomplete="current-password" />
+            <label for="audit-event-type">Event Type</label>
+            <select id="audit-event-type" name="audit-event-type">
+              <option value="">Any</option>
+              <option value="auth.login_failed">auth.login_failed</option>
+              <option value="auth.login_succeeded">auth.login_succeeded</option>
+              <option value="auth.logout">auth.logout</option>
+              <option value="admin.access_denied">admin.access_denied</option>
+              <option value="admin.access_granted">admin.access_granted</option>
+              <option value="security.rate_limited">security.rate_limited</option>
+              <option value="security.upload_concurrency_limited">security.upload_concurrency_limited</option>
+            </select>
+            <label for="audit-outcome">Outcome</label>
+            <select id="audit-outcome" name="audit-outcome">
+              <option value="">Any</option>
+              <option value="success">success</option>
+              <option value="failure">failure</option>
+              <option value="blocked">blocked</option>
+            </select>
+            <label for="audit-actor-type">Actor Type</label>
+            <select id="audit-actor-type" name="audit-actor-type">
+              <option value="">Any</option>
+              <option value="platform">platform</option>
+              <option value="admin">admin</option>
+              <option value="client">client</option>
+            </select>
+            <label for="audit-limit">Limit</label>
+            <input id="audit-limit" name="audit-limit" type="number" min="1" max="100" value="50" />
+          </form>
+
+          <div class="audit-events" id="audit-events" aria-live="polite">
+            <p class="muted">No audit events loaded.</p>
+          </div>
         </section>
 
         <section class="workspace-panel" id="panel-sources" role="tabpanel" tabindex="0" data-panel="sources" aria-labelledby="tab-sources" hidden>

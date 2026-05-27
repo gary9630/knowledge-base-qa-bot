@@ -3,6 +3,7 @@ from __future__ import annotations
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+from app.audit import AuditEventInput
 from app.core.config import Settings
 from app.observability.metrics import InMemoryMetrics
 from app.observability.rate_limit import (
@@ -59,6 +60,8 @@ def test_rate_limit_middleware_returns_429_with_headers_and_metrics() -> None:
             rate_limit_window_seconds=60,
         )
     )
+    audit_events: list[AuditEventInput] = []
+    app.state.audit_recorder = audit_events.append
 
     first = client.post("/auth/login", json={"username": "student", "password": "bad"})
     second = client.post("/auth/login", json={"username": "student", "password": "bad"})
@@ -79,6 +82,27 @@ def test_rate_limit_middleware_returns_429_with_headers_and_metrics() -> None:
     assert blocked.headers["X-RateLimit-Remaining"] == "0"
     assert metrics["rate_limited_total"] == 1
     assert metrics["rate_limited_by_policy"] == {"login": 1}
+    assert audit_events == [
+        AuditEventInput(
+            event_type="security.rate_limited",
+            actor_type="client",
+            actor_id="testclient",
+            outcome="blocked",
+            request_id=None,
+            method="POST",
+            path="/auth/login",
+            client_host="testclient",
+            user_agent="testclient",
+            resource_type=None,
+            resource_id=None,
+            metadata={
+                "policy": "login",
+                "limit": 2,
+                "retry_after_seconds": 60,
+                "reset_after_seconds": 60,
+            },
+        )
+    ]
 
 
 def test_rate_limit_middleware_can_be_disabled() -> None:
@@ -119,6 +143,8 @@ def test_upload_concurrency_middleware_rejects_before_route_runs() -> None:
         rate_limit_upload_requests=100,
     )
     app.state.metrics = InMemoryMetrics()
+    audit_events: list[AuditEventInput] = []
+    app.state.audit_recorder = audit_events.append
     app.state.upload_concurrency_limiter = UploadConcurrencyLimiter()
     active_guard = app.state.upload_concurrency_limiter.try_acquire(
         policy="upload",
@@ -150,6 +176,25 @@ def test_upload_concurrency_middleware_rejects_before_route_runs() -> None:
     assert route_calls == 0
     assert metrics["concurrency_limited_total"] == 1
     assert metrics["concurrency_limited_by_policy"] == {"upload": 1}
+    assert audit_events == [
+        AuditEventInput(
+            event_type="security.upload_concurrency_limited",
+            actor_type="client",
+            actor_id="testclient",
+            outcome="blocked",
+            request_id=None,
+            method="POST",
+            path="/imports",
+            client_host="testclient",
+            user_agent="testclient",
+            resource_type=None,
+            resource_id=None,
+            metadata={
+                "policy": "upload",
+                "max_concurrent_uploads": 1,
+            },
+        )
+    ]
 
 
 def _client(settings: Settings) -> tuple[TestClient, FastAPI]:

@@ -148,6 +148,7 @@ Useful read endpoints:
 - `GET /sources` and `GET /sources/{document_id}`
 - `GET /sources/{document_id}/sections/{section_id}`
 - `GET /mindmap`
+- `GET /admin/audit-events` for admin/security audit events
 - `POST /search`
 - `POST /chat/stream` for server-sent token events
 
@@ -185,6 +186,9 @@ App-native operations endpoints are built into the FastAPI service:
 - `GET /metrics` returns in-process JSON counters and recent request samples for quick
   triage without a Prometheus/OpenTelemetry stack. It is protected by the admin API key
   when `KB_ADMIN_API_KEY` is configured.
+- `GET /admin/audit-events` lists DB-backed audit/security events. It is protected by
+  the admin API key and supports `limit`, `event_type`, `outcome`, and `actor_type`
+  filters.
 
 Every response includes an `X-Request-ID` header. Clients can send their own request ID
 with that header, or the app will generate one. Completed and failed requests emit
@@ -198,6 +202,11 @@ also have a per-process concurrency guard controlled by `KB_MAX_CONCURRENT_UPLOA
 These limits are intentionally in-memory for the first single-process deploy model; use a
 gateway, Redis-backed limiter, or reverse proxy policy before running multiple app
 replicas.
+
+Audit events are written for platform login success/failure/logout, admin access
+grant/deny, rate-limit blocks, and upload concurrency blocks. The log stores request
+metadata such as request ID, method, path, client host, and user agent. Admin keys are
+fingerprinted before storage, and passwords are never written to audit metadata.
 
 Run the deployment smoke check against a local or deployed API with:
 

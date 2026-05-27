@@ -7,6 +7,7 @@ from fastapi import Depends, Header, HTTPException, Request
 from sqlalchemy.orm import Session
 
 from app.answer.providers import AnswerProvider, create_answer_provider
+from app.audit import fingerprint_secret, record_audit_event
 from app.auth.sessions import (
     PlatformSession,
     platform_auth_is_configured,
@@ -74,14 +75,47 @@ def require_admin_access(
     settings = get_app_settings(request)
     if settings.admin_api_key:
         if admin_key != settings.admin_api_key:
+            record_audit_event(
+                request,
+                event_type="admin.access_denied",
+                actor_type="admin",
+                actor_id=fingerprint_secret(admin_key) if admin_key else None,
+                outcome="failure",
+                metadata={
+                    "reason": "invalid_admin_key" if admin_key else "missing_admin_key"
+                },
+            )
             raise HTTPException(status_code=401, detail="Admin API key is required.")
+        record_audit_event(
+            request,
+            event_type="admin.access_granted",
+            actor_type="admin",
+            actor_id=fingerprint_secret(settings.admin_api_key),
+            outcome="success",
+        )
         return
 
     if settings.app_env.lower() in {"production", "staging"}:
+        record_audit_event(
+            request,
+            event_type="admin.access_denied",
+            actor_type="admin",
+            outcome="failure",
+            metadata={"reason": "missing_admin_api_key_config"},
+        )
         raise HTTPException(
             status_code=503,
             detail="KB_ADMIN_API_KEY is required for admin endpoints.",
         )
+
+    record_audit_event(
+        request,
+        event_type="admin.access_granted",
+        actor_type="admin",
+        actor_id="development",
+        outcome="success",
+        metadata={"reason": "development_admin_access"},
+    )
 
 
 def current_platform_session(request: Request) -> PlatformSession | None:

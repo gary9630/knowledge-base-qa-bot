@@ -279,6 +279,43 @@ class RetrievalEvent(JsonDefaultsMixin, TimestampMixin, Base):
     latency_ms: Mapped[int | None] = mapped_column(Integer)
 
 
+class AuditEvent(JsonDefaultsMixin, Base):
+    __tablename__ = "audit_events"
+    __table_args__ = (
+        Index("ix_audit_events_created_at", "created_at"),
+        Index("ix_audit_events_event_type_created_at", "event_type", "created_at"),
+        Index("ix_audit_events_actor", "actor_type", "actor_id"),
+        Index("ix_audit_events_outcome_created_at", "outcome", "created_at"),
+        Index("ix_audit_events_request_id", "request_id"),
+    )
+    __json_defaults__ = {"metadata_json": dict}
+
+    id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), primary_key=True, default=uuid4)
+    event_type: Mapped[str] = mapped_column(Text, nullable=False)
+    actor_type: Mapped[str] = mapped_column(Text, nullable=False)
+    actor_id: Mapped[str | None] = mapped_column(Text)
+    outcome: Mapped[str] = mapped_column(Text, nullable=False)
+    request_id: Mapped[str | None] = mapped_column(Text)
+    method: Mapped[str | None] = mapped_column(Text)
+    path: Mapped[str | None] = mapped_column(Text)
+    client_host: Mapped[str | None] = mapped_column(Text)
+    user_agent: Mapped[str | None] = mapped_column(Text)
+    resource_type: Mapped[str | None] = mapped_column(Text)
+    resource_id: Mapped[str | None] = mapped_column(Text)
+    metadata_json: Mapped[dict[str, Any]] = mapped_column(
+        "metadata",
+        JSONB,
+        nullable=False,
+        default=dict,
+        server_default=text("'{}'::jsonb"),
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+    )
+
+
 class Feedback(TimestampMixin, Base):
     __tablename__ = "feedback"
 

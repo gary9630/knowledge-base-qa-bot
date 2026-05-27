@@ -11,6 +11,7 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
+from app.audit import record_audit_event
 from app.core.config import Settings
 from app.observability.metrics import InMemoryMetrics
 
@@ -156,7 +157,7 @@ class RateLimitMiddleware:
         policy = _policy_for_request(request, settings)
         concurrency_guard = _acquire_upload_guard(request, settings, policy)
         if policy is not None and _is_upload_policy(policy) and concurrency_guard is None:
-            _record_concurrency_limited(request, policy.name)
+            _record_concurrency_limited(request, policy.name, settings)
             await _concurrency_limited_response()(scope, receive, send)
             return
 
@@ -169,7 +170,7 @@ class RateLimitMiddleware:
                 window_seconds=policy.window_seconds,
             )
             if not decision.allowed:
-                _record_rate_limited(request, policy.name)
+                _record_rate_limited(request, decision)
                 if concurrency_guard is not None:
                     concurrency_guard.release()
                 await _rate_limited_response(decision)(scope, receive, send)
@@ -324,20 +325,48 @@ def _rate_limit_headers(decision: RateLimitDecision) -> dict[str, str]:
     }
 
 
-def _record_rate_limited(request: Request, policy: str) -> None:
+def _record_rate_limited(request: Request, decision: RateLimitDecision) -> None:
     metrics = getattr(request.app.state, "metrics", None)
     if not isinstance(metrics, InMemoryMetrics):
         metrics = InMemoryMetrics()
         request.app.state.metrics = metrics
-    metrics.record_rate_limited(policy)
+    metrics.record_rate_limited(decision.policy)
+    record_audit_event(
+        request,
+        event_type="security.rate_limited",
+        actor_type="client",
+        actor_id=_client_host(request),
+        outcome="blocked",
+        metadata={
+            "policy": decision.policy,
+            "limit": decision.limit,
+            "retry_after_seconds": decision.retry_after_seconds,
+            "reset_after_seconds": decision.reset_after_seconds,
+        },
+    )
 
 
-def _record_concurrency_limited(request: Request, policy: str) -> None:
+def _record_concurrency_limited(
+    request: Request,
+    policy: str,
+    settings: Settings,
+) -> None:
     metrics = getattr(request.app.state, "metrics", None)
     if not isinstance(metrics, InMemoryMetrics):
         metrics = InMemoryMetrics()
         request.app.state.metrics = metrics
     metrics.record_concurrency_limited(policy)
+    record_audit_event(
+        request,
+        event_type="security.upload_concurrency_limited",
+        actor_type="client",
+        actor_id=_client_host(request),
+        outcome="blocked",
+        metadata={
+            "policy": policy,
+            "max_concurrent_uploads": settings.max_concurrent_uploads,
+        },
+    )
 
 
 def _seconds_until(reset_at: float, now: float) -> int:

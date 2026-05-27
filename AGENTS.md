@@ -46,6 +46,7 @@
 - App-native abuse controls are enabled by default: tune `KB_RATE_LIMIT_*` values and `KB_MAX_CONCURRENT_UPLOADS` for the deploy target.
 - Source access labels are enforced across search, chat, sources, and mindmap. Learners see `public`, `role:<role>`, `user:<username>`, `cohort:<name>` from `KB_PLATFORM_COHORTS`, plus `KB_PLATFORM_EXTRA_VISIBILITY_LABELS`.
 - `/ready` includes a storage check for `docs`, `raw`, and `.kb` path usability.
+- Admin/security audit events are DB-backed in `audit_events` and exposed through protected `GET /admin/audit-events`.
 
 ## Testing Expectations
 
@@ -76,6 +77,7 @@ intentionally deferred until traffic or multi-replica deployment requires it.
 - Backup/restore runbook lives at `ops/backup-restore.md`; restore targets require `CONFIRM_RESTORE=yes` and do not remove stale files.
 - Production deploy runbook lives at `ops/deploy.md`.
 - Do not expose admin endpoints publicly without the admin key or an authenticated gateway.
+- Never store raw admin keys or platform passwords in audit metadata; use `fingerprint_secret()` for admin-key actor IDs.
 - Run Alembic migrations once per deploy, then run `make ops-check`.
 - If switching to real embeddings, lock the model and vector dimension before indexing production data.
 - Sample content lives in `sample-docs/`; do not treat it as production data.

@@ -10,6 +10,7 @@ from app.api.dependencies import (
     current_platform_session,
     get_app_settings,
 )
+from app.audit import record_audit_event
 from app.auth.sessions import (
     create_platform_session_token,
     platform_auth_is_configured,
@@ -47,6 +48,14 @@ def login(
         username=payload.username,
         password=payload.password,
     ):
+        record_audit_event(
+            request,
+            event_type="auth.login_failed",
+            actor_type="platform",
+            actor_id=payload.username,
+            outcome="failure",
+            metadata={"reason": "invalid_credentials"},
+        )
         raise HTTPException(status_code=401, detail="Invalid credentials.")
 
     token = create_platform_session_token(settings, username=payload.username)
@@ -64,6 +73,13 @@ def login(
         path="/",
     )
     request.app.state.platform_session_created = True
+    record_audit_event(
+        request,
+        event_type="auth.login_succeeded",
+        actor_type="platform",
+        actor_id=session.username,
+        outcome="success",
+    )
     return SessionResponse(
         auth_required=True,
         authenticated=True,
@@ -74,9 +90,18 @@ def login(
 
 @router.post("/logout", response_model=SessionResponse)
 def logout(
+    request: Request,
     response: Response,
     settings: Annotated[Settings, Depends(get_app_settings)],
 ) -> SessionResponse:
+    session = current_platform_session(request)
+    record_audit_event(
+        request,
+        event_type="auth.logout",
+        actor_type="platform",
+        actor_id=session.username if session is not None else None,
+        outcome="success",
+    )
     response.delete_cookie(PLATFORM_SESSION_COOKIE, path="/", samesite="lax")
     return _anonymous_session_response(settings)
 

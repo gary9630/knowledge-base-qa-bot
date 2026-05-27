@@ -267,6 +267,7 @@ button {
 .selected-sources,
 .source-table,
 .import-jobs,
+.audit-events,
 .eval-cases,
 .eval-results,
 .eval-report,
@@ -284,6 +285,7 @@ button {
 .source-row,
 .selected-source,
 .job-row,
+.audit-row,
 .eval-row,
 .report-row,
 .feedback-row,
@@ -335,6 +337,15 @@ button.selected-source {
 }
 
 .job-row.is-failed {
+  border-color: #f0b8b1;
+}
+
+.audit-row.is-success {
+  border-color: #b7dbc7;
+}
+
+.audit-row.is-failure,
+.audit-row.is-blocked {
   border-color: #f0b8b1;
 }
 
@@ -405,6 +416,7 @@ button.selected-source {
 
 .chat-form,
 .upload-form,
+.audit-form,
 .eval-form {
   display: grid;
   gap: 10px;
@@ -621,6 +633,7 @@ select {
 }
 
 .upload-form,
+.audit-form,
 .eval-form {
   max-width: 640px;
   border: 1px solid var(--border);

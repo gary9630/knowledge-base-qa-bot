@@ -11,6 +11,7 @@
     },
     mindmapLoaded: false,
     importJobs: [],
+    auditEvents: [],
     evalCases: [],
     evalRun: null,
     evalReport: null,
@@ -48,6 +49,13 @@
     statusGrid: $("#index-status"),
     uploadForm: $("#upload-form"),
     adminKey: $("#admin-key"),
+    auditAdminKey: $("#audit-admin-key"),
+    auditEventType: $("#audit-event-type"),
+    auditOutcome: $("#audit-outcome"),
+    auditActorType: $("#audit-actor-type"),
+    auditLimit: $("#audit-limit"),
+    refreshAudit: $("#refresh-audit"),
+    auditEvents: $("#audit-events"),
     evalAdminKey: $("#eval-admin-key"),
     uploadFile: $("#upload-file"),
     refreshImports: $("#refresh-imports"),
@@ -659,6 +667,7 @@
     elements.rebuildIndex.addEventListener("click", rebuildIndex);
     elements.refreshStatus.addEventListener("click", refreshStatus);
     elements.refreshImports.addEventListener("click", refreshImportJobs);
+    elements.refreshAudit.addEventListener("click", refreshAuditEvents);
   }
 
   function bindEvals() {
@@ -796,6 +805,87 @@
 
       elements.importJobs.append(row);
     });
+  }
+
+  async function refreshAuditEvents() {
+    const params = new URLSearchParams();
+    params.set("limit", String(auditLimit()));
+    if (elements.auditEventType.value) {
+      params.set("event_type", elements.auditEventType.value);
+    }
+    if (elements.auditOutcome.value) {
+      params.set("outcome", elements.auditOutcome.value);
+    }
+    if (elements.auditActorType.value) {
+      params.set("actor_type", elements.auditActorType.value);
+    }
+
+    try {
+      const response = await fetch(`/admin/audit-events?${params}`, {
+        headers: adminHeaders(),
+      });
+      if (!response.ok) {
+        throw new Error(await responseError(response));
+      }
+      const payload = await response.json();
+      renderAuditEvents(payload.events || []);
+    } catch (error) {
+      state.auditEvents = [];
+      elements.auditEvents.replaceChildren(emptyText(`Audit events unavailable: ${errorMessage(error)}`));
+    }
+  }
+
+  function renderAuditEvents(events) {
+    state.auditEvents = Array.isArray(events) ? events : [];
+    elements.auditEvents.replaceChildren();
+
+    if (state.auditEvents.length === 0) {
+      elements.auditEvents.append(emptyText("No audit events loaded."));
+      return;
+    }
+
+    state.auditEvents.forEach((auditEvent) => {
+      const row = document.createElement("div");
+      row.className = `audit-row is-${auditEvent.outcome || "unknown"}`;
+
+      const title = document.createElement("strong");
+      title.textContent = auditEvent.event_type || "audit.event";
+      const meta = document.createElement("span");
+      meta.className = "source-meta";
+      meta.textContent = [
+        auditEvent.outcome,
+        auditEvent.actor_type,
+        auditEvent.actor_id,
+        auditEvent.path,
+        auditEvent.request_id,
+        formatDateTime(auditEvent.created_at),
+      ]
+        .filter(Boolean)
+        .join(" · ");
+      const details = document.createElement("span");
+      details.className = "source-meta";
+      details.textContent = auditMetadataSummary(auditEvent.metadata || {});
+      row.append(title, meta, details);
+      elements.auditEvents.append(row);
+    });
+  }
+
+  function auditLimit() {
+    const rawLimit = Number(elements.auditLimit.value || 50);
+    const normalizedLimit = Number.isFinite(rawLimit) ? Math.round(rawLimit) : 50;
+    const clampedLimit = Math.min(100, Math.max(1, normalizedLimit));
+    elements.auditLimit.value = String(clampedLimit);
+    return clampedLimit;
+  }
+
+  function auditMetadataSummary(metadata) {
+    const entries = Object.entries(metadata || {});
+    if (entries.length === 0) {
+      return "metadata: {}";
+    }
+    return entries
+      .map(([key, value]) => `${key}: ${String(value)}`)
+      .join(" · ");
   }
 
   async function retryImportJob(jobId) {
@@ -1243,7 +1333,12 @@
   }
 
   function adminHeaders() {
-    const adminKey = (elements.adminKey.value || elements.evalAdminKey.value || "").trim();
+    const adminKey = (
+      elements.adminKey.value ||
+      elements.auditAdminKey.value ||
+      elements.evalAdminKey.value ||
+      ""
+    ).trim();
     return authHeaders(true, adminKey ? { "X-KB-Admin-Key": adminKey } : {});
   }
 

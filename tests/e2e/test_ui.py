@@ -85,6 +85,27 @@ def test_ui_exposes_platform_login_wiring() -> None:
     assert "X-KB-CSRF-Token" in js_response.text
 
 
+def test_ui_exposes_audit_log_wiring() -> None:
+    client = TestClient(create_app())
+
+    response = client.get("/")
+    js_response = client.get("/static/app.js")
+
+    assert response.status_code == 200
+    assert 'id="tab-audit"' in response.text
+    assert 'id="panel-audit"' in response.text
+    assert 'id="audit-admin-key"' in response.text
+    assert 'id="audit-event-type"' in response.text
+    assert 'id="audit-outcome"' in response.text
+    assert 'id="audit-actor-type"' in response.text
+    assert 'id="audit-limit"' in response.text
+    assert 'id="refresh-audit"' in response.text
+    assert 'id="audit-events"' in response.text
+    assert "fetch(`/admin/audit-events?${params}`" in js_response.text
+    assert "renderAuditEvents" in js_response.text
+    assert "elements.auditAdminKey" in js_response.text
+
+
 def test_ui_exposes_mindmap_on_demand_wiring() -> None:
     client = TestClient(create_app())
 
