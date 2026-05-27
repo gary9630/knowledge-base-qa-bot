@@ -7,10 +7,11 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from pydantic import BaseModel, Field, StringConstraints
 from sqlalchemy.orm import Session
 
-from app.api.dependencies import get_request_db_session, require_admin_access
+from app.api.dependencies import get_app_settings, get_request_db_session, require_admin_access
 from app.audit import record_audit_event
 from app.background_jobs.service import (
     BACKGROUND_JOB_TASK_TYPES,
+    BackgroundJobInvalidTransitionError,
     BackgroundJobService,
 )
 from app.models.tables import BackgroundJob
@@ -24,6 +25,16 @@ class BackgroundJobCreateRequest(BaseModel):
     payload: dict[str, object] = Field(default_factory=dict)
     priority: int = Field(default=100, ge=0, le=1000)
     max_attempts: int = Field(default=3, ge=1, le=10)
+
+
+class BackgroundJobRecoverStaleRequest(BaseModel):
+    stale_after_seconds: int | None = Field(default=None, ge=1)
+    retry_delay_seconds: int = Field(default=0, ge=0, le=3600)
+    limit: int = Field(default=100, ge=1, le=500)
+
+
+class BackgroundJobRequeueRequest(BaseModel):
+    reset_attempts: bool = True
 
 
 class BackgroundJobResponse(BaseModel):
@@ -92,6 +103,32 @@ def create_background_job(
     return background_job_response(job)
 
 
+@router.post("/jobs/recover-stale", response_model=BackgroundJobsResponse)
+def recover_stale_background_jobs(
+    payload: BackgroundJobRecoverStaleRequest,
+    request: Request,
+    session: Annotated[Session, Depends(get_request_db_session)],
+) -> BackgroundJobsResponse:
+    settings = get_app_settings(request)
+    jobs = BackgroundJobService(session).recover_stale_running_jobs(
+        stale_after_seconds=(
+            payload.stale_after_seconds or settings.background_job_stale_after_seconds
+        ),
+        retry_delay_seconds=payload.retry_delay_seconds,
+        limit=payload.limit,
+    )
+    record_audit_event(
+        request,
+        event_type="job.stale_recovered",
+        actor_type="admin",
+        outcome="success",
+        resource_type="background_job",
+        resource_id="background_jobs",
+        metadata={"recovered_count": len(jobs)},
+    )
+    return BackgroundJobsResponse(jobs=[background_job_response(job) for job in jobs])
+
+
 @router.get("/jobs/{job_id}", response_model=BackgroundJobResponse)
 def get_background_job(
     job_id: UUID,
@@ -100,6 +137,39 @@ def get_background_job(
     job = BackgroundJobService(session).get(job_id)
     if job is None:
         raise HTTPException(status_code=404, detail="Background job not found.")
+    return background_job_response(job)
+
+
+@router.post(
+    "/jobs/{job_id}/requeue",
+    response_model=BackgroundJobResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+)
+def requeue_background_job(
+    job_id: UUID,
+    payload: BackgroundJobRequeueRequest,
+    request: Request,
+    session: Annotated[Session, Depends(get_request_db_session)],
+) -> BackgroundJobResponse:
+    service = BackgroundJobService(session)
+    try:
+        job = service.requeue(job_id, reset_attempts=payload.reset_attempts)
+    except BackgroundJobInvalidTransitionError as error:
+        raise HTTPException(status_code=409, detail=str(error)) from error
+    except ValueError as error:
+        raise HTTPException(status_code=404, detail=str(error)) from error
+    record_audit_event(
+        request,
+        event_type="job.requeued",
+        actor_type="admin",
+        outcome="success",
+        resource_type="background_job",
+        resource_id=str(job.id),
+        metadata={
+            "task_type": job.task_type,
+            "reset_attempts": payload.reset_attempts,
+        },
+    )
     return background_job_response(job)
 
 

@@ -4,7 +4,7 @@ from collections.abc import Iterable
 from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
 from app.models.tables import BackgroundJob
@@ -28,6 +28,10 @@ STATUS_CANCELED = "canceled"
 
 
 class BackgroundJobNotFoundError(ValueError):
+    pass
+
+
+class BackgroundJobInvalidTransitionError(ValueError):
     pass
 
 
@@ -155,6 +159,80 @@ class BackgroundJobService:
         else:
             job.status = STATUS_FAILED
             job.finished_at = now
+        self.session.commit()
+        return job
+
+    def recover_stale_running_jobs(
+        self,
+        *,
+        stale_after_seconds: int,
+        retry_delay_seconds: int = 0,
+        now: datetime | None = None,
+        limit: int = 100,
+    ) -> list[BackgroundJob]:
+        if stale_after_seconds < 1:
+            raise ValueError("stale_after_seconds must be at least 1")
+        if retry_delay_seconds < 0:
+            raise ValueError("retry_delay_seconds must be non-negative")
+        if limit < 1:
+            raise ValueError("limit must be at least 1")
+
+        recovered_at = now or _utcnow()
+        stale_before = recovered_at - timedelta(seconds=stale_after_seconds)
+        jobs = self.session.scalars(
+            select(BackgroundJob)
+            .where(BackgroundJob.status == STATUS_RUNNING)
+            .where(
+                or_(
+                    BackgroundJob.locked_at.is_(None),
+                    BackgroundJob.locked_at <= stale_before,
+                )
+            )
+            .order_by(BackgroundJob.locked_at.asc().nullsfirst(), BackgroundJob.id.asc())
+            .limit(limit)
+            .with_for_update(skip_locked=True)
+        ).all()
+
+        recovered: list[BackgroundJob] = []
+        for job in jobs:
+            previous_worker = job.locked_by or "unknown worker"
+            job.error = f"Recovered stale running job locked by {previous_worker}."
+            job.locked_by = None
+            job.locked_at = None
+            if job.attempts < job.max_attempts:
+                job.status = STATUS_QUEUED
+                job.available_at = recovered_at + timedelta(seconds=retry_delay_seconds)
+                job.finished_at = None
+            else:
+                job.status = STATUS_FAILED
+                job.finished_at = recovered_at
+            recovered.append(job)
+
+        if recovered:
+            self.session.commit()
+        return recovered
+
+    def requeue(
+        self,
+        job_id: UUID,
+        *,
+        reset_attempts: bool = True,
+        now: datetime | None = None,
+    ) -> BackgroundJob:
+        job = self.require(job_id)
+        if job.status not in {STATUS_FAILED, STATUS_CANCELED}:
+            raise BackgroundJobInvalidTransitionError(
+                "Only failed or canceled background jobs can be requeued."
+            )
+
+        job.status = STATUS_QUEUED
+        if reset_attempts:
+            job.attempts = 0
+        job.error = None
+        job.locked_by = None
+        job.locked_at = None
+        job.available_at = now or _utcnow()
+        job.finished_at = None
         self.session.commit()
         return job
 

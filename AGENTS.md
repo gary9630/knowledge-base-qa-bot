@@ -45,6 +45,7 @@
 - Keep `KB_EMBEDDING_DIMENSION` aligned with the schema dimension, currently `1536`.
 - Local Compose defaults are only for development: platform login `student` / `student-password`, admin key `local-admin-key`.
 - App-native abuse controls are enabled by default: tune `KB_RATE_LIMIT_*` values and `KB_MAX_CONCURRENT_UPLOADS` for the deploy target.
+- Background worker reliability controls are `KB_BACKGROUND_JOB_STALE_AFTER_SECONDS`, `KB_BACKGROUND_JOB_RETRY_BASE_DELAY_SECONDS`, and `KB_BACKGROUND_JOB_RETRY_MAX_DELAY_SECONDS`.
 - Source access labels are enforced across search, chat, sources, and mindmap. Learners see `public`, `role:<role>`, `user:<username>`, `cohort:<name>` from `KB_PLATFORM_COHORTS`, plus `KB_PLATFORM_EXTRA_VISIBILITY_LABELS`.
 - `/ready` includes a storage check for `docs`, `raw`, and `.kb` path usability.
 - Admin/security audit events are DB-backed in `audit_events` and exposed through protected `GET /admin/audit-events`.
@@ -84,6 +85,7 @@ intentionally deferred until traffic or multi-replica deployment requires it.
 - Never store raw admin keys or platform passwords in audit metadata; use `fingerprint_secret()` for admin-key actor IDs.
 - `DELETE /admin/documents/{document_id}` deletes DB index rows only; it must not remove canonical Markdown or raw upload files.
 - Keep the background worker running in production. `IndexingJob` and `EvalRun` remain domain history; `BackgroundJob` is orchestration state.
+- Workers recover stale `running` jobs before claiming new work. Use protected `POST /admin/jobs/recover-stale` for manual recovery and `POST /admin/jobs/{job_id}/requeue` for failed/canceled jobs.
 - Run Alembic migrations once per deploy, then run `make ops-check`.
 - If switching to real embeddings, lock the model and vector dimension before indexing production data.
 - Sample content lives in `sample-docs/`; do not treat it as production data.

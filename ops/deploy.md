@@ -18,6 +18,9 @@ Set production values outside git:
 - `KB_KB_DIR`
 - `KB_RATE_LIMIT_*`
 - `KB_MAX_CONCURRENT_UPLOADS`
+- `KB_BACKGROUND_JOB_STALE_AFTER_SECONDS`
+- `KB_BACKGROUND_JOB_RETRY_BASE_DELAY_SECONDS`
+- `KB_BACKGROUND_JOB_RETRY_MAX_DELAY_SECONDS`
 - `KB_PLATFORM_COHORTS`
 - `KB_PLATFORM_EXTRA_VISIBILITY_LABELS`
 - `OPENAI_API_KEY`
@@ -66,7 +69,9 @@ starting the app process.
    canonical Markdown plus a queued `index.rebuild`.
 7. A protected `POST /admin/jobs` can enqueue `index.rebuild`, and the worker marks it
    succeeded.
-8. Scheduled eval runner can run `python -m scripts.run_evals --trigger scheduled`.
+8. Protected `POST /admin/jobs/recover-stale` returns successfully; if any stale jobs are
+   returned, confirm they are queued or failed according to their attempt budget.
+9. Scheduled eval runner can run `python -m scripts.run_evals --trigger scheduled`.
 
 ## Rollback
 

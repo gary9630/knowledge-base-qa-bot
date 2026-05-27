@@ -75,6 +75,9 @@ Settings use the `KB_` prefix unless noted.
 | `KB_RATE_LIMIT_ADMIN_REQUESTS` | `60` | Admin write requests allowed per client/admin key per window. |
 | `KB_RATE_LIMIT_UPLOAD_REQUESTS` | `10` | Upload requests allowed per client/admin key per window. |
 | `KB_MAX_CONCURRENT_UPLOADS` | `2` | Concurrent upload requests allowed per app process. |
+| `KB_BACKGROUND_JOB_STALE_AFTER_SECONDS` | `3600` | Running background jobs older than this lock age are recovered before workers claim new work. |
+| `KB_BACKGROUND_JOB_RETRY_BASE_DELAY_SECONDS` | `30` | Base retry delay after worker task failure; delay doubles per attempt. |
+| `KB_BACKGROUND_JOB_RETRY_MAX_DELAY_SECONDS` | `300` | Maximum worker retry delay in seconds. |
 | `KB_EMBEDDING_PROVIDER` | `fake` | Use `fake` for deterministic dev/test or `openai` for real embeddings. |
 | `KB_ANSWER_PROVIDER` | `fake` | Use `fake` for deterministic dev/test or `openai` for generated answers. |
 | `OPENAI_API_KEY` | unset | Required by OpenAI providers. |
@@ -239,9 +242,12 @@ Background jobs are stored in `background_jobs` and processed by
 `python -m scripts.run_background_worker`. Supported task types are `ingest.upload`,
 `index.rebuild`, `document.reindex`, and `eval.run`. `POST /imports` creates
 `ingest.upload`; successful ingestion writes canonical Markdown and queues `index.rebuild`.
-The worker updates job status, attempts, result metadata, and errors in the DB, while the
-underlying ingestion, indexing, and eval subsystems still write their own domain history
-rows.
+The worker updates job status, attempts, result metadata, and errors in the DB, recovers
+stale `running` jobs before claiming new work, and applies bounded exponential backoff
+between retries. Admins can use protected `POST /admin/jobs/recover-stale` to recover
+stuck jobs on demand and `POST /admin/jobs/{job_id}/requeue` to requeue failed or canceled
+jobs. The underlying ingestion, indexing, and eval subsystems still write their own domain
+history rows.
 
 Run the deployment smoke check against a local or deployed API with:
 

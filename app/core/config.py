@@ -31,6 +31,9 @@ class Settings(BaseSettings):
     rate_limit_admin_requests: int = Field(default=60, ge=1)
     rate_limit_upload_requests: int = Field(default=10, ge=1)
     max_concurrent_uploads: int = Field(default=2, ge=1)
+    background_job_stale_after_seconds: int = Field(default=3600, ge=1)
+    background_job_retry_base_delay_seconds: int = Field(default=30, ge=0)
+    background_job_retry_max_delay_seconds: int = Field(default=300, ge=0)
     embedding_provider: str = "fake"
     answer_provider: str = "fake"
     openai_api_key: str | None = Field(

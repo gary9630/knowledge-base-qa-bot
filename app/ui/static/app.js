@@ -67,6 +67,7 @@
     importJobs: $("#import-jobs"),
     rebuildIndex: $("#rebuild-index"),
     queueIndexJob: $("#queue-index-job"),
+    recoverStaleJobs: $("#recover-stale-jobs"),
     refreshBackgroundJobs: $("#refresh-background-jobs"),
     backgroundJobs: $("#background-jobs"),
     operationLog: $("#operation-log"),
@@ -808,6 +809,7 @@
     elements.uploadForm.addEventListener("submit", uploadFile);
     elements.rebuildIndex.addEventListener("click", rebuildIndex);
     elements.queueIndexJob.addEventListener("click", queueIndexJob);
+    elements.recoverStaleJobs.addEventListener("click", recoverStaleJobs);
     elements.refreshStatus.addEventListener("click", refreshStatus);
     elements.refreshImports.addEventListener("click", refreshImportJobs);
     elements.refreshBackgroundJobs.addEventListener("click", refreshBackgroundJobs);
@@ -951,6 +953,27 @@
     return job;
   }
 
+  async function recoverStaleJobs() {
+    elements.recoverStaleJobs.disabled = true;
+    try {
+      const response = await fetch("/admin/jobs/recover-stale", {
+        method: "POST",
+        headers: jsonAdminHeaders(),
+        body: JSON.stringify({}),
+      });
+      if (!response.ok) {
+        throw new Error(await responseError(response));
+      }
+      const payload = await response.json();
+      appendOperation(`Recovered stale jobs: ${(payload.jobs || []).length}`);
+      await refreshBackgroundJobs();
+    } catch (error) {
+      appendOperation(`Recover stale jobs failed: ${errorMessage(error)}`);
+    } finally {
+      elements.recoverStaleJobs.disabled = false;
+    }
+  }
+
   function renderBackgroundJobs(jobs) {
     state.backgroundJobs = Array.isArray(jobs) ? jobs : [];
     elements.backgroundJobs.replaceChildren();
@@ -991,9 +1014,35 @@
         cancel.addEventListener("click", () => cancelBackgroundJob(job.id));
         row.append(cancel);
       }
+      if (["failed", "canceled"].includes(job.status)) {
+        const requeue = document.createElement("button");
+        requeue.type = "button";
+        requeue.className = "secondary-button";
+        requeue.textContent = "Requeue";
+        requeue.addEventListener("click", () => requeueBackgroundJob(job.id));
+        row.append(requeue);
+      }
 
       elements.backgroundJobs.append(row);
     });
+  }
+
+  async function requeueBackgroundJob(jobId) {
+    try {
+      const response = await fetch(`/admin/jobs/${jobId}/requeue`, {
+        method: "POST",
+        headers: jsonAdminHeaders(),
+        body: JSON.stringify({ reset_attempts: true }),
+      });
+      if (!response.ok) {
+        throw new Error(await responseError(response));
+      }
+      const job = await response.json();
+      appendOperation(`Background job requeued: ${job.id}`);
+      await refreshBackgroundJobs();
+    } catch (error) {
+      appendOperation(`Requeue background job failed: ${errorMessage(error)}`);
+    }
   }
 
   async function cancelBackgroundJob(jobId) {

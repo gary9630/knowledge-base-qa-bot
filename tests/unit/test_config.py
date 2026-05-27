@@ -22,6 +22,9 @@ _SETTINGS_ENV_KEYS = (
     "KB_RATE_LIMIT_ADMIN_REQUESTS",
     "KB_RATE_LIMIT_UPLOAD_REQUESTS",
     "KB_MAX_CONCURRENT_UPLOADS",
+    "KB_BACKGROUND_JOB_STALE_AFTER_SECONDS",
+    "KB_BACKGROUND_JOB_RETRY_BASE_DELAY_SECONDS",
+    "KB_BACKGROUND_JOB_RETRY_MAX_DELAY_SECONDS",
 )
 
 
@@ -80,6 +83,28 @@ def test_settings_rate_limit_values_can_be_overridden_by_env(
     assert settings.rate_limit_admin_requests == 11
     assert settings.rate_limit_upload_requests == 2
     assert settings.max_concurrent_uploads == 1
+
+
+def test_settings_background_job_reliability_defaults_are_production_safe() -> None:
+    settings = Settings()
+
+    assert settings.background_job_stale_after_seconds == 3600
+    assert settings.background_job_retry_base_delay_seconds == 30
+    assert settings.background_job_retry_max_delay_seconds == 300
+
+
+def test_settings_background_job_reliability_values_can_be_overridden_by_env(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("KB_BACKGROUND_JOB_STALE_AFTER_SECONDS", "120")
+    monkeypatch.setenv("KB_BACKGROUND_JOB_RETRY_BASE_DELAY_SECONDS", "5")
+    monkeypatch.setenv("KB_BACKGROUND_JOB_RETRY_MAX_DELAY_SECONDS", "60")
+
+    settings = Settings()
+
+    assert settings.background_job_stale_after_seconds == 120
+    assert settings.background_job_retry_base_delay_seconds == 5
+    assert settings.background_job_retry_max_delay_seconds == 60
 
 
 def test_settings_source_access_values_can_be_overridden_by_env(

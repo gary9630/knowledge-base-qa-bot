@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from uuid import UUID
 
@@ -100,6 +101,194 @@ def test_background_worker_retries_failed_jobs_until_max_attempts(
     assert final_state.locked_by is None
 
 
+def test_background_worker_applies_retry_backoff(
+    db_session: Session,
+    tmp_path: Path,
+) -> None:
+    app = _jobs_app(db_session, tmp_path, retry_base_delay_seconds=10)
+    service = BackgroundJobService(db_session)
+    job = service.enqueue(task_type="unknown.task", max_attempts=3)
+    db_session.commit()
+    worker = _worker(app, db_session)
+    before = datetime.now(UTC)
+
+    first_processed = worker.run_once()
+    db_session.expire_all()
+    first_state = db_session.get(BackgroundJob, job.id)
+    second_processed = worker.run_once()
+
+    assert first_processed is not None
+    assert first_state is not None
+    assert first_state.status == "queued"
+    assert first_state.attempts == 1
+    assert first_state.available_at >= before + timedelta(seconds=9)
+    assert second_processed is None
+
+
+def test_stale_running_job_is_requeued_for_new_worker(
+    db_session: Session,
+    tmp_path: Path,
+) -> None:
+    _jobs_app(db_session, tmp_path)
+    service = BackgroundJobService(db_session)
+    job = service.enqueue(task_type=TASK_INDEX_REBUILD, max_attempts=3)
+    db_session.commit()
+    now = job.available_at + timedelta(seconds=1)
+    claimed = service.claim_next(worker_id="dead-worker", now=now)
+    assert claimed is not None
+
+    recovered = service.recover_stale_running_jobs(
+        stale_after_seconds=60,
+        retry_delay_seconds=0,
+        now=now + timedelta(seconds=61),
+    )
+
+    assert [item.id for item in recovered] == [job.id]
+    assert recovered[0].status == "queued"
+    assert recovered[0].locked_by is None
+    assert recovered[0].locked_at is None
+    assert recovered[0].attempts == 1
+    assert "Recovered stale running job" in (recovered[0].error or "")
+
+    next_claim = service.claim_next(
+        worker_id="new-worker",
+        now=now + timedelta(seconds=62),
+    )
+
+    assert next_claim is not None
+    assert next_claim.id == job.id
+    assert next_claim.status == "running"
+    assert next_claim.locked_by == "new-worker"
+    assert next_claim.attempts == 2
+
+
+def test_stale_running_job_fails_when_attempts_are_exhausted(
+    db_session: Session,
+    tmp_path: Path,
+) -> None:
+    _jobs_app(db_session, tmp_path)
+    service = BackgroundJobService(db_session)
+    job = service.enqueue(task_type=TASK_INDEX_REBUILD, max_attempts=1)
+    db_session.commit()
+    now = job.available_at + timedelta(seconds=1)
+    claimed = service.claim_next(worker_id="dead-worker", now=now)
+    assert claimed is not None
+
+    recovered = service.recover_stale_running_jobs(
+        stale_after_seconds=60,
+        retry_delay_seconds=0,
+        now=now + timedelta(seconds=61),
+    )
+
+    assert [item.id for item in recovered] == [job.id]
+    assert recovered[0].status == "failed"
+    assert recovered[0].locked_by is None
+    assert recovered[0].finished_at is not None
+    assert "Recovered stale running job" in (recovered[0].error or "")
+
+
+def test_worker_recovers_stale_job_before_claiming(
+    db_session: Session,
+    tmp_path: Path,
+) -> None:
+    app = _jobs_app(db_session, tmp_path, stale_after_seconds=60)
+    service = BackgroundJobService(db_session)
+    job = service.enqueue(task_type=TASK_INDEX_REBUILD, max_attempts=3)
+    db_session.commit()
+    claimed = service.claim_next(
+        worker_id="dead-worker",
+        now=job.available_at + timedelta(seconds=1),
+    )
+    assert claimed is not None
+    claimed.locked_at = datetime.now(UTC) - timedelta(seconds=120)
+    db_session.commit()
+    worker = _worker(app, db_session)
+
+    processed = worker.run_once()
+    db_session.expire_all()
+    final_state = db_session.get(BackgroundJob, job.id)
+
+    assert processed is not None
+    assert processed.id == job.id
+    assert final_state is not None
+    assert final_state.status == "succeeded"
+    assert final_state.attempts == 2
+    assert final_state.locked_by is None
+
+
+def test_admin_can_recover_stale_jobs(
+    db_session: Session,
+    tmp_path: Path,
+) -> None:
+    app = _jobs_app(db_session, tmp_path)
+    client = TestClient(app)
+    admin_headers = {"X-KB-Admin-Key": "secret"}
+    service = BackgroundJobService(db_session)
+    job = service.enqueue(task_type=TASK_INDEX_REBUILD, max_attempts=3)
+    db_session.commit()
+    claimed = service.claim_next(
+        worker_id="dead-worker",
+        now=job.available_at + timedelta(seconds=1),
+    )
+    assert claimed is not None
+    claimed.locked_at = datetime.now(UTC) - timedelta(seconds=120)
+    db_session.commit()
+
+    response = client.post(
+        "/admin/jobs/recover-stale",
+        headers=admin_headers,
+        json={"stale_after_seconds": 60, "retry_delay_seconds": 0},
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert [item["id"] for item in body["jobs"]] == [str(job.id)]
+    assert body["jobs"][0]["status"] == "queued"
+
+    audit_event = db_session.scalar(
+        select(AuditEvent)
+        .where(AuditEvent.event_type == "job.stale_recovered")
+        .where(AuditEvent.resource_id == "background_jobs")
+    )
+    assert audit_event is not None
+    assert audit_event.metadata_json["recovered_count"] == 1
+
+
+def test_admin_can_requeue_failed_job(
+    db_session: Session,
+    tmp_path: Path,
+) -> None:
+    app = _jobs_app(db_session, tmp_path)
+    client = TestClient(app)
+    admin_headers = {"X-KB-Admin-Key": "secret"}
+    service = BackgroundJobService(db_session)
+    job = service.enqueue(task_type="unknown.task", max_attempts=1)
+    db_session.commit()
+    failed_job = _worker(app, db_session).run_once()
+    assert failed_job is not None
+    assert failed_job.status == "failed"
+
+    response = client.post(
+        f"/admin/jobs/{job.id}/requeue",
+        headers=admin_headers,
+        json={"reset_attempts": True},
+    )
+
+    assert response.status_code == 202
+    body = response.json()
+    assert body["status"] == "queued"
+    assert body["attempts"] == 0
+    assert body["locked_by"] is None
+    assert body["error"] is None
+
+    audit_event = db_session.scalar(
+        select(AuditEvent)
+        .where(AuditEvent.event_type == "job.requeued")
+        .where(AuditEvent.resource_id == str(job.id))
+    )
+    assert audit_event is not None
+
+
 def test_admin_jobs_api_requires_admin_key(
     db_session: Session,
     tmp_path: Path,
@@ -114,7 +303,13 @@ def test_admin_jobs_api_requires_admin_key(
     assert authenticated.json() == {"jobs": []}
 
 
-def _jobs_app(db_session: Session, tmp_path: Path) -> FastAPI:
+def _jobs_app(
+    db_session: Session,
+    tmp_path: Path,
+    *,
+    retry_base_delay_seconds: int = 0,
+    stale_after_seconds: int = 3600,
+) -> FastAPI:
     docs_dir = tmp_path / "docs"
     raw_dir = tmp_path / "raw"
     kb_dir = tmp_path / ".kb"
@@ -130,6 +325,8 @@ def _jobs_app(db_session: Session, tmp_path: Path) -> FastAPI:
         embedding_provider="fake",
         answer_provider="fake",
         admin_api_key="secret",
+        background_job_retry_base_delay_seconds=retry_base_delay_seconds,
+        background_job_stale_after_seconds=stale_after_seconds,
     )
     return create_app(settings=settings, session_factory=_session_factory(db_session))
 

@@ -133,9 +133,12 @@ def test_ui_exposes_background_jobs_wiring() -> None:
 
     assert response.status_code == 200
     assert 'id="queue-index-job"' in response.text
+    assert 'id="recover-stale-jobs"' in response.text
     assert 'id="refresh-background-jobs"' in response.text
     assert 'id="background-jobs"' in response.text
     assert "fetch(\"/admin/jobs\"" in js_response.text
+    assert "fetch(\"/admin/jobs/recover-stale\"" in js_response.text
+    assert "fetch(`/admin/jobs/${jobId}/requeue`" in js_response.text
     assert "fetch(`/admin/jobs/${jobId}`" in js_response.text
     assert "renderBackgroundJobs" in js_response.text
     assert "elements.backgroundJobs" in js_response.text

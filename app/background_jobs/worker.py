@@ -53,12 +53,18 @@ class BackgroundWorker:
 
     def run_once(self) -> BackgroundJob | None:
         with self.session_factory() as session:
-            claimed = BackgroundJobService(session).claim_next(worker_id=self.worker_id)
+            service = BackgroundJobService(session)
+            service.recover_stale_running_jobs(
+                stale_after_seconds=self.settings.background_job_stale_after_seconds,
+                retry_delay_seconds=0,
+            )
+            claimed = service.claim_next(worker_id=self.worker_id)
             if claimed is None:
                 return None
             job_id = claimed.id
             task_type = claimed.task_type
             payload = dict(claimed.payload_json)
+            attempts = claimed.attempts
 
         try:
             result = self._execute_task(task_type, payload)
@@ -67,6 +73,11 @@ class BackgroundWorker:
                 return BackgroundJobService(session).fail(
                     job_id,
                     error=_error_message(error),
+                    retry_delay_seconds=_retry_delay_seconds(
+                        attempts=attempts,
+                        base_delay_seconds=self.settings.background_job_retry_base_delay_seconds,
+                        max_delay_seconds=self.settings.background_job_retry_max_delay_seconds,
+                    ),
                 )
 
         with self.session_factory() as session:
@@ -253,6 +264,18 @@ def _bool_payload(value: object, *, default: bool) -> bool:
     if isinstance(value, str):
         return value.strip().lower() in {"1", "true", "yes", "on"}
     return bool(value)
+
+
+def _retry_delay_seconds(
+    *,
+    attempts: int,
+    base_delay_seconds: int,
+    max_delay_seconds: int,
+) -> int:
+    if attempts < 1 or base_delay_seconds <= 0 or max_delay_seconds <= 0:
+        return 0
+    delay = base_delay_seconds * (2 ** (attempts - 1))
+    return int(min(delay, max_delay_seconds))
 
 
 def _error_message(error: Exception) -> str:
