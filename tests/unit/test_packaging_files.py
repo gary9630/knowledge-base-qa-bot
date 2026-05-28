@@ -74,6 +74,9 @@ def test_compose_defines_app_postgres_and_worker_contracts() -> None:
     assert compose.count("alembic upgrade head") == 1
     assert "uvicorn app.main:app" in compose
     assert "python -m scripts.run_background_worker" in compose
+    assert "KB_WORKER_ID=${KB_WORKER_ID:-compose-worker}" in compose
+    assert "KB_WORKER_HEARTBEAT_INTERVAL_SECONDS" in compose
+    assert "restart: unless-stopped" in compose
     assert re.search(r"depends_on:\s*\n\s+postgres:", compose)
     assert "./docs:/app/docs" not in compose
     assert "./raw:/app/raw" not in compose
@@ -118,6 +121,8 @@ def test_makefile_exposes_dev_test_lint_migration_and_docker_targets() -> None:
         "migrate",
         "index",
         "worker-once",
+        "worker",
+        "worker-status",
         "ops-check",
         "docker-build",
         "docker-up",
@@ -136,6 +141,8 @@ def test_makefile_exposes_dev_test_lint_migration_and_docker_targets() -> None:
     assert "$(API_URL)/ready" in makefile
     assert "$(API_URL)/metrics" in makefile
     assert "python -m scripts.run_background_worker --once" in makefile
+    assert "python -m scripts.run_background_worker" in makefile
+    assert "$(API_URL)/admin/jobs/runtime" in makefile
     assert "KB_ADMIN_API_KEY" in makefile
     assert "X-KB-Admin-Key" in makefile
     assert "SELECT 1 FROM pg_database" in makefile

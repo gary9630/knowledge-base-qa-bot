@@ -19,12 +19,16 @@ class StubWorker:
     def __init__(self, jobs: list[ProcessedJob | None]) -> None:
         self.jobs = jobs
         self.calls = 0
+        self.shutdown_called = False
 
     def run_once(self) -> ProcessedJob | None:
         self.calls += 1
         if not self.jobs:
             return None
         return self.jobs.pop(0)
+
+    def shutdown(self) -> None:
+        self.shutdown_called = True
 
 
 def test_background_worker_cli_once_exits_zero_after_processing_job(
@@ -75,3 +79,4 @@ def test_background_worker_cli_respects_max_jobs(
     assert exit_code == 0
     assert worker.calls == 2
     assert capsys.readouterr().out.count("processed job") == 2
+    assert worker.shutdown_called is True

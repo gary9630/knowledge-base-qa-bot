@@ -4,10 +4,10 @@ from collections.abc import Iterable
 from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
-from sqlalchemy import or_, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
-from app.models.tables import BackgroundJob
+from app.models.tables import BackgroundJob, BackgroundWorkerHeartbeat
 
 TASK_INGEST_UPLOAD = "ingest.upload"
 TASK_INDEX_REBUILD = "index.rebuild"
@@ -245,6 +245,113 @@ class BackgroundJobService:
             job.finished_at = _utcnow()
             self.session.commit()
         return job
+
+    def record_worker_heartbeat(
+        self,
+        *,
+        worker_id: str,
+        status: str,
+        current_job: BackgroundJob | None = None,
+        last_job: BackgroundJob | None = None,
+        last_error: str | None = None,
+        processed_job_delta: int = 0,
+        seen_at: datetime | None = None,
+    ) -> BackgroundWorkerHeartbeat:
+        heartbeat_at = seen_at or _utcnow()
+        heartbeat = self.session.get(BackgroundWorkerHeartbeat, worker_id)
+        if heartbeat is None:
+            heartbeat = BackgroundWorkerHeartbeat(
+                worker_id=worker_id,
+                started_at=heartbeat_at,
+                last_seen_at=heartbeat_at,
+            )
+            self.session.add(heartbeat)
+            self.session.flush()
+
+        heartbeat.status = status
+        heartbeat.last_seen_at = heartbeat_at
+        if current_job is not None:
+            heartbeat.current_job_id = current_job.id
+            heartbeat.current_task_type = current_job.task_type
+        elif status != STATUS_RUNNING:
+            heartbeat.current_job_id = None
+            heartbeat.current_task_type = None
+        if last_job is not None:
+            heartbeat.last_job_id = last_job.id
+            heartbeat.last_task_type = last_job.task_type
+            heartbeat.last_job_status = last_job.status
+        if last_error is not None:
+            heartbeat.last_error = last_error
+        elif last_job is not None and last_job.error is None:
+            heartbeat.last_error = None
+        if processed_job_delta:
+            heartbeat.processed_jobs += processed_job_delta
+        self.session.commit()
+        return heartbeat
+
+    def list_worker_heartbeats(self, *, limit: int = 20) -> list[BackgroundWorkerHeartbeat]:
+        return list(
+            self.session.scalars(
+                select(BackgroundWorkerHeartbeat)
+                .order_by(
+                    BackgroundWorkerHeartbeat.last_seen_at.desc(),
+                    BackgroundWorkerHeartbeat.worker_id.asc(),
+                )
+                .limit(limit),
+            ).all(),
+        )
+
+    def queue_counts(self) -> dict[str, int]:
+        rows = self.session.execute(
+            select(BackgroundJob.status, func.count()).group_by(BackgroundJob.status),
+        ).all()
+        counts = {
+            STATUS_QUEUED: 0,
+            STATUS_RUNNING: 0,
+            STATUS_SUCCEEDED: 0,
+            STATUS_FAILED: 0,
+            STATUS_CANCELED: 0,
+        }
+        counts.update({str(status): int(count) for status, count in rows})
+        return counts
+
+    def stale_running_count(
+        self,
+        *,
+        stale_after_seconds: int,
+        now: datetime | None = None,
+    ) -> int:
+        stale_at = now or _utcnow()
+        stale_before = stale_at - timedelta(seconds=stale_after_seconds)
+        return int(
+            self.session.scalar(
+                select(func.count())
+                .select_from(BackgroundJob)
+                .where(BackgroundJob.status == STATUS_RUNNING)
+                .where(
+                    or_(
+                        BackgroundJob.locked_at.is_(None),
+                        BackgroundJob.locked_at <= stale_before,
+                    ),
+                ),
+            )
+            or 0,
+        )
+
+
+def worker_heartbeat_is_stale(
+    heartbeat: BackgroundWorkerHeartbeat,
+    *,
+    stale_after_seconds: int,
+    now: datetime | None = None,
+) -> bool:
+    if stale_after_seconds < 1:
+        raise ValueError("stale_after_seconds must be at least 1")
+    checked_at = now or _utcnow()
+    last_seen_at = heartbeat.last_seen_at
+    if last_seen_at.tzinfo is None:
+        last_seen_at = last_seen_at.replace(tzinfo=UTC)
+    return last_seen_at <= checked_at - timedelta(seconds=stale_after_seconds)
 
 
 def _utcnow() -> datetime:

@@ -12,6 +12,7 @@
     mindmapLoaded: false,
     importJobs: [],
     backgroundJobs: [],
+    workerRuntime: null,
     adminDocuments: [],
     auditEvents: [],
     evalCases: [],
@@ -72,6 +73,7 @@
     backgroundJobSummary: $("#background-job-summary"),
     backgroundJobStatusFilter: $("#background-job-status-filter"),
     backgroundJobLimit: $("#background-job-limit"),
+    workerRuntime: $("#worker-runtime"),
     backgroundJobs: $("#background-jobs"),
     operationLog: $("#operation-log"),
     evalForm: $("#eval-form"),
@@ -943,7 +945,89 @@
       elements.backgroundJobs.replaceChildren(
         emptyText(`Background jobs unavailable: ${errorMessage(error)}`),
       );
+    } finally {
+      await refreshWorkerRuntime();
     }
+  }
+
+  async function refreshWorkerRuntime() {
+    try {
+      const response = await fetch("/admin/jobs/runtime", {
+        headers: adminHeaders(),
+      });
+      if (!response.ok) {
+        throw new Error(await responseError(response));
+      }
+      renderWorkerRuntime(await response.json());
+    } catch (error) {
+      state.workerRuntime = null;
+      elements.workerRuntime.replaceChildren(
+        emptyText(`Worker runtime unavailable: ${errorMessage(error)}`),
+      );
+    }
+  }
+
+  function renderWorkerRuntime(runtime) {
+    state.workerRuntime = runtime || null;
+    elements.workerRuntime.replaceChildren();
+    if (!runtime) {
+      elements.workerRuntime.append(emptyText("No worker runtime status loaded."));
+      return;
+    }
+
+    const queue = runtime.queue || {};
+    [
+      ["Queue", `${queue.queued || 0} queued · ${queue.running || 0} running`],
+      ["Workers", `${runtime.active_workers || 0} active`],
+      ["Stale Jobs", runtime.stale_running_jobs || 0],
+    ].forEach(([label, value]) => {
+      const card = document.createElement("div");
+      card.className = "worker-card";
+      const title = document.createElement("strong");
+      title.textContent = label;
+      const meta = document.createElement("span");
+      meta.className = "source-meta";
+      meta.textContent = String(value);
+      card.append(title, meta);
+      elements.workerRuntime.append(card);
+    });
+
+    const workers = Array.isArray(runtime.workers) ? runtime.workers : [];
+    if (workers.length === 0) {
+      const card = document.createElement("div");
+      card.className = "worker-card";
+      card.append(emptyText("No workers have reported a heartbeat."));
+      elements.workerRuntime.append(card);
+      return;
+    }
+
+    workers.forEach((worker) => {
+      const card = document.createElement("div");
+      card.className = `worker-card ${worker.is_stale ? "is-danger" : ""}`;
+      const heading = document.createElement("div");
+      heading.className = "job-row-heading";
+      const title = document.createElement("strong");
+      title.textContent = worker.worker_id || "worker";
+      const badges = document.createElement("div");
+      badges.className = "job-badges";
+      badges.append(backgroundJobBadge(worker.status || "unknown", worker.status || "unknown"));
+      if (worker.is_stale) {
+        badges.append(backgroundJobBadge("stale", "stale"));
+      }
+      heading.append(title, badges);
+      const meta = document.createElement("span");
+      meta.className = "source-meta";
+      meta.textContent = [
+        `${worker.processed_jobs || 0} processed`,
+        worker.current_task_type ? `current ${worker.current_task_type}` : null,
+        worker.last_job_status ? `last ${worker.last_job_status}` : null,
+        backgroundJobAgeLabel(worker.last_seen_at, "seen"),
+      ]
+        .filter(Boolean)
+        .join(" · ");
+      card.append(heading, meta);
+      elements.workerRuntime.append(card);
+    });
   }
 
   function backgroundJobQueryParams() {

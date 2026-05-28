@@ -7,8 +7,9 @@ from app.background_jobs.service import (
     TASK_EVAL_RUN,
     TASK_INDEX_REBUILD,
     TASK_INGEST_UPLOAD,
+    worker_heartbeat_is_stale,
 )
-from app.models import BackgroundJob
+from app.models import BackgroundJob, BackgroundWorkerHeartbeat
 
 
 def test_background_job_defaults_are_available_before_flush() -> None:
@@ -46,3 +47,20 @@ def test_background_job_stale_marker_uses_running_lock_age() -> None:
     assert background_job_is_stale(stale_job, stale_after_seconds=60) is True
     assert background_job_is_stale(stale_job, stale_after_seconds=300) is False
     assert background_job_is_stale(queued_job, stale_after_seconds=60) is False
+
+
+def test_worker_heartbeat_stale_marker_uses_last_seen_age() -> None:
+    heartbeat = BackgroundWorkerHeartbeat(worker_id="worker-a")
+    now = datetime.now(UTC)
+    heartbeat.last_seen_at = now - timedelta(seconds=120)
+
+    assert worker_heartbeat_is_stale(
+        heartbeat,
+        stale_after_seconds=60,
+        now=now,
+    ) is True
+    assert worker_heartbeat_is_stale(
+        heartbeat,
+        stale_after_seconds=300,
+        now=now,
+    ) is False

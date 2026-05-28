@@ -19,6 +19,12 @@ def test_initial_migration_creates_core_tables(db_engine: Engine) -> None:
         background_job_indexes = {
             index["name"] for index in inspector.get_indexes("background_jobs")
         }
+        worker_heartbeat_columns = {
+            column["name"] for column in inspector.get_columns("background_worker_heartbeats")
+        }
+        worker_heartbeat_indexes = {
+            index["name"] for index in inspector.get_indexes("background_worker_heartbeats")
+        }
 
     assert {
         "documents",
@@ -34,6 +40,7 @@ def test_initial_migration_creates_core_tables(db_engine: Engine) -> None:
         "eval_runs",
         "eval_results",
         "background_jobs",
+        "background_worker_heartbeats",
     }.issubset(table_names)
     assert {"lifecycle_status", "lifecycle_reason"}.issubset(document_columns)
     assert "ix_documents_lifecycle_status" in document_indexes
@@ -68,3 +75,19 @@ def test_initial_migration_creates_core_tables(db_engine: Engine) -> None:
         "ix_background_jobs_task_type_created_at",
         "ix_background_jobs_locked_at",
     }.issubset(background_job_indexes)
+    assert {
+        "worker_id",
+        "status",
+        "last_seen_at",
+        "started_at",
+        "processed_jobs",
+        "current_job_id",
+        "current_task_type",
+        "last_job_id",
+        "last_task_type",
+        "last_job_status",
+        "last_error",
+        "created_at",
+        "updated_at",
+    }.issubset(worker_heartbeat_columns)
+    assert "ix_background_worker_heartbeats_last_seen_at" in worker_heartbeat_indexes

@@ -9,7 +9,7 @@ BACKUP_FILES_FILE ?= $(BACKUP_DIR)/runtime-files.tar.gz
 RESTORE_DB_FILE ?= $(BACKUP_DB_FILE)
 RESTORE_FILES_FILE ?= $(BACKUP_FILES_FILE)
 
-.PHONY: backup backup-db backup-files dev test test-unit test-integration test-e2e lint format migrate index worker-once eval-seed eval-run ops-check docker-build docker-up docker-down docker-logs docker-test restore-db restore-files
+.PHONY: backup backup-db backup-files dev test test-unit test-integration test-e2e lint format migrate index worker worker-once worker-status eval-seed eval-run ops-check docker-build docker-up docker-down docker-logs docker-test restore-db restore-files
 
 backup: backup-db backup-files
 
@@ -63,6 +63,12 @@ index:
 worker-once:
 	$(UV) python -m scripts.run_background_worker --once
 
+worker:
+	$(UV) python -m scripts.run_background_worker
+
+worker-status:
+	curl -fsS -H "X-KB-Admin-Key: $(KB_ADMIN_API_KEY)" "$(API_URL)/admin/jobs/runtime"
+
 eval-seed:
 	$(UV) python -m scripts.seed_eval_cases
 
@@ -78,6 +84,9 @@ ops-check:
 	@echo
 	@echo "metrics:"
 	curl -fsS -H "X-KB-Admin-Key: $(KB_ADMIN_API_KEY)" "$(API_URL)/metrics"
+	@echo
+	@echo "worker runtime:"
+	curl -fsS -H "X-KB-Admin-Key: $(KB_ADMIN_API_KEY)" "$(API_URL)/admin/jobs/runtime"
 	@echo
 
 docker-build:

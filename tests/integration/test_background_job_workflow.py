@@ -281,6 +281,31 @@ def test_admin_jobs_api_marks_stale_running_jobs_from_settings(
     assert detail_response.json()["is_stale"] is True
 
 
+def test_admin_jobs_runtime_reports_queue_and_worker_heartbeat(
+    db_session: Session,
+    tmp_path: Path,
+) -> None:
+    app = _jobs_app(db_session, tmp_path, worker_heartbeat_stale_after_seconds=60)
+    client = TestClient(app)
+    admin_headers = {"X-KB-Admin-Key": "secret"}
+    service = BackgroundJobService(db_session)
+    service.enqueue(task_type=TASK_INDEX_REBUILD)
+    service.record_worker_heartbeat(worker_id="worker-a", status="idle")
+    db_session.commit()
+
+    response = client.get("/admin/jobs/runtime", headers=admin_headers)
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["queue"]["queued"] == 1
+    assert body["queue"]["running"] == 0
+    assert body["stale_running_jobs"] == 0
+    assert body["active_workers"] == 1
+    assert body["workers"][0]["worker_id"] == "worker-a"
+    assert body["workers"][0]["status"] == "idle"
+    assert body["workers"][0]["is_stale"] is False
+
+
 def test_admin_can_requeue_failed_job(
     db_session: Session,
     tmp_path: Path,
@@ -336,6 +361,7 @@ def _jobs_app(
     *,
     retry_base_delay_seconds: int = 0,
     stale_after_seconds: int = 3600,
+    worker_heartbeat_stale_after_seconds: int = 120,
 ) -> FastAPI:
     docs_dir = tmp_path / "docs"
     raw_dir = tmp_path / "raw"
@@ -354,6 +380,7 @@ def _jobs_app(
         admin_api_key="secret",
         background_job_retry_base_delay_seconds=retry_base_delay_seconds,
         background_job_stale_after_seconds=stale_after_seconds,
+        worker_heartbeat_stale_after_seconds=worker_heartbeat_stale_after_seconds,
     )
     return create_app(settings=settings, session_factory=_session_factory(db_session))
 

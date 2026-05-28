@@ -49,18 +49,25 @@ class BackgroundWorker:
         self.settings = settings or Settings()
         self.embedding_provider = embedding_provider
         self.answer_provider = answer_provider
-        self.worker_id = worker_id or f"worker-{uuid4()}"
+        self.worker_id = worker_id or self.settings.worker_id or f"worker-{uuid4()}"
 
     def run_once(self) -> BackgroundJob | None:
         with self.session_factory() as session:
             service = BackgroundJobService(session)
+            service.record_worker_heartbeat(worker_id=self.worker_id, status="checking")
             service.recover_stale_running_jobs(
                 stale_after_seconds=self.settings.background_job_stale_after_seconds,
                 retry_delay_seconds=0,
             )
             claimed = service.claim_next(worker_id=self.worker_id)
             if claimed is None:
+                service.record_worker_heartbeat(worker_id=self.worker_id, status="idle")
                 return None
+            service.record_worker_heartbeat(
+                worker_id=self.worker_id,
+                status="running",
+                current_job=claimed,
+            )
             job_id = claimed.id
             task_type = claimed.task_type
             payload = dict(claimed.payload_json)
@@ -70,7 +77,8 @@ class BackgroundWorker:
             result = self._execute_task(task_type, payload)
         except Exception as error:
             with self.session_factory() as session:
-                return BackgroundJobService(session).fail(
+                service = BackgroundJobService(session)
+                failed_job = service.fail(
                     job_id,
                     error=_error_message(error),
                     retry_delay_seconds=_retry_delay_seconds(
@@ -79,9 +87,32 @@ class BackgroundWorker:
                         max_delay_seconds=self.settings.background_job_retry_max_delay_seconds,
                     ),
                 )
+                service.record_worker_heartbeat(
+                    worker_id=self.worker_id,
+                    status="idle",
+                    last_job=failed_job,
+                    last_error=failed_job.error,
+                    processed_job_delta=1,
+                )
+                return failed_job
 
         with self.session_factory() as session:
-            return BackgroundJobService(session).complete(job_id, result=result)
+            service = BackgroundJobService(session)
+            completed_job = service.complete(job_id, result=result)
+            service.record_worker_heartbeat(
+                worker_id=self.worker_id,
+                status="idle",
+                last_job=completed_job,
+                processed_job_delta=1,
+            )
+            return completed_job
+
+    def shutdown(self) -> None:
+        with self.session_factory() as session:
+            BackgroundJobService(session).record_worker_heartbeat(
+                worker_id=self.worker_id,
+                status="stopped",
+            )
 
     def _execute_task(
         self,

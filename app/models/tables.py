@@ -395,6 +395,47 @@ class BackgroundJob(JsonDefaultsMixin, TimestampMixin, Base):
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
+class BackgroundWorkerHeartbeat(JsonDefaultsMixin, TimestampMixin, Base):
+    __tablename__ = "background_worker_heartbeats"
+    __table_args__ = (
+        Index("ix_background_worker_heartbeats_last_seen_at", "last_seen_at"),
+    )
+    __scalar_defaults__ = {
+        "status": "starting",
+        "processed_jobs": 0,
+    }
+
+    worker_id: Mapped[str] = mapped_column(Text, primary_key=True)
+    status: Mapped[str] = mapped_column(
+        Text,
+        nullable=False,
+        default="starting",
+        server_default=text("'starting'"),
+    )
+    last_seen_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+    )
+    started_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+    )
+    processed_jobs: Mapped[int] = mapped_column(
+        Integer,
+        nullable=False,
+        default=0,
+        server_default=text("0"),
+    )
+    current_job_id: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True))
+    current_task_type: Mapped[str | None] = mapped_column(Text)
+    last_job_id: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True))
+    last_task_type: Mapped[str | None] = mapped_column(Text)
+    last_job_status: Mapped[str | None] = mapped_column(Text)
+    last_error: Mapped[str | None] = mapped_column(Text)
+
+
 class Feedback(TimestampMixin, Base):
     __tablename__ = "feedback"
 

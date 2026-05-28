@@ -34,6 +34,9 @@ class Settings(BaseSettings):
     background_job_stale_after_seconds: int = Field(default=3600, ge=1)
     background_job_retry_base_delay_seconds: int = Field(default=30, ge=0)
     background_job_retry_max_delay_seconds: int = Field(default=300, ge=0)
+    worker_id: str | None = None
+    worker_heartbeat_interval_seconds: int = Field(default=30, ge=1)
+    worker_heartbeat_stale_after_seconds: int = Field(default=120, ge=1)
     embedding_provider: str = "fake"
     answer_provider: str = "fake"
     openai_api_key: str | None = Field(

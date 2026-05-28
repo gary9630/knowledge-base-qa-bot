@@ -14,9 +14,10 @@ from app.background_jobs.service import (
     BACKGROUND_JOB_TASK_TYPES,
     BackgroundJobInvalidTransitionError,
     BackgroundJobService,
+    worker_heartbeat_is_stale,
 )
 from app.core.config import Settings
-from app.models.tables import BackgroundJob
+from app.models.tables import BackgroundJob, BackgroundWorkerHeartbeat
 
 router = APIRouter(prefix="/admin", dependencies=[Depends(require_admin_access)])
 NonEmptyStr = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)]
@@ -63,6 +64,28 @@ class BackgroundJobsResponse(BaseModel):
     jobs: list[BackgroundJobResponse]
 
 
+class BackgroundWorkerRuntimeWorkerResponse(BaseModel):
+    worker_id: str
+    status: str
+    is_stale: bool
+    last_seen_at: str
+    started_at: str
+    processed_jobs: int
+    current_job_id: UUID | None
+    current_task_type: str | None
+    last_job_id: UUID | None
+    last_task_type: str | None
+    last_job_status: str | None
+    last_error: str | None
+
+
+class BackgroundJobsRuntimeResponse(BaseModel):
+    queue: dict[str, int]
+    stale_running_jobs: int
+    active_workers: int
+    workers: list[BackgroundWorkerRuntimeWorkerResponse]
+
+
 @router.get("/jobs", response_model=BackgroundJobsResponse)
 def list_background_jobs(
     session: Annotated[Session, Depends(get_request_db_session)],
@@ -79,6 +102,37 @@ def list_background_jobs(
             )
             for job in jobs
         ],
+    )
+
+
+@router.get("/jobs/runtime", response_model=BackgroundJobsRuntimeResponse)
+def get_background_jobs_runtime(
+    session: Annotated[Session, Depends(get_request_db_session)],
+    settings: Annotated[Settings, Depends(get_app_settings)],
+) -> BackgroundJobsRuntimeResponse:
+    service = BackgroundJobService(session)
+    checked_at = datetime.now(UTC)
+    workers = service.list_worker_heartbeats()
+    worker_responses = [
+        background_worker_response(
+            worker,
+            stale_after_seconds=settings.worker_heartbeat_stale_after_seconds,
+            checked_at=checked_at,
+        )
+        for worker in workers
+    ]
+    return BackgroundJobsRuntimeResponse(
+        queue=service.queue_counts(),
+        stale_running_jobs=service.stale_running_count(
+            stale_after_seconds=settings.background_job_stale_after_seconds,
+            now=checked_at,
+        ),
+        active_workers=sum(
+            1
+            for worker in worker_responses
+            if not worker.is_stale and worker.status != "stopped"
+        ),
+        workers=worker_responses,
     )
 
 
@@ -256,3 +310,32 @@ def background_job_is_stale(
         locked_at = locked_at.replace(tzinfo=UTC)
     stale_before = datetime.now(UTC) - timedelta(seconds=stale_after_seconds)
     return locked_at <= stale_before
+
+
+def background_worker_response(
+    worker: BackgroundWorkerHeartbeat,
+    *,
+    stale_after_seconds: int,
+    checked_at: datetime,
+) -> BackgroundWorkerRuntimeWorkerResponse:
+    return BackgroundWorkerRuntimeWorkerResponse(
+        worker_id=worker.worker_id,
+        status=worker.status,
+        is_stale=(
+            worker.status != "stopped"
+            and worker_heartbeat_is_stale(
+                worker,
+                stale_after_seconds=stale_after_seconds,
+                now=checked_at,
+            )
+        ),
+        last_seen_at=worker.last_seen_at.isoformat(),
+        started_at=worker.started_at.isoformat(),
+        processed_jobs=worker.processed_jobs,
+        current_job_id=worker.current_job_id,
+        current_task_type=worker.current_task_type,
+        last_job_id=worker.last_job_id,
+        last_task_type=worker.last_task_type,
+        last_job_status=worker.last_job_status,
+        last_error=worker.last_error,
+    )

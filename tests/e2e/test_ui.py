@@ -138,8 +138,11 @@ def test_ui_exposes_background_jobs_wiring() -> None:
     assert 'id="background-job-summary"' in response.text
     assert 'id="background-job-status-filter"' in response.text
     assert 'id="background-job-limit"' in response.text
+    assert 'id="worker-runtime"' in response.text
     assert 'id="background-jobs"' in response.text
     assert "fetch(\"/admin/jobs\"" in js_response.text
+    assert "fetch(\"/admin/jobs/runtime\"" in js_response.text
+    assert "renderWorkerRuntime" in js_response.text
     assert "backgroundJobQueryParams" in js_response.text
     assert "renderBackgroundJobSummary" in js_response.text
     assert "backgroundJobAgeLabel" in js_response.text

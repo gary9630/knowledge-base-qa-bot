@@ -21,6 +21,9 @@ Set production values outside git:
 - `KB_BACKGROUND_JOB_STALE_AFTER_SECONDS`
 - `KB_BACKGROUND_JOB_RETRY_BASE_DELAY_SECONDS`
 - `KB_BACKGROUND_JOB_RETRY_MAX_DELAY_SECONDS`
+- `KB_WORKER_ID`
+- `KB_WORKER_HEARTBEAT_INTERVAL_SECONDS`
+- `KB_WORKER_HEARTBEAT_STALE_AFTER_SECONDS`
 - `KB_PLATFORM_COHORTS`
 - `KB_PLATFORM_EXTRA_VISIBILITY_LABELS`
 - `OPENAI_API_KEY`
@@ -63,15 +66,17 @@ starting the app process.
 2. `GET /ready` returns ready with database, pgvector, migrations, storage, platform auth,
    and index checks.
 3. Protected `GET /metrics` works with `X-KB-Admin-Key`.
-4. Login works with the configured platform user.
-5. A known chat/search query returns expected source IDs.
-6. Upload returns `202 Accepted`, creates `ingest.upload`, and the worker converts it to
+4. Protected `GET /admin/jobs/runtime` shows queue depth and at least one fresh worker
+   heartbeat after the worker container starts.
+5. Login works with the configured platform user.
+6. A known chat/search query returns expected source IDs.
+7. Upload returns `202 Accepted`, creates `ingest.upload`, and the worker converts it to
    canonical Markdown plus a queued `index.rebuild`.
-7. A protected `POST /admin/jobs` can enqueue `index.rebuild`, and the worker marks it
+8. A protected `POST /admin/jobs` can enqueue `index.rebuild`, and the worker marks it
    succeeded.
-8. Protected `POST /admin/jobs/recover-stale` returns successfully; if any stale jobs are
+9. Protected `POST /admin/jobs/recover-stale` returns successfully; if any stale jobs are
    returned, confirm they are queued or failed according to their attempt budget.
-9. Scheduled eval runner can run `python -m scripts.run_evals --trigger scheduled`.
+10. Scheduled eval runner can run `python -m scripts.run_evals --trigger scheduled`.
 
 ## Rollback
 
