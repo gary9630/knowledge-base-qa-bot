@@ -26,8 +26,10 @@ def test_ci_workflow_runs_lint_tests_and_docker_checks() -> None:
     assert "uv sync --python 3.12 --group dev" in workflow
     assert "make lint" in workflow
     assert "make test" in workflow
+    assert "make deploy-check-ci" in workflow
     assert "docker compose --profile worker --profile test config" in workflow
     assert "make docker-test" in workflow
+    assert "make docker-smoke" in workflow
 
 
 def test_dockerfile_packages_python_312_fastapi_app() -> None:
@@ -120,6 +122,8 @@ def test_makefile_exposes_dev_test_lint_migration_and_docker_targets() -> None:
         "format",
         "migrate",
         "index",
+        "deploy-check",
+        "deploy-check-ci",
         "worker-once",
         "worker",
         "worker-status",
@@ -127,6 +131,7 @@ def test_makefile_exposes_dev_test_lint_migration_and_docker_targets() -> None:
         "docker-build",
         "docker-up",
         "docker-test",
+        "docker-smoke",
         "restore-db",
         "restore-files",
     )
@@ -142,7 +147,11 @@ def test_makefile_exposes_dev_test_lint_migration_and_docker_targets() -> None:
     assert "$(API_URL)/metrics" in makefile
     assert "python -m scripts.run_background_worker --once" in makefile
     assert "python -m scripts.run_background_worker" in makefile
+    assert "python -m scripts.validate_deploy_env" in makefile
     assert "$(API_URL)/admin/jobs/runtime" in makefile
+    assert "KB_DOCKER_E2E=1" in makefile
+    assert "tests/e2e/test_docker_compose.py" in makefile
+    assert "$(COMPOSE) --profile worker down" in makefile
     assert "KB_ADMIN_API_KEY" in makefile
     assert "X-KB-Admin-Key" in makefile
     assert "SELECT 1 FROM pg_database" in makefile
@@ -168,13 +177,36 @@ def test_backup_restore_runbook_documents_database_and_file_restore() -> None:
 def test_production_deploy_runbook_documents_release_sequence() -> None:
     runbook = read_project_file("ops/deploy.md")
 
+    assert "ops/env.production.example" in runbook
     assert "KB_AUTH_SECRET_KEY" in runbook
     assert "KB_ADMIN_API_KEY" in runbook
+    assert "make deploy-check" in runbook
+    assert "make docker-smoke" in runbook
     assert "make backup" in runbook
     assert "make migrate" in runbook
     assert "make ops-check" in runbook
     assert "docker compose" in runbook
     assert "rollback" in runbook.lower()
+
+
+def test_production_env_example_documents_required_deploy_settings() -> None:
+    example = read_project_file("ops/env.production.example")
+
+    for key in (
+        "KB_APP_ENV=production",
+        "KB_AUTH_SECRET_KEY=",
+        "KB_PLATFORM_USERNAME=",
+        "KB_PLATFORM_PASSWORD=",
+        "KB_ADMIN_API_KEY=",
+        "KB_DATABASE_URL=",
+        "KB_DOCS_DIR=",
+        "KB_RAW_DIR=",
+        "KB_KB_DIR=",
+        "KB_EMBEDDING_PROVIDER=openai",
+        "KB_ANSWER_PROVIDER=openai",
+        "OPENAI_API_KEY=",
+    ):
+        assert key in example
 
 
 def test_compose_config_is_valid_when_docker_cli_is_available() -> None:

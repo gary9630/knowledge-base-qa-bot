@@ -33,12 +33,28 @@ Set production values outside git:
 Use durable storage for `docs`, `raw`, and `.kb`. Use managed Postgres backups when
 available, plus the application backup path below.
 
+Start from `ops/env.production.example`, copy it outside git, and replace every
+placeholder. Validate the target environment before building or restarting services:
+
+```bash
+set -a
+. /path/to/production.env
+set +a
+make deploy-check
+```
+
 ## Pre-Deploy Checks
 
 1. Confirm CI passed on the commit to deploy.
-2. Confirm `docker compose --profile worker --profile test config` is valid.
-3. Confirm production secrets are present on the deploy target.
-4. Create a backup:
+2. Confirm `make deploy-check` passes on the deploy target.
+3. Confirm `docker compose --profile worker --profile test config` is valid.
+4. For a release candidate, run the local Compose smoke check:
+
+```bash
+make docker-smoke
+```
+
+5. Create a backup:
 
 ```bash
 make backup BACKUP_DIR=backups/$(date -u +%Y%m%dT%H%M%SZ)
@@ -92,3 +108,9 @@ make ops-check API_URL=https://your-app.example.com KB_ADMIN_API_KEY=$KB_ADMIN_A
 
 The file restore overlays archived files and does not delete stale files. Handle stale files
 manually one explicit path at a time.
+
+## CI/CD Gates
+
+The GitHub Actions workflow runs `make lint`, `make test`, `make deploy-check-ci`,
+`docker compose --profile worker --profile test config`, `make docker-test`, and
+`make docker-smoke`. Keep these gates green before promoting an image or git ref.

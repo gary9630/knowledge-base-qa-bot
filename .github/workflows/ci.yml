@@ -30,8 +30,18 @@ jobs:
       - name: Local tests
         run: make test
 
+      - name: Validate deploy environment contract
+        run: make deploy-check-ci
+
       - name: Validate Docker Compose config
         run: docker compose --profile worker --profile test config
 
       - name: Docker-backed tests
         run: make docker-test
+
+      - name: Docker app and worker smoke
+        run: make docker-smoke
+
+      - name: Docker cleanup
+        if: always()
+        run: make docker-down

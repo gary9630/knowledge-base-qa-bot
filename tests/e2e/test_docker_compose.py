@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import time
 import urllib.request
 import uuid
 
@@ -59,8 +60,16 @@ def test_docker_compose_upload_can_write_runtime_volumes() -> None:
     body = _upload_text_file()
 
     assert body["id"]
-    assert body["status"] == "succeeded"
+    assert body["status"] in {"queued", "succeeded"}
     assert body["content_hash"]
+
+
+@pytest.mark.skipif(
+    os.getenv("KB_DOCKER_E2E") != "1",
+    reason="set KB_DOCKER_E2E=1 when docker compose is serving localhost:8000",
+)
+def test_docker_compose_worker_runtime_endpoint() -> None:
+    _wait_for_worker_runtime()
 
 
 def _upload_text_file() -> dict[str, object]:
@@ -92,7 +101,7 @@ def _upload_text_file() -> dict[str, object]:
     with urllib.request.urlopen(request, timeout=10) as response:
         body = json.loads(response.read().decode("utf-8"))
 
-    assert response.status == 200
+    assert response.status in {200, 202}
     assert isinstance(body, dict)
     assert body["filename"] == filename
     assert body["canonical_path"].endswith(f"{filename.removesuffix('.txt')}.md")
@@ -112,3 +121,23 @@ def _post_index() -> dict[str, object]:
     assert response.status == 200
     assert isinstance(body, dict)
     return body
+
+
+def _wait_for_worker_runtime() -> dict[str, object]:
+    request = urllib.request.Request(
+        "http://localhost:8000/admin/jobs/runtime",
+        headers={"X-KB-Admin-Key": COMPOSE_ADMIN_API_KEY},
+    )
+    deadline = time.monotonic() + 30
+    last_payload: dict[str, object] = {}
+    while time.monotonic() < deadline:
+        with urllib.request.urlopen(request, timeout=5) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+        assert response.status == 200
+        assert isinstance(payload, dict)
+        last_payload = payload
+        if payload.get("active_workers", 0):
+            return payload
+        time.sleep(1)
+
+    raise AssertionError(f"worker runtime never became active: {last_payload}")

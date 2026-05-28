@@ -34,6 +34,8 @@
 - Lint/typecheck: `make lint`
 - Docker tests: `make docker-test`
 - Ops smoke check: `make ops-check API_URL=http://localhost:8000 KB_ADMIN_API_KEY=local-admin-key`
+- Deploy env validation: `make deploy-check`
+- Compose app/worker smoke: `make docker-smoke`
 - Compose backup: `make backup BACKUP_DIR=backups/$(date -u +%Y%m%dT%H%M%SZ)`
 - CI workflow: `.github/workflows/ci.yml`
 
@@ -82,6 +84,7 @@ intentionally deferred until traffic or multi-replica deployment requires it.
 - `POST /imports` must stay lightweight: save the raw artifact, create a queued ingestion job, enqueue `ingest.upload`, and let the worker convert Markdown and enqueue index rebuilds.
 - Backup/restore runbook lives at `ops/backup-restore.md`; restore targets require `CONFIRM_RESTORE=yes` and do not remove stale files.
 - Production deploy runbook lives at `ops/deploy.md`.
+- Production env template lives at `ops/env.production.example`; validate real deploy environments with `make deploy-check` before migration/restart.
 - Do not expose admin endpoints publicly without the admin key or an authenticated gateway.
 - Never store raw admin keys or platform passwords in audit metadata; use `fingerprint_secret()` for admin-key actor IDs.
 - `DELETE /admin/documents/{document_id}` deletes DB index rows only; it must not remove canonical Markdown or raw upload files.
