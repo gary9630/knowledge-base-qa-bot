@@ -493,6 +493,7 @@
       return;
     }
 
+    renderAnswerCitations(answerNode, state.selectedSources);
     wrapper.querySelector(".answer-footer")?.remove();
     const footer = document.createElement("div");
     footer.className = "answer-footer";
@@ -503,7 +504,73 @@
     trust.textContent = answerTrustText(payload, state.selectedSources);
     footer.append(trust);
     renderSourceChips(footer, state.selectedSources);
+    renderAnswerFeedback(footer, payload, state.selectedSources);
     wrapper.append(footer);
+  }
+
+  function renderAnswerCitations(answerNode, sources) {
+    const answer = answerNode.textContent || "";
+    const ranges = citationRanges(answer, sources);
+    if (ranges.length === 0) {
+      answerNode.textContent = answer;
+      return;
+    }
+
+    const fragments = [];
+    let cursor = 0;
+    ranges.forEach((range) => {
+      if (range.start > cursor) {
+        fragments.push(document.createTextNode(answer.slice(cursor, range.start)));
+      }
+      fragments.push(inlineCitationButton(range.source, range.displayIndex));
+      cursor = range.end;
+    });
+    if (cursor < answer.length) {
+      fragments.push(document.createTextNode(answer.slice(cursor)));
+    }
+    answerNode.replaceChildren(...fragments);
+  }
+
+  function citationRanges(answer, sources) {
+    const sourceList = Array.isArray(sources) ? sources : [];
+    const ranges = [];
+    sourceList.forEach((source, index) => {
+      if (!source.source_id) {
+        return;
+      }
+      const token = `[${source.source_id}]`;
+      let start = answer.indexOf(token);
+      while (start !== -1) {
+        ranges.push({
+          start,
+          end: start + token.length,
+          source,
+          displayIndex: index + 1,
+        });
+        start = answer.indexOf(token, start + token.length);
+      }
+    });
+
+    return ranges
+      .sort((left, right) => left.start - right.start || right.end - left.end)
+      .filter((range, index, sortedRanges) => {
+        const previous = sortedRanges[index - 1];
+        return !previous || range.start >= previous.end;
+      });
+  }
+
+  function inlineCitationButton(source, displayIndex) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "inline-citation";
+    button.textContent = `[${displayIndex}]`;
+    button.title = source.source_id || citationLabelForSource(source, displayIndex);
+    button.setAttribute(
+      "aria-label",
+      `Preview source ${displayIndex}: ${sourceShortLabel(source)}`,
+    );
+    button.addEventListener("click", () => previewSourceFromChip(source));
+    return button;
   }
 
   function renderSourceChips(wrapper, sources) {
@@ -518,7 +585,8 @@
       const button = document.createElement("button");
       button.type = "button";
       button.className = "source-chip";
-      button.textContent = source.source_id || source.filename || `Source ${index + 1}`;
+      button.textContent = citationLabelForSource(source, index + 1);
+      button.title = source.source_id || "";
       button.addEventListener("click", () => previewSourceFromChip(source));
       chipRow.append(button);
     });
@@ -531,6 +599,147 @@
     if (window.matchMedia("(max-width: 760px)").matches) {
       elements.markdownPreview.scrollIntoView({ block: "start", behavior: "smooth" });
     }
+  }
+
+  function renderAnswerFeedback(wrapper, payload, sources) {
+    if (!payload.assistant_message_id) {
+      return;
+    }
+
+    const panel = document.createElement("div");
+    panel.className = "answer-feedback";
+    panel.dataset.messageId = payload.assistant_message_id;
+
+    const actions = document.createElement("div");
+    actions.className = "feedback-actions";
+    actions.append(
+      feedbackActionButton("Helpful", () =>
+        submitAnswerFeedback(panel, payload, {
+          rating: 1,
+          reason: "helpful",
+          expectedSource: feedbackExpectedSource(sources, payload.answer_quality),
+        }),
+      ),
+      feedbackActionButton("Not helpful", () =>
+        showFeedbackDetails(panel, payload, sources, "not_helpful"),
+      ),
+      feedbackActionButton("Answer missing", () =>
+        showFeedbackDetails(panel, payload, sources, "answer_missing"),
+      ),
+    );
+
+    const status = document.createElement("span");
+    status.className = "feedback-status";
+    status.setAttribute("aria-live", "polite");
+
+    panel.append(actions, status);
+    wrapper.append(panel);
+  }
+
+  function feedbackActionButton(label, onClick) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "feedback-button";
+    button.textContent = label;
+    button.addEventListener("click", onClick);
+    return button;
+  }
+
+  function showFeedbackDetails(panel, payload, sources, reason) {
+    panel.querySelector(".feedback-detail")?.remove();
+
+    const detail = document.createElement("div");
+    detail.className = "feedback-detail";
+
+    const note = document.createElement("textarea");
+    note.rows = 2;
+    note.placeholder = reason === "answer_missing"
+      ? "What answer did you expect?"
+      : "What should be improved?";
+
+    const sourceSelect = document.createElement("select");
+    sourceSelect.setAttribute("aria-label", "Expected source");
+    const emptyOption = document.createElement("option");
+    emptyOption.value = "";
+    emptyOption.textContent = "Expected source";
+    sourceSelect.append(emptyOption);
+    (Array.isArray(sources) ? sources : []).forEach((source, index) => {
+      if (!source.source_id) {
+        return;
+      }
+      const option = document.createElement("option");
+      option.value = source.source_id;
+      option.textContent = citationLabelForSource(source, index + 1);
+      sourceSelect.append(option);
+    });
+
+    const submit = feedbackActionButton("Send feedback", () =>
+      submitAnswerFeedback(panel, payload, {
+        rating: -1,
+        reason,
+        expectedSource: feedbackExpectedSource(
+          sources,
+          payload.answer_quality,
+          sourceSelect.value,
+        ),
+        note: note.value.trim(),
+      }),
+    );
+
+    detail.append(note, sourceSelect, submit);
+    panel.append(detail);
+    note.focus();
+  }
+
+  async function submitAnswerFeedback(panel, payload, feedback) {
+    const status = panel.querySelector(".feedback-status");
+    const controls = panel.querySelectorAll("button, textarea, select");
+    controls.forEach((control) => {
+      control.disabled = true;
+    });
+    if (status) {
+      status.textContent = "Saving feedback...";
+    }
+
+    try {
+      const response = await fetch("/feedback", {
+        method: "POST",
+        headers: platformJsonHeaders(),
+        body: JSON.stringify({
+          message_id: payload.assistant_message_id,
+          rating: feedback.rating,
+          reason: feedback.reason,
+          expected_source: feedback.expectedSource || null,
+          note: feedback.note || null,
+        }),
+      });
+      if (!response.ok) {
+        throw new Error(await responseError(response));
+      }
+      panel.classList.add("is-submitted");
+      if (status) {
+        status.textContent = "Feedback saved.";
+      }
+    } catch (error) {
+      controls.forEach((control) => {
+        control.disabled = false;
+      });
+      if (status) {
+        status.textContent = `Feedback failed: ${errorMessage(error)}`;
+      }
+    }
+  }
+
+  function feedbackExpectedSource(sources, answerQuality, explicitSource = "") {
+    if (explicitSource) {
+      return explicitSource;
+    }
+    const citedSourceIds = answerQuality?.cited_source_ids || [];
+    if (citedSourceIds.length > 0) {
+      return citedSourceIds[0];
+    }
+    const firstSource = Array.isArray(sources) ? sources[0] : null;
+    return firstSource?.source_id || null;
   }
 
   function answerTrustText(payload, sources) {
@@ -584,10 +793,11 @@
       row.addEventListener("click", () => previewCandidate(source));
 
       const title = document.createElement("strong");
-      title.textContent = source.source_id || source.filename || "Source";
+      title.textContent = citationLabelForSource(source, index + 1);
       const meta = document.createElement("span");
       meta.className = "source-meta";
       meta.textContent = [
+        source.source_id,
         source.strategy,
         typeof source.score === "number" ? source.score.toFixed(3) : null,
         scoreBreakdownText(source),
@@ -602,6 +812,19 @@
         previewCandidate(source);
       }
     });
+  }
+
+  function citationLabelForSource(source, displayIndex) {
+    return `[${displayIndex}] ${sourceShortLabel(source)}`;
+  }
+
+  function sourceShortLabel(source) {
+    const heading = source.heading || "";
+    if (heading && heading !== source.source_id) {
+      return heading;
+    }
+    const filename = source.filename || source.source_id || "Source";
+    return filename.replace(/\.md$/i, "");
   }
 
   function previewCandidate(source) {

@@ -214,6 +214,9 @@ textarea:disabled {
 .secondary-button:focus-visible,
 .source-row:focus-visible,
 .selected-source:focus-visible,
+.source-chip:focus-visible,
+.inline-citation:focus-visible,
+.feedback-button:focus-visible,
 .mindmap-node:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
@@ -649,6 +652,26 @@ button.selected-source {
   padding: 10px 12px;
 }
 
+.inline-citation {
+  display: inline-grid;
+  min-width: 24px;
+  min-height: 22px;
+  place-items: center;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--accent-strong);
+  font-size: 0.78em;
+  font-weight: 800;
+  line-height: 1;
+  padding: 0 2px;
+  vertical-align: baseline;
+}
+
+.inline-citation:hover {
+  background: #e9f3fb;
+}
+
 .message-label {
   color: var(--muted);
   font-size: 11px;
@@ -716,6 +739,55 @@ button.selected-source {
 
 .source-chip:hover {
   background: #e9f3fb;
+}
+
+.answer-feedback {
+  display: grid;
+  gap: 8px;
+  justify-items: start;
+}
+
+.feedback-actions,
+.feedback-detail {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.feedback-button {
+  min-height: 30px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #fbfcfd;
+  color: var(--text);
+  padding: 4px 8px;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.feedback-button:hover {
+  background: var(--surface-muted);
+}
+
+.feedback-detail textarea {
+  width: min(360px, 100%);
+  min-height: 64px;
+}
+
+.feedback-detail select {
+  min-height: 36px;
+}
+
+.feedback-status {
+  min-height: 18px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.answer-feedback.is-submitted .feedback-actions,
+.answer-feedback.is-submitted .feedback-detail {
+  opacity: 0.62;
 }
 
 .chat-form,

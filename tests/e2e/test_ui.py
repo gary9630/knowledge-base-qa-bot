@@ -230,6 +230,11 @@ def test_ui_exposes_learner_chat_polish_wiring() -> None:
     assert "Answered from" in js_response.text
     assert "could not confirm" in js_response.text
     assert "previewCandidate(source)" in js_response.text
+    assert "renderAnswerCitations" in js_response.text
+    assert "citationLabelForSource" in js_response.text
+    assert "submitAnswerFeedback" in js_response.text
+    assert "feedbackExpectedSource" in js_response.text
+    assert 'fetch("/feedback"' in js_response.text
 
     assert css_response.status_code == 200
     assert ".chat-empty-state" in css_response.text
@@ -237,6 +242,8 @@ def test_ui_exposes_learner_chat_polish_wiring() -> None:
     assert ".answer-footer" in css_response.text
     assert ".source-chip" in css_response.text
     assert ".answer-trust" in css_response.text
+    assert ".inline-citation" in css_response.text
+    assert ".answer-feedback" in css_response.text
 
 
 def test_ui_separates_answer_sources_from_previewed_source() -> None:
