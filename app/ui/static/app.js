@@ -120,6 +120,7 @@
     platformAuthStatus: $("#platform-auth-status"),
     platformLogout: $("#platform-logout"),
     workbench: $("[data-app]"),
+    adminOnlySurfaces: $$("[data-admin-only]"),
   };
 
   function init() {
@@ -212,6 +213,7 @@
     elements.platformLogin.hidden = !blocked;
     elements.workbench.classList.toggle("is-auth-blocked", blocked);
     elements.platformLogout.hidden = !state.auth.authRequired || !state.auth.authenticated;
+    applyAccessPolicy();
     elements.platformAuthStatus.textContent = state.auth.authenticated
       ? `Signed in${state.auth.username ? ` as ${state.auth.username}` : ""}.`
       : "Sign in to continue.";
@@ -238,6 +240,10 @@
   }
 
   function activateTab(tabName) {
+    if (!tabIsAvailable(tabName)) {
+      return;
+    }
+
     elements.tabs.forEach((tab) => {
       const selected = tab.dataset.tab === tabName;
       tab.classList.toggle("is-active", selected);
@@ -257,17 +263,56 @@
   }
 
   function nextTabForKey(currentTab, key) {
-    const currentIndex = elements.tabs.indexOf(currentTab);
+    const tabs = availableTabs();
+    if (tabs.length === 0) {
+      return currentTab;
+    }
+    const currentIndex = Math.max(0, tabs.indexOf(currentTab));
     if (key === "Home") {
-      return elements.tabs[0];
+      return tabs[0];
     }
     if (key === "End") {
-      return elements.tabs[elements.tabs.length - 1];
+      return tabs[tabs.length - 1];
     }
 
     const offset = key === "ArrowRight" ? 1 : -1;
-    const nextIndex = (currentIndex + offset + elements.tabs.length) % elements.tabs.length;
-    return elements.tabs[nextIndex];
+    const nextIndex = (currentIndex + offset + tabs.length) % tabs.length;
+    return tabs[nextIndex];
+  }
+
+  function activeTabName() {
+    const activeTab = elements.tabs.find((tab) => tab.classList.contains("is-active"));
+    return activeTab?.dataset.tab || "chat";
+  }
+
+  function availableTabs() {
+    return elements.tabs.filter((tab) => tabIsAvailable(tab.dataset.tab));
+  }
+
+  function tabIsAvailable(tabName) {
+    const tab = elements.tabs.find((candidate) => candidate.dataset.tab === tabName);
+    if (!tab) {
+      return false;
+    }
+    return !(isRestrictedLearner() && tab.hasAttribute("data-admin-only"));
+  }
+
+  function isRestrictedLearner() {
+    return state.auth.authRequired && state.auth.authenticated;
+  }
+
+  function applyAccessPolicy() {
+    const restricted = isRestrictedLearner();
+    elements.adminOnlySurfaces.forEach((surface) => {
+      if (restricted || !surface.matches("[data-panel]")) {
+        surface.hidden = restricted;
+      }
+      surface.setAttribute("aria-hidden", String(restricted));
+    });
+
+    if (restricted && !tabIsAvailable(activeTabName())) {
+      activateTab("chat");
+    }
   }
 
   function bindChat() {

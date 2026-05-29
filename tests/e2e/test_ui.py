@@ -86,6 +86,62 @@ def test_ui_exposes_platform_login_wiring() -> None:
     assert "X-KB-CSRF-Token" in js_response.text
 
 
+def test_ui_serves_student_landing_page_and_marks_admin_surfaces() -> None:
+    client = TestClient(create_app())
+
+    response = client.get("/")
+    css_response = client.get("/static/app.css")
+
+    assert response.status_code == 200
+    assert 'id="landing-preview"' in response.text
+    assert 'id="landing-trust-strip"' in response.text
+    assert "Course Assistant" in response.text
+    assert "Student sign in" in response.text
+    assert 'id="tab-chat"' in response.text
+    assert 'id="tab-mindmap"' in response.text
+    assert 'id="tab-sources"' in response.text
+    for tab_id in ("tab-uploads", "tab-ops", "tab-audit", "tab-evals"):
+        tab_markup = response.text.split(f'id="{tab_id}"', 1)[1].split(">", 1)[0]
+        assert "data-admin-only" in tab_markup
+
+    for panel_id in ("panel-uploads", "panel-ops", "panel-audit", "panel-evals"):
+        panel_markup = response.text.split(f'id="{panel_id}"', 1)[1].split(">", 1)[0]
+        assert "data-admin-only" in panel_markup
+
+    document_form_markup = response.text.split('id="document-lifecycle-form"', 1)[1].split(
+        ">",
+        1,
+    )[0]
+    document_section_markup = response.text.split('id="admin-documents-section"', 1)[1].split(
+        ">",
+        1,
+    )[0]
+    assert "data-admin-only" in document_form_markup
+    assert "data-admin-only" in document_section_markup
+
+    assert css_response.status_code == 200
+    assert "[hidden]" in css_response.text
+    assert ".landing-copy" in css_response.text
+    assert ".landing-preview" in css_response.text
+    assert ".landing-trust-strip" in css_response.text
+
+
+def test_ui_blocks_admin_tabs_for_platform_learners_in_javascript() -> None:
+    client = TestClient(create_app())
+
+    js_response = client.get("/static/app.js")
+
+    assert js_response.status_code == 200
+    assert "adminOnlySurfaces" in js_response.text
+    assert "function applyAccessPolicy" in js_response.text
+    assert "function isRestrictedLearner" in js_response.text
+    assert "function tabIsAvailable" in js_response.text
+    assert "if (!tabIsAvailable(tabName))" in js_response.text
+    assert "elements.adminOnlySurfaces.forEach" in js_response.text
+    assert "surface.hidden = restricted" in js_response.text
+    assert "availableTabs()" in js_response.text
+
+
 def test_ui_exposes_audit_log_wiring() -> None:
     client = TestClient(create_app())
 
