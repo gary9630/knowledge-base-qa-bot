@@ -55,7 +55,7 @@ class ChatRequest(BaseModel):
     query: str = Field(min_length=1)
     conversation_id: UUID | None = None
     strategy: RetrievalStrategy = "hybrid"
-    limit: int = Field(default=5, ge=1, le=20)
+    limit: int = Field(default=10, ge=1, le=20)
 
 
 class AnswerQualityResponse(BaseModel):
