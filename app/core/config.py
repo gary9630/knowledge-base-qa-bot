@@ -50,4 +50,10 @@ class Settings(BaseSettings):
     openai_request_timeout_seconds: float = Field(default=30.0, gt=0)
     openai_max_retries: int = Field(default=2, ge=0)
     openai_chat_max_completion_tokens: int = Field(default=1024, ge=1)
+    provider_budget_enabled: bool = True
+    provider_budget_daily_token_limit: int = Field(default=0, ge=0)
+    provider_budget_daily_call_limit: int = Field(default=0, ge=0)
+    provider_budget_error_rate_limit: float = Field(default=0.0, ge=0.0, le=1.0)
+    provider_budget_warning_ratio: float = Field(default=0.8, ge=0.0, le=1.0)
+    provider_budget_block_on_exceeded: bool = False
     embedding_dimension: int = PGVECTOR_EMBEDDING_DIMENSION

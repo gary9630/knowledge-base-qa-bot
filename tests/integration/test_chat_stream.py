@@ -18,6 +18,7 @@ from app.answer.providers import AnswerSource
 from app.core.config import Settings
 from app.main import create_app
 from app.observability.middleware import REQUEST_LOGGER_NAME
+from app.provider_telemetry import ProviderCallRecord
 
 
 @dataclass(frozen=True)
@@ -188,6 +189,59 @@ def test_chat_stream_provider_error_records_stream_failure(
     assert log_payloads[0]["error"] == "HTTPException"
 
 
+def test_chat_stream_provider_budget_block_returns_stable_error(
+    db_session: Session,
+    tmp_path: Path,
+) -> None:
+    docs_dir = tmp_path / "docs"
+    raw_dir = tmp_path / "raw"
+    kb_dir = tmp_path / ".kb"
+    docs_dir.mkdir()
+    (docs_dir / "faq.md").write_text(
+        "# FAQ\n\n## Course Site\n\nCourse site is https://buildmoat.org/\n",
+        encoding="utf-8",
+    )
+    answer_provider = TrackingStreamingAnswerProvider()
+    app = create_app(
+        settings=Settings(
+            docs_dir=str(docs_dir),
+            raw_dir=str(raw_dir),
+            kb_dir=str(kb_dir),
+            embedding_provider="fake",
+            answer_provider="fake",
+            provider_budget_daily_call_limit=1,
+            provider_budget_block_on_exceeded=True,
+        ),
+        session_factory=_session_factory(db_session),
+        answer_provider=answer_provider,
+    )
+    client = TestClient(app)
+    index_response = client.post("/index")
+    app.state.metrics.record_provider_call(
+        ProviderCallRecord(
+            provider="openai",
+            operation="chat.completions.stream",
+            model="gpt-test",
+            status="succeeded",
+        )
+    )
+
+    with client.stream(
+        "POST",
+        "/chat/stream",
+        json={"query": "Where is the course site?"},
+    ) as response:
+        body = "".join(response.iter_text())
+
+    events = _parse_sse_events(body)
+
+    assert index_response.status_code == 200
+    assert response.status_code == 200
+    assert events[-1]["event"] == "error"
+    assert json.loads(events[-1]["data"])["detail"] == "Provider budget exceeded."
+    assert answer_provider.calls == 0
+
+
 def test_parse_sse_events_supports_crlf_frames() -> None:
     body = 'event: sources\r\ndata: {"sources":[]}\r\n\r\nevent: done\r\ndata: {}\r\n\r\n'
 
@@ -221,6 +275,31 @@ class FailingAnswerProvider:
         strict: bool = False,
     ) -> str:
         raise RuntimeError("answer provider failed")
+
+
+class TrackingStreamingAnswerProvider:
+    def __init__(self) -> None:
+        self.calls = 0
+
+    def generate_answer(
+        self,
+        query: str,
+        sources: Sequence[AnswerSource],
+        *,
+        strict: bool = False,
+    ) -> str:
+        self.calls += 1
+        return "Course site is https://buildmoat.org/ [faq.md#course-site]"
+
+    def stream_answer(
+        self,
+        query: str,
+        sources: Sequence[AnswerSource],
+        *,
+        strict: bool = False,
+    ) -> Iterator[str]:
+        self.calls += 1
+        yield "Course site is https://buildmoat.org/ [faq.md#course-site]"
 
 
 class _ListHandler(logging.Handler):

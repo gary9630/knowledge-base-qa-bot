@@ -14,6 +14,12 @@ _SETTINGS_ENV_KEYS = (
     "KB_OPENAI_REQUEST_TIMEOUT_SECONDS",
     "KB_OPENAI_MAX_RETRIES",
     "KB_OPENAI_CHAT_MAX_COMPLETION_TOKENS",
+    "KB_PROVIDER_BUDGET_ENABLED",
+    "KB_PROVIDER_BUDGET_DAILY_TOKEN_LIMIT",
+    "KB_PROVIDER_BUDGET_DAILY_CALL_LIMIT",
+    "KB_PROVIDER_BUDGET_ERROR_RATE_LIMIT",
+    "KB_PROVIDER_BUDGET_WARNING_RATIO",
+    "KB_PROVIDER_BUDGET_BLOCK_ON_EXCEEDED",
     "KB_PLATFORM_COHORTS",
     "KB_PLATFORM_EXTRA_VISIBILITY_LABELS",
     "KB_ADMIN_API_KEY",
@@ -195,6 +201,37 @@ def test_settings_openai_reliability_values_can_be_overridden_by_env(
     assert settings.openai_request_timeout_seconds == 12.5
     assert settings.openai_max_retries == 4
     assert settings.openai_chat_max_completion_tokens == 321
+
+
+def test_settings_provider_budget_defaults_are_non_disruptive() -> None:
+    settings = Settings()
+
+    assert settings.provider_budget_enabled is True
+    assert settings.provider_budget_daily_token_limit == 0
+    assert settings.provider_budget_daily_call_limit == 0
+    assert settings.provider_budget_error_rate_limit == 0.0
+    assert settings.provider_budget_warning_ratio == 0.8
+    assert settings.provider_budget_block_on_exceeded is False
+
+
+def test_settings_provider_budget_values_can_be_overridden_by_env(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("KB_PROVIDER_BUDGET_ENABLED", "false")
+    monkeypatch.setenv("KB_PROVIDER_BUDGET_DAILY_TOKEN_LIMIT", "10000")
+    monkeypatch.setenv("KB_PROVIDER_BUDGET_DAILY_CALL_LIMIT", "50")
+    monkeypatch.setenv("KB_PROVIDER_BUDGET_ERROR_RATE_LIMIT", "0.25")
+    monkeypatch.setenv("KB_PROVIDER_BUDGET_WARNING_RATIO", "0.7")
+    monkeypatch.setenv("KB_PROVIDER_BUDGET_BLOCK_ON_EXCEEDED", "true")
+
+    settings = Settings()
+
+    assert settings.provider_budget_enabled is False
+    assert settings.provider_budget_daily_token_limit == 10000
+    assert settings.provider_budget_daily_call_limit == 50
+    assert settings.provider_budget_error_rate_limit == 0.25
+    assert settings.provider_budget_warning_ratio == 0.7
+    assert settings.provider_budget_block_on_exceeded is True
 
 
 def test_settings_openai_api_key_can_be_set_by_constructor() -> None:

@@ -29,6 +29,7 @@ Set production values outside git:
 - `OPENAI_API_KEY`
 - `KB_OPENAI_EMBEDDING_MODEL`
 - `KB_OPENAI_CHAT_MODEL`
+- `KB_PROVIDER_BUDGET_*`
 
 Use durable storage for `docs`, `raw`, and `.kb`. Use managed Postgres backups when
 available, plus the application backup path below.

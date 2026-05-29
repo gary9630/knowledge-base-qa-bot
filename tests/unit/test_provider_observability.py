@@ -4,11 +4,13 @@ from app.api.provider_observability import (
     provider_observability_response,
     provider_trace_response,
 )
+from app.core.config import Settings
 from app.models.tables import RetrievalEvent
 
 
 def test_provider_observability_response_summarizes_metrics_snapshot() -> None:
     payload = provider_observability_response(
+        settings=Settings(provider_budget_daily_token_limit=36),
         metrics_snapshot={
             "provider_calls_total": 3,
             "provider_errors_total": 1,
@@ -43,6 +45,9 @@ def test_provider_observability_response_summarizes_metrics_snapshot() -> None:
     assert payload.summary.total_calls == 3
     assert payload.summary.error_rate == 1 / 3
     assert payload.summary.total_tokens == 36
+    assert payload.budget.status == "exceeded"
+    assert payload.budget.policies[0].name == "tokens"
+    assert payload.budget.policies[0].used == 36
     assert len(payload.usage_by_key) == 2
     assert payload.usage_by_key[0].key == "openai:gpt-test:chat.completions.stream"
     assert payload.usage_by_key[0].calls == 2

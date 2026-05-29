@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from pathlib import Path
 from uuid import UUID
 
@@ -10,6 +10,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.answer.providers import AnswerProvider, AnswerSource
 from app.background_jobs.service import (
     TASK_INDEX_REBUILD,
     TASK_INGEST_UPLOAD,
@@ -26,6 +27,7 @@ from app.models.tables import (
     RetrievalEvent,
     Section,
 )
+from app.provider_telemetry import ProviderCallRecord
 from app.retrieval.embeddings import FakeEmbeddingProvider
 
 
@@ -62,6 +64,31 @@ def test_chat_before_index_returns_not_indexed(app_with_test_db: FastAPI) -> Non
 
     assert response.status_code == 200
     assert response.json()["answer"] == "知識庫尚未建立索引，請先建立索引。"
+
+
+def test_chat_provider_budget_block_prevents_answer_provider_call(
+    db_session: Session,
+    tmp_path: Path,
+) -> None:
+    answer_provider = TrackingAnswerProvider()
+    app = _budget_limited_app(db_session, tmp_path, answer_provider=answer_provider)
+    client = TestClient(app)
+    index_response = client.post("/index")
+    app.state.metrics.record_provider_call(
+        ProviderCallRecord(
+            provider="openai",
+            operation="chat.completions",
+            model="gpt-test",
+            status="succeeded",
+        )
+    )
+
+    response = client.post("/chat", json={"query": "課程網站在哪？"})
+
+    assert index_response.status_code == 200
+    assert response.status_code == 429
+    assert response.json()["detail"] == "Provider budget exceeded."
+    assert answer_provider.calls == 0
 
 
 def test_index_search_chat_sources_and_feedback_workflow(
@@ -566,3 +593,47 @@ def _worker(app: FastAPI, db_session: Session) -> BackgroundWorker:
         answer_provider=app.state.answer_provider,
         worker_id="test-worker",
     )
+
+
+def _budget_limited_app(
+    db_session: Session,
+    tmp_path: Path,
+    *,
+    answer_provider: AnswerProvider,
+) -> FastAPI:
+    docs_dir = tmp_path / "docs"
+    raw_dir = tmp_path / "raw"
+    kb_dir = tmp_path / ".kb"
+    docs_dir.mkdir()
+    (docs_dir / "faq.md").write_text(
+        "# FAQ\n\n## Course Site\n\nCourse site is https://buildmoat.org/\n",
+        encoding="utf-8",
+    )
+    return create_app(
+        settings=Settings(
+            docs_dir=str(docs_dir),
+            raw_dir=str(raw_dir),
+            kb_dir=str(kb_dir),
+            embedding_provider="fake",
+            answer_provider="fake",
+            provider_budget_daily_call_limit=1,
+            provider_budget_block_on_exceeded=True,
+        ),
+        session_factory=_session_factory(db_session),
+        answer_provider=answer_provider,
+    )
+
+
+class TrackingAnswerProvider:
+    def __init__(self) -> None:
+        self.calls = 0
+
+    def generate_answer(
+        self,
+        query: str,
+        sources: Sequence[AnswerSource],
+        *,
+        strict: bool = False,
+    ) -> str:
+        self.calls += 1
+        return "Course site is https://buildmoat.org/ [faq.md#course-site]"

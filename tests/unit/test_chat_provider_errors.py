@@ -7,7 +7,12 @@ import pytest
 from fastapi import HTTPException
 
 from app.answer.providers import AnswerSource
-from app.api.chat import ChatRequest, _answer_provider_error_response
+from app.api.chat import (
+    ChatRequest,
+    _answer_provider_error_response,
+    _provider_budget_block_exception,
+)
+from app.core.config import Settings
 from app.retrieval.models import RetrievedCandidate
 
 
@@ -43,3 +48,21 @@ def test_answer_provider_error_maps_to_stable_http_exception() -> None:
 
     assert exc_info.value.status_code == 502
     assert exc_info.value.detail == "Answer provider failed."
+
+
+def test_provider_budget_block_exception_maps_to_stable_http_429() -> None:
+    exception = _provider_budget_block_exception(
+        settings=Settings(
+            provider_budget_daily_call_limit=1,
+            provider_budget_block_on_exceeded=True,
+        ),
+        metrics_snapshot={
+            "provider_calls_total": 1,
+            "provider_errors_total": 0,
+            "provider_usage_by_key": {},
+        },
+    )
+
+    assert exception is not None
+    assert exception.status_code == 429
+    assert exception.detail == "Provider budget exceeded."

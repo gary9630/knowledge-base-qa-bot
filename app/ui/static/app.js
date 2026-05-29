@@ -91,6 +91,7 @@
     opsAdminKey: $("#ops-admin-key"),
     refreshProviderObservability: $("#refresh-provider-observability"),
     providerSummary: $("#provider-summary"),
+    providerBudget: $("#provider-budget"),
     providerUsage: $("#provider-usage"),
     providerLatestCalls: $("#provider-latest-calls"),
     providerTraces: $("#provider-traces"),
@@ -1576,6 +1577,7 @@
       state.providerObservability = null;
       const message = `Provider observability unavailable: ${errorMessage(error)}`;
       elements.providerSummary.replaceChildren(emptyText(message));
+      elements.providerBudget.replaceChildren(emptyText("No provider budget loaded."));
       elements.providerUsage.replaceChildren(emptyText("No provider usage loaded."));
       elements.providerLatestCalls.replaceChildren(emptyText("No provider calls loaded."));
       elements.providerTraces.replaceChildren(emptyText("No provider traces loaded."));
@@ -1587,6 +1589,7 @@
   function renderProviderObservability(payload) {
     state.providerObservability = payload || null;
     renderProviderSummary(payload && payload.summary);
+    renderProviderBudget(payload && payload.budget);
     renderProviderUsage(payload && payload.usage_by_key);
     renderProviderLatestCalls(payload && payload.latest_calls);
     renderProviderTraces(payload && payload.traces);
@@ -1647,6 +1650,87 @@
       row.append(body);
       elements.providerUsage.append(row);
     });
+  }
+
+  function renderProviderBudget(budget) {
+    elements.providerBudget.replaceChildren();
+    if (!budget) {
+      elements.providerBudget.append(emptyText("No provider budget loaded."));
+      return;
+    }
+
+    const row = document.createElement("div");
+    row.className = `job-row provider-budget-row is-${providerBudgetStatusClass(budget.status)}`;
+    const body = document.createElement("div");
+    body.className = "job-body";
+
+    const heading = document.createElement("div");
+    heading.className = "job-row-heading";
+    const title = document.createElement("strong");
+    title.textContent = budget.enabled ? `Budget ${budget.status || "ok"}` : "Budget disabled";
+    const badges = document.createElement("div");
+    badges.className = "job-badges";
+    badges.append(backgroundJobBadge(budget.status || "ok", providerBudgetStatusClass(budget.status)));
+    badges.append(
+      backgroundJobBadge(budget.should_block ? "blocking" : "not blocking", budget.should_block ? "failed" : "succeeded"),
+    );
+    heading.append(title, badges);
+
+    const meta = document.createElement("span");
+    meta.className = "source-meta";
+    meta.textContent = [
+      budget.enabled ? "enabled" : "disabled",
+      budget.block_on_exceeded ? "hard block enabled" : "alert only",
+      budget.reasons && budget.reasons.length ? `reasons: ${budget.reasons.join(", ")}` : null,
+    ]
+      .filter(Boolean)
+      .join(" · ");
+    body.append(heading, meta);
+    row.append(body);
+    elements.providerBudget.append(row);
+
+    const policies = Array.isArray(budget.policies) ? budget.policies : [];
+    if (policies.length === 0) {
+      elements.providerBudget.append(emptyText("No active provider budget policies."));
+      return;
+    }
+    policies.forEach((policy) => {
+      elements.providerBudget.append(renderProviderBudgetPolicyRow(policy));
+    });
+  }
+
+  function renderProviderBudgetPolicyRow(policy) {
+    const row = document.createElement("div");
+    row.className = `job-row provider-budget-policy is-${providerBudgetStatusClass(policy.status)}`;
+
+    const body = document.createElement("div");
+    body.className = "job-body";
+    const heading = document.createElement("div");
+    heading.className = "job-row-heading";
+    const title = document.createElement("strong");
+    title.textContent = policy.label || policy.name || "Budget policy";
+    const badges = document.createElement("div");
+    badges.className = "job-badges";
+    badges.append(backgroundJobBadge(policy.status || "ok", providerBudgetStatusClass(policy.status)));
+    heading.append(title, badges);
+
+    const meta = document.createElement("span");
+    meta.className = "source-meta";
+    meta.textContent = [
+      `used ${providerBudgetValue(policy.used, policy.unit)}`,
+      policy.limit == null ? "no limit" : `limit ${providerBudgetValue(policy.limit, policy.unit)}`,
+      policy.warning_threshold == null ? null : `warn ${providerBudgetValue(policy.warning_threshold, policy.unit)}`,
+      policy.remaining == null ? null : `remaining ${providerBudgetValue(policy.remaining, policy.unit)}`,
+    ]
+      .filter(Boolean)
+      .join(" · ");
+
+    const detail = document.createElement("span");
+    detail.className = "source-meta";
+    detail.textContent = policy.reason || "Within configured guardrail.";
+    body.append(heading, meta, detail);
+    row.append(body);
+    return row;
   }
 
   function renderProviderLatestCalls(calls) {
@@ -1792,6 +1876,27 @@
       return "failed";
     }
     return "warning";
+  }
+
+  function providerBudgetStatusClass(status) {
+    if (status === "exceeded") {
+      return "failed";
+    }
+    if (status === "warning") {
+      return "warning";
+    }
+    return "succeeded";
+  }
+
+  function providerBudgetValue(value, unit) {
+    const number = Number(value);
+    if (!Number.isFinite(number)) {
+      return "--";
+    }
+    if (unit === "ratio") {
+      return formatPercent(number);
+    }
+    return String(number);
   }
 
   function backgroundJobQueryParams() {

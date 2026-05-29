@@ -86,6 +86,12 @@ Settings use the `KB_` prefix unless noted.
 | `KB_OPENAI_REQUEST_TIMEOUT_SECONDS` | `30.0` | OpenAI SDK request timeout for embedding and answer providers. |
 | `KB_OPENAI_MAX_RETRIES` | `2` | OpenAI SDK retry count for transient provider errors. |
 | `KB_OPENAI_CHAT_MAX_COMPLETION_TOKENS` | `1024` | Maximum answer output tokens for OpenAI chat completions. |
+| `KB_PROVIDER_BUDGET_ENABLED` | `true` | Enables app-native provider budget evaluation. |
+| `KB_PROVIDER_BUDGET_DAILY_TOKEN_LIMIT` | `0` | Provider token limit for the in-memory app window; `0` disables the token limit. |
+| `KB_PROVIDER_BUDGET_DAILY_CALL_LIMIT` | `0` | Provider call limit for the in-memory app window; `0` disables the call limit. |
+| `KB_PROVIDER_BUDGET_ERROR_RATE_LIMIT` | `0.0` | Provider error-rate limit; `0` disables the error-rate limit. |
+| `KB_PROVIDER_BUDGET_WARNING_RATIO` | `0.8` | Usage ratio where Provider Ops reports warning status. |
+| `KB_PROVIDER_BUDGET_BLOCK_ON_EXCEEDED` | `false` | Blocks answer-provider calls with HTTP 429 / SSE error when a configured budget is exceeded. |
 | `KB_EMBEDDING_DIMENSION` | `768` | Embedding vector dimension used by the database schema/provider. |
 | `KB_DEFAULT_RETRIEVAL_STRATEGY` | `hybrid` | Default retrieval mode. |
 | `KB_POSTGRES_PORT` | `5432` | Host port for Compose Postgres. |

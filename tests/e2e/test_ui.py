@@ -172,12 +172,16 @@ def test_ui_exposes_provider_observability_wiring() -> None:
     assert 'id="ops-admin-key"' in response.text
     assert 'id="refresh-provider-observability"' in response.text
     assert 'id="provider-summary"' in response.text
+    assert 'id="provider-budget"' in response.text
     assert 'id="provider-usage"' in response.text
     assert 'id="provider-latest-calls"' in response.text
     assert 'id="provider-traces"' in response.text
     assert "fetch(\"/admin/provider-observability" in js_response.text
     assert "renderProviderObservability" in js_response.text
     assert "renderProviderSummary" in js_response.text
+    assert "renderProviderBudget" in js_response.text
+    assert "renderProviderBudgetPolicyRow" in js_response.text
+    assert "budget.should_block" in js_response.text
     assert "renderProviderCallRow" in js_response.text
     assert "usage_complete" in js_response.text
 

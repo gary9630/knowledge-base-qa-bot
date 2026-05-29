@@ -107,5 +107,6 @@ intentionally deferred until traffic or multi-replica deployment requires it.
 - Current OpenAI answer model default is `gpt-5.4-mini`; `/chat/stream` should forward provider streaming deltas and use the final `done.answer` as the validated persisted answer.
 - OpenAI provider controls are `KB_OPENAI_REQUEST_TIMEOUT_SECONDS`, `KB_OPENAI_MAX_RETRIES`, and `KB_OPENAI_CHAT_MAX_COMPLETION_TOKENS`; provider usage and error metadata should stay user-safe and be recorded through `/metrics` plus `RetrievalEvent.scores_json`.
 - Protected `GET /admin/provider-observability` backs the Provider Ops UI tab with provider call summaries, token usage by operation, latest in-memory calls, and DB-backed answer traces; keep it admin-only and free of raw provider prompts, credentials, or source payload dumps.
+- App-native provider budget guardrails are controlled by `KB_PROVIDER_BUDGET_*`; when `KB_PROVIDER_BUDGET_BLOCK_ON_EXCEEDED=true`, `/chat` returns 429 and `/chat/stream` emits a stable SSE error before calling the answer provider.
 - If changing embedding model or dimension later, add a migration and rebuild the index.
 - Sample content lives in `sample-docs/`; do not treat it as production data.

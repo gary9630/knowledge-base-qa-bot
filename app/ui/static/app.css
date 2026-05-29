@@ -286,6 +286,7 @@ textarea:disabled {
 .import-jobs,
 .background-jobs,
 .worker-runtime,
+.provider-budget,
 .provider-usage,
 .provider-calls,
 .provider-traces,
@@ -540,6 +541,8 @@ button.selected-source {
 
 .provider-trace strong,
 .provider-call strong,
+.provider-budget-row strong,
+.provider-budget-policy strong,
 .provider-row strong {
   overflow-wrap: anywhere;
 }

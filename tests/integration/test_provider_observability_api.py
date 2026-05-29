@@ -57,6 +57,8 @@ def test_provider_observability_returns_metrics_and_db_traces(
     body = response.json()
     assert body["summary"]["total_calls"] == 1
     assert body["summary"]["total_tokens"] == 36
+    assert body["budget"]["status"] == "exceeded"
+    assert body["budget"]["should_block"] is True
     assert body["usage_by_key"][0]["key"] == "openai:gpt-test:chat.completions.stream"
     assert body["latest_calls"][0]["client_request_id"] == "request-1-1"
     assert body["traces"][0]["retrieval_event_id"] == str(retrieval_event.id)
@@ -75,6 +77,8 @@ def _provider_observability_app(db_session: Session, tmp_path: Path) -> FastAPI:
         embedding_provider="fake",
         answer_provider="fake",
         admin_api_key="secret",
+        provider_budget_daily_token_limit=36,
+        provider_budget_block_on_exceeded=True,
     )
     app = create_app(settings=settings, session_factory=lambda: db_session)
     app.state.metrics = InMemoryMetrics()

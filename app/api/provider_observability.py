@@ -8,9 +8,15 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.api.dependencies import get_request_db_session, require_admin_access
+from app.api.dependencies import (
+    get_app_settings,
+    get_request_db_session,
+    require_admin_access,
+)
+from app.core.config import Settings
 from app.models.tables import RetrievalEvent
 from app.observability.metrics import InMemoryMetrics
+from app.provider_budget import ProviderBudgetStatus, provider_budget_status
 
 router = APIRouter(prefix="/admin", dependencies=[Depends(require_admin_access)])
 
@@ -67,6 +73,7 @@ class ProviderTraceResponse(BaseModel):
 
 class ProviderObservabilityResponse(BaseModel):
     summary: ProviderSummaryResponse
+    budget: ProviderBudgetStatus
     usage_by_key: list[ProviderUsageByKeyResponse]
     latest_calls: list[ProviderCallResponse]
     traces: list[ProviderTraceResponse]
@@ -97,6 +104,7 @@ def get_provider_observability(
             break
 
     return provider_observability_response(
+        settings=get_app_settings(request),
         metrics_snapshot=metrics.snapshot(),
         traces=traces,
     )
@@ -104,6 +112,7 @@ def get_provider_observability(
 
 def provider_observability_response(
     *,
+    settings: Settings,
     metrics_snapshot: dict[str, Any],
     traces: list[ProviderTraceResponse],
 ) -> ProviderObservabilityResponse:
@@ -138,6 +147,10 @@ def provider_observability_response(
             completion_tokens=usage_totals.completion_tokens,
             cached_tokens=usage_totals.cached_tokens,
             reasoning_tokens=usage_totals.reasoning_tokens,
+        ),
+        budget=provider_budget_status(
+            settings,
+            metrics_snapshot=metrics_snapshot,
         ),
         usage_by_key=usage_by_key,
         latest_calls=latest_calls,

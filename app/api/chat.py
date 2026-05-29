@@ -16,6 +16,7 @@ from app.answer.providers import AnswerProvider
 from app.answer.service import AnswerResult, AnswerService
 from app.api.dependencies import (
     get_answer_provider,
+    get_app_settings,
     get_embedding_provider,
     get_request_db_session,
     get_source_principal,
@@ -28,9 +29,11 @@ from app.api.search import (
     candidate_response,
     retrieval_diagnostics_response,
 )
+from app.core.config import Settings
 from app.models.tables import Conversation, Message, RetrievalEvent
 from app.observability.metrics import InMemoryMetrics
 from app.observability.middleware import mark_stream_error
+from app.provider_budget import provider_budget_status
 from app.provider_telemetry import ProviderCallRecord
 from app.retrieval.hybrid import HybridRetriever
 from app.retrieval.models import (
@@ -45,6 +48,7 @@ from app.source_access import SourcePrincipal, visibility_labels_for_principal
 router = APIRouter()
 
 NOT_INDEXED_ANSWER = "知識庫尚未建立索引，請先建立索引。"
+PROVIDER_BUDGET_EXCEEDED_DETAIL = "Provider budget exceeded."
 
 
 class ChatRequest(BaseModel):
@@ -159,6 +163,7 @@ def _build_chat_response(
         strategy=payload.strategy,
         limit=payload.limit,
     )
+    _raise_if_provider_budget_blocked(request)
     answer_result = _answer_provider_error_response(
         provider=get_answer_provider(request),
         payload=payload,
@@ -347,6 +352,7 @@ def _unsafe_chat_stream_response_events(
         retrieval_diagnostics=retrieval_diagnostics_response(retrieval_result.diagnostics),
     )
 
+    _raise_if_provider_budget_blocked(request)
     yield from _stream_answer_response_events(
         provider=get_answer_provider(request),
         payload=payload,
@@ -600,6 +606,33 @@ def _record_provider_call_records(
         request.app.state.metrics = metrics
     for record in records:
         metrics.record_provider_call(record)
+
+
+def _raise_if_provider_budget_blocked(request: Request) -> None:
+    metrics = getattr(request.app.state, "metrics", None)
+    if not isinstance(metrics, InMemoryMetrics):
+        metrics = InMemoryMetrics()
+        request.app.state.metrics = metrics
+    exception = _provider_budget_block_exception(
+        settings=get_app_settings(request),
+        metrics_snapshot=metrics.snapshot(),
+    )
+    if exception is not None:
+        raise exception
+
+
+def _provider_budget_block_exception(
+    *,
+    settings: Settings,
+    metrics_snapshot: dict[str, Any],
+) -> HTTPException | None:
+    budget = provider_budget_status(
+        settings,
+        metrics_snapshot=metrics_snapshot,
+    )
+    if not budget.should_block:
+        return None
+    return HTTPException(status_code=429, detail=PROVIDER_BUDGET_EXCEEDED_DETAIL)
 
 
 def _elapsed_ms(started_at: float) -> int:
