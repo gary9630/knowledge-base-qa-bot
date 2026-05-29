@@ -1,0 +1,1297 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Knowledge Base Q&A Bot project slide deck for GitHub Pages.">
+  <title>Knowledge Base Q&A Bot - Project Slides</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f5f6f3;
+      --paper: #ffffff;
+      --ink: #151716;
+      --muted: #60675f;
+      --line: #d9ded4;
+      --soft: #ecefeb;
+      --dark: #141715;
+      --green: #2f9b72;
+      --blue: #3458d4;
+      --amber: #c47a21;
+      --red: #c34b3a;
+      --green-soft: #dcefe7;
+      --blue-soft: #dfe6ff;
+      --amber-soft: #f7e7ce;
+      --red-soft: #f3d9d4;
+      --radius: 8px;
+      --shadow: 0 18px 70px rgba(20, 20, 20, 0.1);
+      --pad-x: 64px;
+      --pad-y: 54px;
+      font-family:
+        Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
+        "Segoe UI", "Noto Sans TC", "Microsoft JhengHei", sans-serif;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html,
+    body {
+      min-height: 100%;
+      margin: 0;
+      background: var(--bg);
+      color: var(--ink);
+      overflow: hidden;
+    }
+
+    button,
+    input,
+    select,
+    textarea {
+      font: inherit;
+    }
+
+    .deck {
+      min-height: 100svh;
+      position: relative;
+    }
+
+    .slide {
+      display: none;
+      min-height: 100svh;
+      padding: var(--pad-y) var(--pad-x);
+      overflow: hidden;
+      position: relative;
+    }
+
+    .slide.active {
+      display: grid;
+      animation: in 220ms ease-out both;
+    }
+
+    .slide.light {
+      background:
+        linear-gradient(90deg, rgba(217, 222, 212, 0.68) 1px, transparent 1px),
+        linear-gradient(180deg, rgba(217, 222, 212, 0.55) 1px, transparent 1px),
+        var(--bg);
+      background-size: 56px 56px;
+    }
+
+    .slide.white {
+      background: var(--paper);
+    }
+
+    .slide.dark {
+      color: #f7fbf5;
+      background:
+        linear-gradient(90deg, rgba(255, 255, 255, 0.06) 1px, transparent 1px),
+        linear-gradient(180deg, rgba(255, 255, 255, 0.05) 1px, transparent 1px),
+        var(--dark);
+      background-size: 56px 56px;
+    }
+
+    .content {
+      width: min(100%, 1200px);
+      min-height: calc(100svh - var(--pad-y) * 2);
+      margin: 0 auto;
+      display: grid;
+      gap: 26px;
+      align-content: start;
+      padding-bottom: 52px;
+    }
+
+    .center {
+      align-content: center;
+    }
+
+    .split {
+      grid-template-columns: 0.95fr 1.05fr;
+      align-items: center;
+      gap: 48px;
+    }
+
+    .topline {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 24px;
+      min-height: 48px;
+      padding-bottom: 16px;
+      border-bottom: 1px solid currentColor;
+    }
+
+    .brand {
+      display: inline-flex;
+      align-items: center;
+      gap: 12px;
+      font-size: 0.88rem;
+      font-weight: 800;
+      text-transform: uppercase;
+    }
+
+    .mark {
+      width: 54px;
+      height: 18px;
+      background:
+        linear-gradient(90deg, var(--green) 0 18px, var(--blue) 18px 36px, var(--amber) 36px 54px);
+      display: inline-block;
+    }
+
+    .dark .mark {
+      background:
+        linear-gradient(90deg, #5bdba9 0 18px, #8aa1ff 18px 36px, #ffbd68 36px 54px);
+    }
+
+    h1,
+    h2,
+    h3,
+    p,
+    figure {
+      margin: 0;
+    }
+
+    h1 {
+      max-width: 1000px;
+      font-size: 4.8rem;
+      line-height: 0.98;
+      font-weight: 780;
+    }
+
+    h2 {
+      max-width: 940px;
+      font-size: 3.05rem;
+      line-height: 1.06;
+      font-weight: 760;
+    }
+
+    h3 {
+      font-size: 1.12rem;
+      line-height: 1.24;
+      font-weight: 800;
+    }
+
+    .lead {
+      max-width: 860px;
+      color: var(--muted);
+      font-size: 1.28rem;
+      line-height: 1.58;
+    }
+
+    .dark .lead,
+    .dark .muted,
+    .dark .caption,
+    .dark .kicker {
+      color: #cbd5c8;
+    }
+
+    .muted {
+      color: var(--muted);
+      line-height: 1.48;
+    }
+
+    .caption {
+      color: var(--muted);
+      font-size: 0.82rem;
+      line-height: 1.4;
+    }
+
+    .kicker {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      color: var(--muted);
+      font-size: 0.82rem;
+      font-weight: 850;
+      text-transform: uppercase;
+    }
+
+    .kicker::before {
+      content: "";
+      width: 44px;
+      height: 3px;
+      background: var(--green);
+      display: inline-block;
+    }
+
+    .tag-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+
+    .tag {
+      border: 1px solid var(--line);
+      background: rgba(255, 255, 255, 0.76);
+      border-radius: var(--radius);
+      color: var(--muted);
+      padding: 7px 10px;
+      font-size: 0.82rem;
+      font-weight: 780;
+    }
+
+    .dark .tag {
+      color: #eef3eb;
+      border-color: rgba(255, 255, 255, 0.18);
+      background: rgba(255, 255, 255, 0.08);
+    }
+
+    .grid-2,
+    .grid-3,
+    .grid-4 {
+      display: grid;
+      gap: 18px;
+    }
+
+    .grid-2 {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .grid-3 {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+
+    .grid-4 {
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+    }
+
+    .card,
+    .row,
+    .panel,
+    .shot {
+      border: 1px solid var(--line);
+      background: rgba(255, 255, 255, 0.82);
+      border-radius: var(--radius);
+    }
+
+    .card {
+      min-height: 160px;
+      padding: 22px;
+      display: grid;
+      gap: 14px;
+      align-content: start;
+    }
+
+    .dark .card,
+    .dark .row,
+    .dark .panel {
+      border-color: rgba(255, 255, 255, 0.16);
+      background: rgba(255, 255, 255, 0.06);
+    }
+
+    .green {
+      background: var(--green-soft);
+      border-color: rgba(47, 155, 114, 0.34);
+    }
+
+    .blue {
+      background: var(--blue-soft);
+      border-color: rgba(52, 88, 212, 0.3);
+    }
+
+    .amber {
+      background: var(--amber-soft);
+      border-color: rgba(196, 122, 33, 0.34);
+    }
+
+    .red {
+      background: var(--red-soft);
+      border-color: rgba(195, 75, 58, 0.3);
+    }
+
+    .num {
+      font-size: 3.7rem;
+      line-height: 0.94;
+      font-weight: 820;
+    }
+
+    .unit {
+      color: var(--muted);
+      font-size: 0.84rem;
+      font-weight: 850;
+      text-transform: uppercase;
+    }
+
+    .screen-grid {
+      display: grid;
+      grid-template-columns: 1.15fr 0.85fr;
+      gap: 22px;
+      align-items: start;
+    }
+
+    .shot {
+      padding: 12px;
+      box-shadow: var(--shadow);
+      display: grid;
+      gap: 10px;
+    }
+
+    .shot img {
+      display: block;
+      width: 100%;
+      height: auto;
+      border: 1px solid var(--line);
+      border-radius: 4px;
+      background: #fff;
+    }
+
+    .shot figcaption {
+      display: grid;
+      gap: 3px;
+    }
+
+    .shot strong {
+      font-size: 0.92rem;
+    }
+
+    .shot span {
+      color: var(--muted);
+      font-size: 0.82rem;
+      line-height: 1.34;
+    }
+
+    .screenshot-slide .content {
+      gap: 18px;
+    }
+
+    .screenshot-slide h2 {
+      font-size: 2.05rem;
+      max-width: 1120px;
+    }
+
+    .screenshot-slide .shot img {
+      height: 34vh;
+      object-fit: contain;
+    }
+
+    .result-shot img {
+      width: 100%;
+      max-height: 48vh;
+      object-fit: contain;
+    }
+
+    .result-slide .content {
+      gap: 16px;
+    }
+
+    .result-slide h2 {
+      font-size: 2.5rem;
+      max-width: 1040px;
+    }
+
+    .flow {
+      display: grid;
+      grid-template-columns: repeat(6, minmax(0, 1fr));
+      gap: 10px;
+    }
+
+    .flow.four {
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+    }
+
+    .step {
+      position: relative;
+      border: 1px solid var(--line);
+      background: var(--paper);
+      border-radius: var(--radius);
+      padding: 14px;
+      min-height: 112px;
+      display: grid;
+      gap: 8px;
+      align-content: start;
+    }
+
+    .dark .step {
+      border-color: rgba(255, 255, 255, 0.16);
+      background: rgba(255, 255, 255, 0.08);
+    }
+
+    .step small {
+      color: var(--green);
+      font-size: 0.75rem;
+      font-weight: 900;
+    }
+
+    .step span {
+      color: var(--muted);
+      font-size: 0.78rem;
+      line-height: 1.35;
+    }
+
+    .dark .step span {
+      color: #cbd5c8;
+    }
+
+    .row {
+      display: grid;
+      grid-template-columns: 190px 1fr;
+      gap: 18px;
+      padding: 14px 16px;
+      align-items: start;
+    }
+
+    .row span {
+      color: var(--muted);
+      line-height: 1.42;
+    }
+
+    .dark .row span {
+      color: #cbd5c8;
+    }
+
+    .rows {
+      display: grid;
+      gap: 10px;
+    }
+
+    .system {
+      display: grid;
+      grid-template-columns: 1fr 1.08fr 1fr;
+      gap: 18px;
+    }
+
+    .system-col {
+      display: grid;
+      gap: 12px;
+      align-content: start;
+    }
+
+    .node {
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: var(--paper);
+      padding: 16px;
+      min-height: 88px;
+      display: grid;
+      gap: 6px;
+    }
+
+    .node strong {
+      font-size: 0.98rem;
+    }
+
+    .node small {
+      color: var(--muted);
+      line-height: 1.34;
+    }
+
+    .node.primary {
+      color: #fff;
+      background: var(--dark);
+      border-color: var(--dark);
+    }
+
+    .node.primary small {
+      color: #d0d8cd;
+    }
+
+    .matrix {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 12px;
+    }
+
+    .matrix .card {
+      min-height: 116px;
+      padding: 16px;
+    }
+
+    .routes {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 12px;
+    }
+
+    .route {
+      border: 1px solid var(--line);
+      background: rgba(255, 255, 255, 0.82);
+      border-radius: var(--radius);
+      min-height: 54px;
+      padding: 12px 14px;
+      display: grid;
+      grid-template-columns: 70px 1fr;
+      gap: 10px;
+      align-items: center;
+    }
+
+    .method {
+      display: inline-grid;
+      place-items: center;
+      min-height: 26px;
+      border-radius: 4px;
+      color: #fff;
+      font-size: 0.72rem;
+      font-weight: 900;
+    }
+
+    .get { background: var(--green); }
+    .post { background: var(--blue); }
+    .patch { background: var(--amber); }
+    .delete { background: var(--red); }
+
+    code,
+    .terminal {
+      font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+    }
+
+    .terminal {
+      border: 1px solid var(--line);
+      background: #101211;
+      color: #eef5ed;
+      border-radius: var(--radius);
+      padding: 20px;
+      font-size: 0.86rem;
+      line-height: 1.6;
+      overflow: hidden;
+    }
+
+    .quote {
+      max-width: 960px;
+      font-size: 2.85rem;
+      line-height: 1.08;
+      font-weight: 760;
+    }
+
+    .accent-line {
+      display: grid;
+      grid-template-columns: 3fr 2fr 1fr 1fr;
+      height: 8px;
+    }
+
+    .accent-line span:nth-child(1) { background: var(--green); }
+    .accent-line span:nth-child(2) { background: var(--blue); }
+    .accent-line span:nth-child(3) { background: var(--amber); }
+    .accent-line span:nth-child(4) { background: var(--red); }
+
+    .controls {
+      position: fixed;
+      right: 22px;
+      bottom: 20px;
+      z-index: 40;
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      border: 1px solid rgba(20, 20, 20, 0.14);
+      background: rgba(255, 255, 255, 0.86);
+      backdrop-filter: blur(12px);
+      border-radius: var(--radius);
+      padding: 8px;
+      box-shadow: 0 12px 40px rgba(20, 20, 20, 0.1);
+    }
+
+    .icon-btn {
+      width: 38px;
+      height: 38px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: var(--paper);
+      color: var(--ink);
+      display: grid;
+      place-items: center;
+      cursor: pointer;
+    }
+
+    .icon-btn svg {
+      width: 18px;
+      height: 18px;
+      fill: none;
+      stroke: currentColor;
+      stroke-width: 2.2;
+    }
+
+    .icon-btn:focus-visible,
+    .icon-btn:hover {
+      outline: 2px solid var(--blue);
+      outline-offset: 2px;
+    }
+
+    .counter {
+      min-width: 76px;
+      color: var(--muted);
+      font-size: 0.82rem;
+      font-weight: 800;
+      text-align: center;
+    }
+
+    .progress {
+      position: fixed;
+      left: 0;
+      bottom: 0;
+      width: 100%;
+      height: 4px;
+      z-index: 45;
+      background: rgba(20, 20, 20, 0.1);
+    }
+
+    .progress span {
+      display: block;
+      height: 100%;
+      width: 0%;
+      background: linear-gradient(90deg, var(--green), var(--blue), var(--amber));
+      transition: width 150ms ease;
+    }
+
+    .index {
+      position: fixed;
+      inset: 0;
+      z-index: 70;
+      display: none;
+      overflow: auto;
+      padding: 44px;
+      color: #fff;
+      background: rgba(20, 23, 21, 0.94);
+    }
+
+    .index.open {
+      display: block;
+    }
+
+    .index-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 20px;
+      padding-bottom: 18px;
+      margin-bottom: 24px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.18);
+    }
+
+    .index-grid {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 14px;
+    }
+
+    .index-card {
+      min-height: 116px;
+      border: 1px solid rgba(255, 255, 255, 0.18);
+      background: rgba(255, 255, 255, 0.07);
+      color: #fff;
+      border-radius: var(--radius);
+      padding: 16px;
+      display: grid;
+      gap: 8px;
+      align-content: start;
+      text-align: left;
+      cursor: pointer;
+    }
+
+    .index-card .n {
+      color: #9adfbd;
+      font-size: 0.78rem;
+      font-weight: 900;
+    }
+
+    .index-card .t {
+      font-weight: 820;
+      line-height: 1.24;
+    }
+
+    .index-card .s {
+      color: #c8d1c7;
+      font-size: 0.8rem;
+      line-height: 1.34;
+    }
+
+    .foot {
+      position: absolute;
+      left: var(--pad-x);
+      bottom: 24px;
+      color: var(--muted);
+      font-size: 0.78rem;
+    }
+
+    .dark .foot {
+      color: #cbd5c8;
+    }
+
+    @keyframes in {
+      from { opacity: 0; transform: translateY(10px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    @media (max-width: 980px) {
+      :root {
+        --pad-x: 24px;
+        --pad-y: 28px;
+      }
+
+      html,
+      body {
+        overflow: auto;
+      }
+
+      .slide {
+        overflow: auto;
+      }
+
+      .content,
+      .split,
+      .grid-2,
+      .grid-3,
+      .grid-4,
+      .screen-grid,
+      .flow,
+      .flow.four,
+      .system,
+      .matrix,
+      .routes,
+      .index-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .content {
+        min-height: auto;
+      }
+
+      h1 { font-size: 2.75rem; }
+      h2 { font-size: 2.05rem; }
+      .lead { font-size: 1.05rem; }
+      .quote { font-size: 2rem; }
+
+      .row {
+        grid-template-columns: 1fr;
+      }
+
+      .controls {
+        left: 16px;
+        right: 16px;
+        justify-content: space-between;
+      }
+
+      .foot {
+        position: static;
+      }
+    }
+
+    @media print {
+      html,
+      body {
+        overflow: visible;
+        background: #fff;
+      }
+
+      .slide,
+      .slide.active {
+        display: grid;
+        min-height: 100vh;
+        break-after: page;
+        animation: none;
+      }
+
+      .controls,
+      .progress,
+      .index {
+        display: none !important;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="deck" aria-live="polite">
+    <section class="slide dark active" data-title="封面" data-summary="專案定位與分享主題">
+      <div class="content center">
+        <div class="topline">
+          <div class="brand"><span class="mark" aria-hidden="true"></span>Knowledge Base Q&amp;A Bot</div>
+          <div class="kicker">FastAPI + Postgres + pgvector</div>
+        </div>
+        <div class="accent-line" aria-hidden="true"><span></span><span></span><span></span><span></span></div>
+        <h1>課程教材到可引用答案的知識庫問答系統</h1>
+        <p class="lead">
+          一個為 Modern System Design 課程打造的 production-oriented RAG workbench：
+          匯入教材、建立 canonical Markdown、用混合檢索找證據，最後產生可驗證引用的回答。
+        </p>
+        <div class="tag-row">
+          <span class="tag">GitHub Pages static deck</span>
+          <span class="tag">Learner Q&amp;A</span>
+          <span class="tag">Admin ingestion</span>
+          <span class="tag">Ops-ready MVP</span>
+        </div>
+      </div>
+      <div class="foot">Repository briefing generated from local project files.</div>
+    </section>
+
+    <section class="slide light" data-title="為什麼需要它" data-summary="課程知識庫的核心問題">
+      <div class="content center">
+        <span class="kicker">Problem</span>
+        <h2>課程內容越完整，學生越需要一個可信的入口。</h2>
+        <div class="grid-3">
+          <div class="card"><h3>教材分散</h3><p class="muted">PDF、Markdown、公告、FAQ、Q&amp;A 與講義會散落在不同格式。單純全文搜尋很難回答跨章節問題。</p></div>
+          <div class="card"><h3>回答必須有根據</h3><p class="muted">學生不只需要自然語言答案，也需要知道答案來自哪個檔案、哪個 heading、哪些片段。</p></div>
+          <div class="card"><h3>營運需要可控</h3><p class="muted">上傳、索引、權限、模型成本、錯誤、備份與部署，都要能被追蹤，而不是藏在臨時腳本裡。</p></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="slide white" data-title="產品承諾" data-summary="四個成功標準">
+      <div class="content split">
+        <div>
+          <span class="kicker">Product Promise</span>
+          <h2>不是聊天機器人外殼，而是可審計的課程知識產品。</h2>
+          <p class="lead" style="margin-top: 18px;">專案把「回答」拆成三個可檢查的合約：內容如何進來、證據如何被選出、引用如何被驗證。</p>
+        </div>
+        <div class="grid-2">
+          <div class="card green"><div class="num">1</div><h3>Canonical sources</h3><p class="muted">所有輸入最後落到 canonical Markdown，引用回到穩定的 `filename#heading`。</p></div>
+          <div class="card blue"><div class="num">2</div><h3>Grounded retrieval</h3><p class="muted">Postgres lexical search 與 pgvector semantic search 合併排序，保留診斷資料。</p></div>
+          <div class="card amber"><div class="num">3</div><h3>Citation validation</h3><p class="muted">答案只能引用 selected sources，否則降級成穩定的 cannot-confirm 回覆。</p></div>
+          <div class="card red"><div class="num">4</div><h3>Operator control</h3><p class="muted">Admin key、audit events、worker heartbeat、provider budget 與 smoke checks 都納入產品面。</p></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="slide white screenshot-slide" data-title="實際介面截圖" data-summary="本機 app UI 的 chat 與 provider ops 畫面">
+      <div class="content">
+        <span class="kicker">App Screenshots</span>
+        <h2>實際 FastAPI UI 已經是可操作的 workbench，而不是單純的 demo 頁。</h2>
+        <div class="screen-grid">
+          <figure class="shot">
+            <img src="assets/kb-workbench-chat.png" alt="Knowledge Workbench chat tab screenshot with sidebar, chat panel, and inspector">
+            <figcaption><strong>Chat workspace</strong><span>左側 tabs、中央 Course Assistant、右側 answer sources / quality / index status inspector。</span></figcaption>
+          </figure>
+          <figure class="shot">
+            <img src="assets/kb-workbench-provider-ops.png" alt="Knowledge Workbench Provider Ops tab screenshot with provider summary and budget guardrails sections">
+            <figcaption><strong>Provider Ops workspace</strong><span>Provider reliability、usage、budget guardrails、latest calls 與 answer traces 放在 admin-only 視角。</span></figcaption>
+          </figure>
+        </div>
+        <p class="caption">截圖來自本機 `http://127.0.0.1:8765/`。截圖環境未連接完整課程索引資料，因此部分狀態顯示 unavailable；生產資料由 Postgres index、worker 與 provider telemetry 填入。</p>
+      </div>
+    </section>
+
+    <section class="slide light result-slide" data-title="真實查詢結果" data-summary="深度系統設計問題命中 RAG 與 citation 教材章節">
+      <div class="content">
+        <span class="kicker">Real Retrieval Result</span>
+        <h2>一個深度問題可以同時測出檢索、引用與答案品質的價值。</h2>
+        <figure class="shot result-shot">
+          <img src="assets/kb-workbench-real-rag-query.png" alt="Knowledge Workbench real query result screenshot showing a deep RAG question, five selected sources, valid citations, and indexed course material status">
+          <figcaption>
+            <strong>問題：設計一個課程知識庫問答系統時，為什麼不能只靠向量搜尋？</strong>
+            <span>真實查詢命中教材章節；右側 inspector 顯示 sources、chunks、selected / rejected、valid citations。</span>
+          </figcaption>
+        </figure>
+      </div>
+    </section>
+
+    <!-- <section class="slide light result-slide" data-title="OpenAI 中文回答" data-summary="使用 OpenAI provider 產生完整中文 grounded answer">
+      <div class="content">
+        <span class="kicker">Live OpenAI Answer</span>
+        <h2>中文問題也能走完整的 RAG 流程：檢索 10 個來源、生成答案、驗證引用。</h2>
+        <figure class="shot result-shot">
+          <img src="assets/kb-workbench-openai-live-answer.png" alt="Knowledge Workbench screenshot showing a Chinese RAG query answered by OpenAI with ten cited course sources">
+          <figcaption>
+            <strong>問題：Knowledge Base Q&A Bot 的查詢流程與評估方法是什麼？</strong>
+            <span>此畫面以 `KB_ANSWER_PROVIDER=openai` 跑 live `/chat/stream`；預設 limit 已調整為 10，回答狀態為 can_answer / valid citations，並標示 Answered from 10 course sources。</span>
+          </figcaption>
+        </figure>
+      </div>
+    </section> -->
+
+    <section class="slide light" data-title="三欄 workbench" data-summary="使用者視角與 inspector">
+      <div class="content">
+        <span class="kicker">Workbench Model</span>
+        <h2>三欄設計讓回答、來源與營運狀態保持在同一個工作面。</h2>
+        <div class="grid-3">
+          <div class="card"><h3>Left: workspace tabs</h3><p class="muted">Chat、Mindmap、Admin Uploads、Provider Ops、Audit Log、Sources、Feedback / Evals。</p></div>
+          <div class="card"><h3>Center: active workflow</h3><p class="muted">聊天、streaming answer、upload job、provider report、eval results 都在中央工作區處理。</p></div>
+          <div class="card"><h3>Right: context inspector</h3><p class="muted">顯示 answer sources、answer quality、Markdown preview、index status 與 eval summary。</p></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="slide dark" data-title="端到端資料流" data-summary="Upload 到 cited answer">
+      <div class="content center">
+        <span class="kicker">End-to-End Flow</span>
+        <h2>從教材檔案到 grounded answer，每一步都留下可營運的狀態。</h2>
+        <div class="panel" style="padding: 24px;">
+          <div class="flow">
+            <div class="step"><small>01</small><strong>Upload</strong><span>PDF / MD / TXT / HTML through `/imports`</span></div>
+            <div class="step"><small>02</small><strong>Validate</strong><span>Reject empty, binary-looking, bad PDF, HTML mismatch</span></div>
+            <div class="step"><small>03</small><strong>Canonicalize</strong><span>Raw artifact plus canonical Markdown in `docs/`</span></div>
+            <div class="step"><small>04</small><strong>Index</strong><span>Documents, sections, chunks, embeddings, TSV</span></div>
+            <div class="step"><small>05</small><strong>Retrieve</strong><span>Visibility-filtered lexical + vector merge</span></div>
+            <div class="step"><small>06</small><strong>Answer</strong><span>Citation validation before persistence</span></div>
+          </div>
+        </div>
+        <p class="lead">關鍵設計：`POST /imports` 保持輕量，真正的轉檔、索引、eval 交給 DB-backed background worker。</p>
+      </div>
+    </section>
+
+    <section class="slide white" data-title="架構總覽" data-summary="模組化 monolith 與外部邊界">
+      <div class="content">
+        <span class="kicker">Architecture</span>
+        <h2>第一版是 modular monolith，但 worker、provider、storage 邊界都已經切清楚。</h2>
+        <div class="system">
+          <div class="system-col">
+            <div class="node"><strong>Browser Workbench</strong><small>Login, chat, stream, sources, admin panels</small></div>
+            <div class="node"><strong>Course Files</strong><small>PDF, Markdown, TXT, HTML uploads</small></div>
+            <div class="node"><strong>Ops Commands</strong><small>migrate, ops-check, backup, eval</small></div>
+          </div>
+          <div class="system-col">
+            <div class="node primary"><strong>FastAPI App</strong><small>Routes, sessions, retrieval, answer orchestration, observability middleware</small></div>
+            <div class="node amber"><strong>Background Worker</strong><small>`ingest.upload`, `index.rebuild`, `document.reindex`, `eval.run`</small></div>
+            <div class="node"><strong>Domain Services</strong><small>ingestion, indexing, retrieval, answer, evals, audit, provider telemetry</small></div>
+          </div>
+          <div class="system-col">
+            <div class="node green"><strong>Postgres + pgvector</strong><small>Documents, sections, chunks, vectors, jobs, messages, feedback</small></div>
+            <div class="node green"><strong>Durable Runtime Files</strong><small>`docs/`, `raw/`, `.kb/` verified by `/ready`</small></div>
+            <div class="node blue"><strong>OpenAI Providers</strong><small>`text-embedding-3-small` 768 dims, `gpt-5.4-mini` answer model</small></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="slide light" data-title="資料模型" data-summary="核心資料表與責任">
+      <div class="content">
+        <span class="kicker">Data Model</span>
+        <h2>資料表設計讓來源、回答、診斷與營運狀態可以分開追蹤。</h2>
+        <div class="rows">
+          <div class="row"><strong>documents</strong><span>Canonical path、source type、title、content hash、visibility、lifecycle status 與 metadata。</span></div>
+          <div class="row"><strong>sections / chunks</strong><span>Markdown headings 變 sections；sections 有 TSV，chunks 有 `vector(768)` HNSW index。</span></div>
+          <div class="row"><strong>conversations / messages</strong><span>保存 learner 與 assistant messages，assistant message 保留 cited sources JSON。</span></div>
+          <div class="row"><strong>retrieval_events</strong><span>保存 selected sources、score diagnostics、answer quality、provider metadata 與 decision。</span></div>
+          <div class="row"><strong>background_jobs / audit / feedback</strong><span>DB-backed orchestration、security audit、learner/TA feedback 與 eval regression loop。</span></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="slide white" data-title="Ingestion" data-summary="輸入驗證、去重與 canonical Markdown">
+      <div class="content split">
+        <div>
+          <span class="kicker">Ingestion</span>
+          <h2>匯入層的目標不是只把檔案存起來，而是保證 runtime source 一致。</h2>
+          <p class="lead" style="margin-top: 18px;">原始上傳留在 `raw/`，可引用的知識留在 `docs/` canonical Markdown。同內容用 hash 去重；同檔名不同內容用 hash suffix 保留新 artifact。</p>
+        </div>
+        <div class="matrix">
+          <div class="card"><h3>.pdf</h3><p class="muted">檢查 PDF signature，抽文字轉 Markdown。</p></div>
+          <div class="card"><h3>.md</h3><p class="muted">保留 Markdown，補 metadata 與 canonical path。</p></div>
+          <div class="card"><h3>.txt</h3><p class="muted">UTF-8 解碼、段落化、簡單 heading detection。</p></div>
+          <div class="card"><h3>.html</h3><p class="muted">要求 recognizable markup，轉成可讀 Markdown。</p></div>
+          <div class="card red"><h3>Reject</h3><p class="muted">空檔、content-type mismatch、binary-looking text。</p></div>
+          <div class="card amber"><h3>Metadata</h3><p class="muted">原檔名、檔案類型、warnings、Markdown bytes。</p></div>
+          <div class="card blue"><h3>Async</h3><p class="muted">`POST /imports` 建 queued job，worker 執行轉換。</p></div>
+          <div class="card green"><h3>Next job</h3><p class="muted">成功後 enqueue `index.rebuild`。</p></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="slide dark" data-title="Indexing" data-summary="Markdown 到 Postgres index">
+      <div class="content">
+        <span class="kicker">Indexing</span>
+        <h2>Index 不是檔案快取，而是回答品質與引用可靠性的結構化基礎。</h2>
+        <div class="flow four">
+          <div class="step"><small>1</small><strong>Scan `docs/`</strong><span>掃描 canonical Markdown，frontmatter 可帶 visibility labels。</span></div>
+          <div class="step"><small>2</small><strong>Parse sections</strong><span>用 heading 建 source IDs，保留 heading slug、level、body_md。</span></div>
+          <div class="step"><small>3</small><strong>Chunk and embed</strong><span>只對變更 chunks 建 embeddings；目前 schema dimension 是 768。</span></div>
+          <div class="step"><small>4</small><strong>Export status</strong><span>寫入 Postgres index，也產生 `.kb/index.json` 供 inspection/export。</span></div>
+        </div>
+        <div class="terminal">$ make migrate<br>$ make index<br>$ make worker-once<br>ready: database, pgvector, migrations, index, platform_auth, storage</div>
+      </div>
+    </section>
+
+    <section class="slide light" data-title="Retrieval" data-summary="混合檢索與診斷合約">
+      <div class="content split">
+        <div>
+          <span class="kicker">Retrieval Contract</span>
+          <h2>Hybrid retrieval 會產生答案，也會產生可解釋的診斷資料。</h2>
+          <p class="lead" style="margin-top: 18px;">Search path 先做 source access filtering，再跑 lexical / vector / hybrid。合併後套 query relevance boost、source priority boost、score threshold，最後選出 accepted candidates。</p>
+        </div>
+        <div class="grid-2">
+          <div class="card green"><h3>Lexical</h3><p class="muted">Postgres TSV 搜尋 headings 與 Markdown body，適合精確術語、檔名、章節。</p></div>
+          <div class="card blue"><h3>Vector</h3><p class="muted">pgvector cosine search，適合語意相近、不同說法、跨教材提問。</p></div>
+          <div class="card amber"><h3>Hybrid merge</h3><p class="muted">依 section 合併候選，保留 strategy scores 與 debug scores。</p></div>
+          <div class="card red"><h3>Evidence gate</h3><p class="muted">低於 threshold 或沒有 accepted source，就回 cannot-confirm。</p></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="slide white" data-title="答案品質" data-summary="引用驗證與 cannot-confirm">
+      <div class="content center">
+        <span class="kicker">Answer Quality</span>
+        <h2>回答層的核心規則：不能引用未選中的來源。</h2>
+        <div class="grid-3">
+          <div class="card green"><h3>Selected sources</h3><p class="muted">只有 retrieval accepted candidates 會進 prompt。這是模型可用證據的邊界。</p></div>
+          <div class="card blue"><h3>Cited sources</h3><p class="muted">LLM 產出的引用會被解析，必須全部屬於 selected source IDs。</p></div>
+          <div class="card red"><h3>Invalid citations</h3><p class="muted">若漏引、亂引、cannot-confirm 卻附引用，就 retry strict；仍失敗則降級。</p></div>
+        </div>
+        <div class="terminal">answer_quality = {<br>&nbsp;&nbsp;"answer_valid": true,<br>&nbsp;&nbsp;"selected_source_ids": [...],<br>&nbsp;&nbsp;"cited_source_ids": [...],<br>&nbsp;&nbsp;"cannot_confirm_reason": null<br>}</div>
+      </div>
+    </section>
+
+    <section class="slide dark" data-title="Streaming" data-summary="SSE 事件與持久化">
+      <div class="content split">
+        <div>
+          <span class="kicker">Streaming Chat</span>
+          <h2>Streaming 保留同一套 retrieval 與 answer quality 合約。</h2>
+          <p class="lead" style="margin-top: 18px;">`/chat/stream` 先送 `sources` event，讓 UI 立即呈現引用與診斷；token events 之後，最後 `done` event 帶 validated answer 與 answer_quality。</p>
+        </div>
+        <div class="flow four">
+          <div class="step"><small>SSE 1</small><strong>sources</strong><span>selected sources + retrieval diagnostics</span></div>
+          <div class="step"><small>SSE 2</small><strong>token</strong><span>provider streaming deltas</span></div>
+          <div class="step"><small>SSE 3</small><strong>done</strong><span>final answer + quality metadata</span></div>
+          <div class="step"><small>SSE X</small><strong>error</strong><span>stable provider or budget errors</span></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="slide light" data-title="API Map" data-summary="主要 HTTP 介面">
+      <div class="content">
+        <span class="kicker">API Surface</span>
+        <h2>API 分成 learner path、admin path 與 operations path。</h2>
+        <div class="routes">
+          <div class="route"><span class="method post">POST</span><code>/chat</code></div>
+          <div class="route"><span class="method post">POST</span><code>/chat/stream</code></div>
+          <div class="route"><span class="method post">POST</span><code>/search</code></div>
+          <div class="route"><span class="method get">GET</span><code>/sources</code></div>
+          <div class="route"><span class="method get">GET</span><code>/mindmap</code></div>
+          <div class="route"><span class="method post">POST</span><code>/imports</code></div>
+          <div class="route"><span class="method post">POST</span><code>/index</code></div>
+          <div class="route"><span class="method get">GET</span><code>/ready</code></div>
+          <div class="route"><span class="method get">GET</span><code>/metrics</code></div>
+          <div class="route"><span class="method get">GET</span><code>/admin/jobs/runtime</code></div>
+          <div class="route"><span class="method patch">PATCH</span><code>/admin/documents/{id}/lifecycle</code></div>
+          <div class="route"><span class="method get">GET</span><code>/admin/provider-observability</code></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="slide white" data-title="權限模型" data-summary="Learner access 與 admin key 分離">
+      <div class="content split">
+        <div>
+          <span class="kicker">Access Control</span>
+          <h2>平台登入是學員入口，Admin key 是營運入口，兩者刻意分離。</h2>
+          <p class="lead" style="margin-top: 18px;">MVP 不做註冊或完整 RBAC，而是單一 configured platform login。內容可見性透過 source labels 套用在 search、chat、sources、mindmap。</p>
+        </div>
+        <div class="rows">
+          <div class="row"><strong>Platform learner</strong><span>Session cookie with `KB_AUTH_SECRET_KEY`; 可看 `public`、`role:*`、`user:*`、`cohort:*` 與額外 labels。</span></div>
+          <div class="row"><strong>Admin operations</strong><span>`X-KB-Admin-Key` 保護 uploads、indexing、jobs、audit、documents、provider ops。</span></div>
+          <div class="row"><strong>Document lifecycle</strong><span>`active` 才能被 sources/search/chat/mindmap 看見；`delete` 只刪 DB index，不刪原檔。</span></div>
+          <div class="row"><strong>Secret hygiene</strong><span>Audit metadata 不存 raw admin keys 或 platform passwords；admin actor ID 用 fingerprint。</span></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="slide dark" data-title="Background Jobs" data-summary="可靠的非同步 orchestration">
+      <div class="content">
+        <span class="kicker">Worker Runtime</span>
+        <h2>所有長任務都透過 DB-backed jobs，避免 request thread 承擔轉檔與索引。</h2>
+        <div class="grid-4">
+          <div class="card"><h3>ingest.upload</h3><p class="muted">從 raw artifact 轉 canonical Markdown，更新 ingestion metadata。</p></div>
+          <div class="card"><h3>index.rebuild</h3><p class="muted">重建 documents、sections、chunks、embeddings 與 export artifact。</p></div>
+          <div class="card"><h3>document.reindex</h3><p class="muted">針對單一 document 重建 index，支援 lifecycle 修復。</p></div>
+          <div class="card"><h3>eval.run</h3><p class="muted">背景執行 regression cases，產生 retrieval / citation metrics。</p></div>
+        </div>
+        <div class="flow four">
+          <div class="step"><small>Claim</small><strong>priority + available_at</strong><span>worker claims next queued job</span></div>
+          <div class="step"><small>Run</small><strong>status = running</strong><span>locked_at + worker_id</span></div>
+          <div class="step"><small>Retry</small><strong>bounded backoff</strong><span>base delay to max delay</span></div>
+          <div class="step"><small>Recover</small><strong>stale jobs</strong><span>manual or automatic recovery</span></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="slide light" data-title="Observability" data-summary="健康檢查、metrics、audit 與 provider budget">
+      <div class="content">
+        <span class="kicker">Operations</span>
+        <h2>這個 MVP 的 observability 是 app-native，先滿足單機部署與快速 triage。</h2>
+        <div class="grid-3">
+          <div class="card green"><h3>/health + /ready</h3><p class="muted">Ready 檢查 DB、pgvector、migration、index、auth、storage。</p></div>
+          <div class="card blue"><h3>/metrics</h3><p class="muted">In-process JSON counters、recent request samples、provider usage 與 error metadata。</p></div>
+          <div class="card amber"><h3>Request IDs</h3><p class="muted">每個 response 都帶 `X-Request-ID`，structured logs 可串 UI 回報與 server logs。</p></div>
+          <div class="card red"><h3>Rate limits</h3><p class="muted">Login、chat、streaming chat、uploads、admin writes 都有 429 與 `Retry-After`。</p></div>
+          <div class="card"><h3>Audit events</h3><p class="muted">Login、logout、admin allow/deny、rate-limit block、upload concurrency block 入 DB。</p></div>
+          <div class="card"><h3>Provider budget</h3><p class="muted">Tokens、calls、error rate 可設 warning/exceeded；可選擇 exceeded 時阻擋 provider call。</p></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="slide white" data-title="Evaluation" data-summary="回饋、eval cases 與可追蹤指標">
+      <div class="content split">
+        <div>
+          <span class="kicker">Quality Loop</span>
+          <h2>回答品質不是主觀感覺，而是 retrieval 與 citation 分開度量。</h2>
+          <p class="lead" style="margin-top: 18px;">Eval metrics 明確區分找不到證據、找到但沒引用、引用不精準等失敗型態，方便後續調整檢索策略與教材結構。</p>
+        </div>
+        <div class="grid-2">
+          <div class="card green"><h3>Retrieval</h3><p class="muted">`top1_hit`, `retrieval_recall`, selected/rejected source IDs, top score。</p></div>
+          <div class="card blue"><h3>Citation</h3><p class="muted">`citation_recall`, `citation_precision`, citation error count。</p></div>
+          <div class="card amber"><h3>Answer validity</h3><p class="muted">`answer_valid`, cannot-confirm reason, invalid provider citations。</p></div>
+          <div class="card red"><h3>Feedback</h3><p class="muted">Learner/TA ratings and notes become regression inputs.</p></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="slide dark" data-title="Real Content Readiness" data-summary="目前驗證過的 launch artifact">
+      <div class="content center">
+        <span class="kicker">Verified Local Launch Artifact</span>
+        <h2>目前 real-content path 已完成一次可重現的本機驗收。</h2>
+        <div class="grid-3">
+          <div class="card"><div class="num">35</div><div class="unit">Course files</div><p class="muted">私有教材來源仍不進 git，透過 encrypted artifact path 搬移。</p></div>
+          <div class="card"><div class="num">819</div><div class="unit">Sections / chunks</div><p class="muted">Postgres + pgvector index with 768-dimensional embeddings.</p></div>
+          <div class="card"><div class="num">5/5</div><div class="unit">Retrieval acceptance</div><p class="muted">Acceptance report packaged with DB/runtime files.</p></div>
+        </div>
+        <div class="terminal">artifact: backups/real-content-20260529T171708Z/<br>live answer acceptance: 3/3 passed<br>cases: CAP theorem, RAG flow, Message Queue streaming</div>
+      </div>
+    </section>
+
+    <section class="slide light" data-title="Deploy Runbook" data-summary="生產部署與回滾">
+      <div class="content">
+        <span class="kicker">Production Path</span>
+        <h2>部署模型很直接：app、worker、Postgres + pgvector，加上 durable files。</h2>
+        <div class="flow four">
+          <div class="step"><small>1</small><strong>Validate env</strong><span>從 `ops/env.production.example` 起手，跑 `make deploy-check`。</span></div>
+          <div class="step"><small>2</small><strong>Migrate once</strong><span>每次 deploy 先跑 Alembic migrations，再啟動 app traffic。</span></div>
+          <div class="step"><small>3</small><strong>Run worker</strong><span>Production Compose 必須跑 worker profile。</span></div>
+          <div class="step"><small>4</small><strong>Smoke and backup</strong><span>`make ops-check`、provider acceptance、backup 與 restore runbook。</span></div>
+        </div>
+        <div class="terminal">docker compose run --rm migrate<br>docker compose up -d app<br>docker compose --profile worker up -d worker<br>make ops-check API_URL=https://your-app.example.com KB_ADMIN_API_KEY=$KB_ADMIN_API_KEY</div>
+      </div>
+    </section>
+
+    <section class="slide white" data-title="Testing and CI" data-summary="驗證策略與 CI gates">
+      <div class="content split">
+        <div>
+          <span class="kicker">Verification</span>
+          <h2>測試策略依風險分層：純邏輯走 unit，DB contract 走 integration，部署包裝走 Docker/e2e。</h2>
+          <p class="lead" style="margin-top: 18px;">CI 已涵蓋 lint/typecheck、本地測試、Compose config、Docker tests、smoke checks。DB-backed tests 需要 `KB_DATABASE_URL_TEST`，否則會跳過。</p>
+        </div>
+        <div class="terminal">make test-unit<br>make test-integration<br>make test-e2e<br>make test<br>make lint<br>make docker-test<br>make docker-smoke</div>
+      </div>
+    </section>
+
+    <section class="slide light" data-title="Scope Decisions" data-summary="重要設計取捨">
+      <div class="content">
+        <span class="kicker">Trade-offs</span>
+        <h2>這些取捨讓 MVP 可以上線，同時留下清楚的演進路徑。</h2>
+        <div class="grid-3">
+          <div class="card"><h3>Postgres + pgvector over FAISS</h3><p class="muted">同一個 operational boundary 管 metadata、permissions、chunks、vectors、feedback、retrieval events。</p></div>
+          <div class="card"><h3>Single platform login</h3><p class="muted">先滿足課程學員入口，避免 premature user management；admin key 保持獨立。</p></div>
+          <div class="card"><h3>App-native observability</h3><p class="muted">先不引 Prometheus/OpenTelemetry，等流量或多 replica 真的需要時再加。</p></div>
+          <div class="card"><h3>No file deletion on document delete</h3><p class="muted">Document delete 是 DB index lifecycle 操作，raw/canonical artifacts 保留。</p></div>
+          <div class="card"><h3>Provider budget guardrails</h3><p class="muted">成本與錯誤率先在 app 中可見，必要時可 blocking before provider call。</p></div>
+          <div class="card"><h3>Canonical Markdown first</h3><p class="muted">讓 citations、source preview、mindmap、evaluator 使用同一份穩定文字來源。</p></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="slide dark" data-title="收束" data-summary="專案的一句話">
+      <div class="content center">
+        <span class="kicker">Takeaway</span>
+        <p class="quote">這個系統的價值不只是回答比較快，而是讓每個答案都能回到課程材料、引用合約與營運事實。</p>
+        <div class="grid-3">
+          <div class="card"><h3>For learners</h3><p class="muted">更快找到可信答案。</p></div>
+          <div class="card"><h3>For admins</h3><p class="muted">更安全地匯入、索引、修復教材。</p></div>
+          <div class="card"><h3>For operators</h3><p class="muted">更清楚地部署、觀測、控制成本。</p></div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <div class="controls" aria-label="Slide controls">
+    <button class="icon-btn" id="prev" type="button" aria-label="Previous slide" title="Previous slide"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 18l-6-6 6-6"></path></svg></button>
+    <button class="icon-btn" id="openIndex" type="button" aria-label="Open slide index" title="Open slide index"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16"></path><path d="M4 12h16"></path><path d="M4 18h16"></path></svg></button>
+    <div class="counter" id="counter">1 / 25</div>
+    <button class="icon-btn" id="next" type="button" aria-label="Next slide" title="Next slide"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6"></path></svg></button>
+  </div>
+  <div class="progress" aria-hidden="true"><span id="bar"></span></div>
+
+  <aside class="index" id="index" aria-label="Slide index" aria-modal="true" role="dialog">
+    <div class="index-head">
+      <div><div class="kicker">Slide Index</div><h2 style="font-size: 2.2rem; margin-top: 8px;">Knowledge Base Q&amp;A Bot</h2></div>
+      <button class="icon-btn" id="closeIndex" type="button" aria-label="Close slide index" title="Close slide index"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6L6 18"></path><path d="M6 6l12 12"></path></svg></button>
+    </div>
+    <div class="index-grid" id="indexGrid"></div>
+  </aside>
+
+  <script>
+    const slides = Array.from(document.querySelectorAll(".slide"));
+    const prev = document.getElementById("prev");
+    const next = document.getElementById("next");
+    const openIndex = document.getElementById("openIndex");
+    const closeIndex = document.getElementById("closeIndex");
+    const index = document.getElementById("index");
+    const indexGrid = document.getElementById("indexGrid");
+    const counter = document.getElementById("counter");
+    const bar = document.getElementById("bar");
+    let current = readHash();
+
+    function readHash() {
+      const match = location.hash.match(/^#slide-(\d+)$/);
+      if (!match) return 0;
+      const parsed = Number(match[1]) - 1;
+      return Number.isNaN(parsed) ? 0 : Math.max(0, Math.min(slides.length - 1, parsed));
+    }
+
+    function go(to, push = true) {
+      current = Math.max(0, Math.min(slides.length - 1, to));
+      slides.forEach((slide, i) => {
+        slide.classList.toggle("active", i === current);
+        slide.setAttribute("aria-hidden", i === current ? "false" : "true");
+      });
+      counter.textContent = `${current + 1} / ${slides.length}`;
+      bar.style.width = `${((current + 1) / slides.length) * 100}%`;
+      prev.disabled = current === 0;
+      next.disabled = current === slides.length - 1;
+      if (push) history.replaceState(null, "", `#slide-${current + 1}`);
+    }
+
+    function buildIndex() {
+      indexGrid.innerHTML = "";
+      slides.forEach((slide, i) => {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "index-card";
+        button.innerHTML = `<span class="n">${String(i + 1).padStart(2, "0")}</span><span class="t">${slide.dataset.title || "Untitled"}</span><span class="s">${slide.dataset.summary || ""}</span>`;
+        button.addEventListener("click", () => {
+          go(i);
+          index.classList.remove("open");
+          openIndex.focus();
+        });
+        indexGrid.appendChild(button);
+      });
+    }
+
+    prev.addEventListener("click", () => go(current - 1));
+    next.addEventListener("click", () => go(current + 1));
+    openIndex.addEventListener("click", () => {
+      index.classList.add("open");
+      closeIndex.focus();
+    });
+    closeIndex.addEventListener("click", () => {
+      index.classList.remove("open");
+      openIndex.focus();
+    });
+    addEventListener("hashchange", () => go(readHash(), false));
+    addEventListener("keydown", (event) => {
+      if (event.key === "Escape" && index.classList.contains("open")) {
+        index.classList.remove("open");
+        openIndex.focus();
+        return;
+      }
+      if (event.key === "Escape") {
+        index.classList.add("open");
+        closeIndex.focus();
+        return;
+      }
+      if (index.classList.contains("open")) return;
+      if (["ArrowRight", "PageDown", " "].includes(event.key)) {
+        event.preventDefault();
+        go(current + 1);
+      }
+      if (["ArrowLeft", "PageUp"].includes(event.key)) {
+        event.preventDefault();
+        go(current - 1);
+      }
+      if (event.key === "Home") {
+        event.preventDefault();
+        go(0);
+      }
+      if (event.key === "End") {
+        event.preventDefault();
+        go(slides.length - 1);
+      }
+    });
+
+    buildIndex();
+    go(current, false);
+  </script>
+</body>
+</html>

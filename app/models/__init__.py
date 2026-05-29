@@ -1,0 +1,33 @@
+from app.models.tables import (
+    AuditEvent,
+    BackgroundJob,
+    BackgroundWorkerHeartbeat,
+    Chunk,
+    Conversation,
+    Document,
+    EvalCase,
+    EvalResult,
+    EvalRun,
+    Feedback,
+    IndexingJob,
+    Message,
+    RetrievalEvent,
+    Section,
+)
+
+__all__ = [
+    "AuditEvent",
+    "BackgroundJob",
+    "BackgroundWorkerHeartbeat",
+    "Chunk",
+    "Conversation",
+    "Document",
+    "EvalCase",
+    "EvalResult",
+    "EvalRun",
+    "Feedback",
+    "IndexingJob",
+    "Message",
+    "RetrievalEvent",
+    "Section",
+]

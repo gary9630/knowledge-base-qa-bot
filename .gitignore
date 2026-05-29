@@ -206,6 +206,15 @@ tempCodeRunnerFile.py
 # Ruff stuff:
 .ruff_cache/
 
+# Browser MCP / Playwright inspection artifacts
+.playwright-mcp/
+
+# Local backup artifacts
+backups/
+
+# Local knowledge-base runtime artifacts
+.kb/
+
 # PyPI configuration file
 .pypirc
 
@@ -216,3 +225,7 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Local data artifacts
+course-materials-md/
+course-materials-raw/

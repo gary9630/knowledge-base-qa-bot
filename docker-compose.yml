@@ -1,0 +1,152 @@
+x-app-environment: &app-environment
+  - KB_APP_ENV=production
+  - KB_DATABASE_URL=postgresql+psycopg://kb:kb@postgres:5432/kb
+  - KB_DOCS_DIR=/app/docs
+  - KB_RAW_DIR=/app/raw
+  - KB_KB_DIR=/app/.kb
+  - KB_AUTH_SECRET_KEY=${KB_AUTH_SECRET_KEY:-local-auth-secret}
+  - KB_PLATFORM_USERNAME=${KB_PLATFORM_USERNAME:-student}
+  - KB_PLATFORM_PASSWORD=${KB_PLATFORM_PASSWORD:-student-password}
+  - KB_PLATFORM_COHORTS=${KB_PLATFORM_COHORTS:-}
+  - KB_PLATFORM_EXTRA_VISIBILITY_LABELS=${KB_PLATFORM_EXTRA_VISIBILITY_LABELS:-}
+  - KB_PLATFORM_SESSION_TTL_SECONDS=${KB_PLATFORM_SESSION_TTL_SECONDS:-86400}
+  - KB_ADMIN_API_KEY=${KB_ADMIN_API_KEY:-local-admin-key}
+  - KB_MAX_UPLOAD_BYTES=${KB_MAX_UPLOAD_BYTES:-10000000}
+  - KB_RATE_LIMIT_ENABLED=${KB_RATE_LIMIT_ENABLED:-true}
+  - KB_RATE_LIMIT_WINDOW_SECONDS=${KB_RATE_LIMIT_WINDOW_SECONDS:-60}
+  - KB_RATE_LIMIT_LOGIN_REQUESTS=${KB_RATE_LIMIT_LOGIN_REQUESTS:-10}
+  - KB_RATE_LIMIT_CHAT_REQUESTS=${KB_RATE_LIMIT_CHAT_REQUESTS:-60}
+  - KB_RATE_LIMIT_ADMIN_REQUESTS=${KB_RATE_LIMIT_ADMIN_REQUESTS:-60}
+  - KB_RATE_LIMIT_UPLOAD_REQUESTS=${KB_RATE_LIMIT_UPLOAD_REQUESTS:-10}
+  - KB_MAX_CONCURRENT_UPLOADS=${KB_MAX_CONCURRENT_UPLOADS:-2}
+  - KB_BACKGROUND_JOB_STALE_AFTER_SECONDS=${KB_BACKGROUND_JOB_STALE_AFTER_SECONDS:-3600}
+  - KB_BACKGROUND_JOB_RETRY_BASE_DELAY_SECONDS=${KB_BACKGROUND_JOB_RETRY_BASE_DELAY_SECONDS:-30}
+  - KB_BACKGROUND_JOB_RETRY_MAX_DELAY_SECONDS=${KB_BACKGROUND_JOB_RETRY_MAX_DELAY_SECONDS:-300}
+  - KB_WORKER_ID=${KB_WORKER_ID:-compose-worker}
+  - KB_WORKER_HEARTBEAT_INTERVAL_SECONDS=${KB_WORKER_HEARTBEAT_INTERVAL_SECONDS:-30}
+  - KB_WORKER_HEARTBEAT_STALE_AFTER_SECONDS=${KB_WORKER_HEARTBEAT_STALE_AFTER_SECONDS:-120}
+  - KB_EMBEDDING_PROVIDER=${KB_EMBEDDING_PROVIDER:-fake}
+  - KB_ANSWER_PROVIDER=${KB_ANSWER_PROVIDER:-fake}
+  - KB_OPENAI_EMBEDDING_MODEL=${KB_OPENAI_EMBEDDING_MODEL:-}
+  - KB_OPENAI_CHAT_MODEL=${KB_OPENAI_CHAT_MODEL:-}
+  - KB_OPENAI_REQUEST_TIMEOUT_SECONDS=${KB_OPENAI_REQUEST_TIMEOUT_SECONDS:-30}
+  - KB_OPENAI_MAX_RETRIES=${KB_OPENAI_MAX_RETRIES:-2}
+  - KB_OPENAI_CHAT_MAX_COMPLETION_TOKENS=${KB_OPENAI_CHAT_MAX_COMPLETION_TOKENS:-1024}
+  - KB_EMBEDDING_DIMENSION=${KB_EMBEDDING_DIMENSION:-768}
+  - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+
+x-app-volumes: &app-volumes
+  - type: volume
+    source: docs_data
+    target: /app/docs
+  - type: volume
+    source: raw_data
+    target: /app/raw
+  - type: volume
+    source: kb_data
+    target: /app/.kb
+
+x-test-environment: &test-environment
+  - KB_APP_ENV=test
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_USER: kb
+      POSTGRES_PASSWORD: kb
+      POSTGRES_DB: kb
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U kb -d kb"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "${KB_POSTGRES_PORT:-5432}:5432"
+
+  migrate:
+    build:
+      context: .
+      target: app
+    environment: *app-environment
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes: *app-volumes
+    command: alembic upgrade head
+
+  app:
+    build:
+      context: .
+      target: app
+    environment: *app-environment
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    ports:
+      - "8000:8000"
+    volumes: *app-volumes
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=2)\"",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+
+  worker:
+    build:
+      context: .
+      target: app
+    profiles:
+      - worker
+    restart: unless-stopped
+    environment: *app-environment
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    volumes: *app-volumes
+    command: python -m scripts.run_background_worker --poll-seconds 5
+
+  eval-runner:
+    build:
+      context: .
+      target: app
+    profiles:
+      - eval
+    environment: *app-environment
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    volumes: *app-volumes
+    command: python -m scripts.run_evals --trigger scheduled
+
+  test:
+    build:
+      context: .
+      target: test
+    profiles:
+      - test
+    environment: *test-environment
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes: *app-volumes
+    command: pytest
+
+volumes:
+  postgres_data:
+  docs_data:
+  raw_data:
+  kb_data:
