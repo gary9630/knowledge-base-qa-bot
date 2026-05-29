@@ -22,6 +22,8 @@
     selectedSources: [],
     retrievalDiagnostics: null,
     answerQuality: null,
+    chatBusy: false,
+    indexStatus: null,
     auth: {
       authRequired: false,
       authenticated: true,
@@ -41,6 +43,11 @@
     chatLimit: $("#chat-limit"),
     chatStrategy: $("#chat-strategy"),
     chatLog: $("#chat-log"),
+    chatEmptyState: $("#chat-empty-state"),
+    chatComposerStatus: $("#chat-composer-status"),
+    chatSubmit: $("#chat-submit"),
+    learnerChatStatus: $("#learner-chat-status"),
+    samplePrompts: $$("[data-sample-prompt]"),
     selectedSources: $("#selected-sources"),
     selectedSourceCount: $("#selected-source-count"),
     answerQuality: $("#answer-quality"),
@@ -110,6 +117,7 @@
     bindAuth();
     bindTabs();
     bindChat();
+    bindSamplePrompts();
     bindSources();
     bindMindmap();
     bindAdmin();
@@ -198,6 +206,10 @@
     elements.platformAuthStatus.textContent = state.auth.authenticated
       ? `Signed in${state.auth.username ? ` as ${state.auth.username}` : ""}.`
       : "Sign in to continue.";
+
+    if (!blocked) {
+      refreshLearnerContext();
+    }
   }
 
   function bindTabs() {
@@ -246,25 +258,85 @@
   }
 
   function bindChat() {
+    elements.chatQuery.addEventListener("keydown", handleChatKeydown);
     elements.chatForm.addEventListener("submit", async (event) => {
       event.preventDefault();
       const query = elements.chatQuery.value.trim();
-      if (!query) {
+      if (!query || state.chatBusy) {
         return;
       }
 
+      clearChatEmptyState();
       addMessage("user", query);
       const answerNode = addMessage("assistant", "");
       elements.chatQuery.value = "";
       setSelectedSources([]);
       renderAnswerQuality(null);
+      renderStreamingStatus(answerNode, "Looking through course sources...");
+      setChatBusy(true, "Looking through course sources...");
 
       try {
         await streamChat(query, answerNode);
       } catch (error) {
         answerNode.textContent = errorMessage(error);
+        renderAnswerFooter(answerNode, {
+          answer_quality: {
+            answer_valid: false,
+            citation_errors: [errorMessage(error)],
+          },
+        });
+      } finally {
+        setChatBusy(false, "Ready for your next question.");
       }
     });
+  }
+
+  function bindSamplePrompts() {
+    elements.samplePrompts.forEach((button) => {
+      button.addEventListener("click", () => {
+        elements.chatQuery.value = button.dataset.samplePrompt || button.textContent.trim();
+        elements.chatQuery.focus();
+        elements.chatComposerStatus.textContent = "Review or send the suggested question.";
+      });
+    });
+  }
+
+  function handleChatKeydown(event) {
+    if (event.isComposing || event.keyCode === 229) {
+      return;
+    }
+    if (event.key === "Enter" && !event.shiftKey) {
+      event.preventDefault();
+      if (!state.chatBusy) {
+        elements.chatForm.requestSubmit();
+      }
+    }
+  }
+
+  function clearChatEmptyState() {
+    if (elements.chatEmptyState) {
+      elements.chatEmptyState.hidden = true;
+    }
+  }
+
+  function setChatBusy(isBusy, statusText) {
+    state.chatBusy = isBusy;
+    elements.chatQuery.disabled = isBusy;
+    elements.chatStrategy.disabled = isBusy;
+    elements.chatLimit.disabled = isBusy;
+    elements.chatSubmit.disabled = isBusy;
+    elements.samplePrompts.forEach((button) => {
+      button.disabled = isBusy;
+    });
+    elements.chatForm.classList.toggle("is-busy", isBusy);
+    elements.chatComposerStatus.textContent = statusText || (isBusy ? "Working..." : "Ready.");
+  }
+
+  function renderStreamingStatus(answerNode, message) {
+    answerNode.textContent = message;
+    answerNode.classList.add("is-streaming-status");
+    elements.chatComposerStatus.textContent = message;
+    elements.chatLog.scrollTop = elements.chatLog.scrollHeight;
   }
 
   async function streamChat(query, answerNode) {
@@ -288,6 +360,7 @@
       return;
     }
 
+    let receivedToken = false;
     await readSse(response.body, (event) => {
       if (event.event === "sources") {
         const payload = safeJson(event.data);
@@ -295,10 +368,24 @@
         renderAnswerQuality({
           retrieval_diagnostics: payload.retrieval_diagnostics,
         });
+        if (!receivedToken) {
+          const sourceCount = state.selectedSources.length;
+          renderStreamingStatus(
+            answerNode,
+            sourceCount === 1
+              ? "Found 1 relevant source."
+              : `Found ${sourceCount} relevant sources.`,
+          );
+        }
         return;
       }
 
       if (event.event === "token") {
+        if (!receivedToken) {
+          answerNode.textContent = "";
+          answerNode.classList.remove("is-streaming-status");
+          receivedToken = true;
+        }
         answerNode.textContent += event.data;
         elements.chatLog.scrollTop = elements.chatLog.scrollHeight;
         return;
@@ -307,11 +394,19 @@
       if (event.event === "error") {
         const payload = safeJson(event.data);
         answerNode.textContent = payload.detail || event.data || "Chat stream failed.";
+        answerNode.classList.remove("is-streaming-status");
+        renderAnswerFooter(answerNode, {
+          answer_quality: {
+            answer_valid: false,
+            citation_errors: [answerNode.textContent],
+          },
+        });
       }
 
       if (event.event === "done") {
         const payload = safeJson(event.data);
         renderAnswerQuality(payload);
+        renderAnswerFooter(answerNode, payload);
       }
     });
   }
@@ -380,7 +475,7 @@
 
     const label = document.createElement("span");
     label.className = "message-label";
-    label.textContent = role === "user" ? "You" : "Assistant";
+    label.textContent = role === "user" ? "You" : "Course Assistant";
 
     const body = document.createElement("p");
     body.textContent = text;
@@ -389,6 +484,84 @@
     elements.chatLog.append(wrapper);
     elements.chatLog.scrollTop = elements.chatLog.scrollHeight;
     return body;
+  }
+
+  function renderAnswerFooter(answerNode, payload) {
+    const wrapper = answerNode.closest(".message");
+    if (!wrapper) {
+      return;
+    }
+
+    wrapper.querySelector(".answer-footer")?.remove();
+    const footer = document.createElement("div");
+    footer.className = "answer-footer";
+
+    const trust = document.createElement("span");
+    const trustState = answerTrustState(payload);
+    trust.className = `answer-trust is-${trustState}`;
+    trust.textContent = answerTrustText(payload, state.selectedSources);
+    footer.append(trust);
+    renderSourceChips(footer, state.selectedSources);
+    wrapper.append(footer);
+  }
+
+  function renderSourceChips(wrapper, sources) {
+    const sourceList = Array.isArray(sources) ? sources : [];
+    if (sourceList.length === 0) {
+      return;
+    }
+
+    const chipRow = document.createElement("div");
+    chipRow.className = "source-chip-row";
+    sourceList.forEach((source, index) => {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "source-chip";
+      button.textContent = source.source_id || source.filename || `Source ${index + 1}`;
+      button.addEventListener("click", () => previewSourceFromChip(source));
+      chipRow.append(button);
+    });
+    wrapper.append(chipRow);
+  }
+
+  function previewSourceFromChip(source) {
+    previewCandidate(source);
+    elements.markdownPreview.focus({ preventScroll: true });
+    if (window.matchMedia("(max-width: 760px)").matches) {
+      elements.markdownPreview.scrollIntoView({ block: "start", behavior: "smooth" });
+    }
+  }
+
+  function answerTrustText(payload, sources) {
+    const quality = payload.answer_quality || {};
+    if (quality.cannot_confirm_reason === "not_indexed") {
+      return "The course knowledge base is not indexed yet.";
+    }
+    if (quality.answer_valid === false) {
+      return "Answer needs source review.";
+    }
+    if (quality.cannot_confirm_reason || payload.decision === "cannot_confirm") {
+      return "The knowledge base could not confirm this.";
+    }
+
+    const sourceCount = Array.isArray(sources) ? sources.length : 0;
+    if (sourceCount > 0) {
+      return sourceCount === 1
+        ? "Answered from 1 course source."
+        : `Answered from ${sourceCount} course sources.`;
+    }
+    return "Answered without selected course sources.";
+  }
+
+  function answerTrustState(payload) {
+    const quality = payload.answer_quality || {};
+    if (quality.answer_valid === false) {
+      return "danger";
+    }
+    if (quality.cannot_confirm_reason || payload.decision === "cannot_confirm") {
+      return "warning";
+    }
+    return "valid";
   }
 
   function setSelectedSources(sources) {
@@ -504,10 +677,12 @@
       const payload = await getJson("/sources");
       state.documents = payload.documents || [];
       renderSources();
+      updateLearnerChatStatus();
     } catch (error) {
       state.documents = [];
       elements.sourceList.replaceChildren(emptyText(`Sources unavailable: ${errorMessage(error)}`));
       elements.sourceTable.replaceChildren(emptyText("No indexed sources found."));
+      updateLearnerChatStatus("Course sources unavailable.");
     }
   }
 
@@ -1378,6 +1553,11 @@
     try {
       const payload = await getJson("/index/status");
       const chunks = payload.stats && payload.stats.chunks_indexed;
+      state.indexStatus = {
+        status: payload.status,
+        chunks,
+        updatedAt: payload.updated_at || null,
+      };
       elements.statusPill.textContent = `Index ${payload.status}`;
       elements.statusPill.className = payload.status === "succeeded" ? "is-success" : "is-warning";
       elements.statusGrid.replaceChildren(
@@ -1385,7 +1565,13 @@
         statusRow("Chunks", chunks ?? "--"),
         statusRow("Updated", payload.updated_at || "--"),
       );
+      updateLearnerChatStatus();
     } catch (error) {
+      state.indexStatus = {
+        status: "unavailable",
+        chunks: null,
+        updatedAt: null,
+      };
       elements.statusPill.textContent = "Index not ready";
       elements.statusPill.className = "is-warning";
       elements.statusGrid.replaceChildren(
@@ -1393,7 +1579,39 @@
         statusRow("Chunks", "--"),
         statusRow("Updated", errorMessage(error)),
       );
+      updateLearnerChatStatus("Course source index unavailable.");
     }
+  }
+
+  async function refreshLearnerContext() {
+    await Promise.allSettled([refreshStatus(), refreshSources()]);
+  }
+
+  function updateLearnerChatStatus(fallbackText = null) {
+    if (fallbackText) {
+      elements.learnerChatStatus.textContent = fallbackText;
+      return;
+    }
+
+    const sourceCount = state.documents.length;
+    const sourceLabel = sourceCount === 1 ? "1 course source" : `${sourceCount} course sources`;
+    if (!state.indexStatus) {
+      elements.learnerChatStatus.textContent = `${sourceLabel} available.`;
+      return;
+    }
+
+    if (state.indexStatus.status === "succeeded") {
+      const chunkText = state.indexStatus.chunks == null ? "chunks indexed" : `${state.indexStatus.chunks} chunks indexed`;
+      elements.learnerChatStatus.textContent = `${sourceLabel} available · ${chunkText}.`;
+      return;
+    }
+
+    if (state.indexStatus.status === "unavailable") {
+      elements.learnerChatStatus.textContent = "Course source index unavailable.";
+      return;
+    }
+
+    elements.learnerChatStatus.textContent = `Index ${state.indexStatus.status} · ${sourceLabel} available.`;
   }
 
   async function refreshImportJobs() {

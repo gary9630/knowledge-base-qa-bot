@@ -195,6 +195,50 @@ def test_ui_exposes_answer_quality_wiring() -> None:
     assert "cannot_confirm_reason" in js_response.text
 
 
+def test_ui_exposes_learner_chat_polish_wiring() -> None:
+    client = TestClient(create_app())
+
+    response = client.get("/")
+    js_response = client.get("/static/app.js")
+    css_response = client.get("/static/app.css")
+
+    assert response.status_code == 200
+    assert 'id="learner-chat-status"' in response.text
+    assert 'id="chat-empty-state"' in response.text
+    assert "Course Assistant" in response.text
+    assert "data-sample-prompt" in response.text
+    assert 'id="chat-composer-status"' in response.text
+    assert 'id="chat-submit"' in response.text
+    assert 'id="markdown-preview" tabindex="0"' in response.text
+    assert "Ask about course policies, homework, or Network Essentials" in response.text
+
+    assert js_response.status_code == 200
+    assert "bindSamplePrompts" in js_response.text
+    assert "setChatBusy" in js_response.text
+    assert "button.disabled = isBusy" in js_response.text
+    assert "renderStreamingStatus" in js_response.text
+    assert "renderAnswerFooter" in js_response.text
+    assert "renderSourceChips" in js_response.text
+    assert "previewSourceFromChip" in js_response.text
+    assert "handleChatKeydown" in js_response.text
+    assert "event.isComposing" in js_response.text
+    assert 'event.key === "Enter"' in js_response.text
+    assert "refreshLearnerContext" in js_response.text
+    assert "updateLearnerChatStatus" in js_response.text
+    assert "scrollIntoView" in js_response.text
+    assert "Looking through course sources" in js_response.text
+    assert "Answered from" in js_response.text
+    assert "could not confirm" in js_response.text
+    assert "previewCandidate(source)" in js_response.text
+
+    assert css_response.status_code == 200
+    assert ".chat-empty-state" in css_response.text
+    assert ".sample-prompt-grid" in css_response.text
+    assert ".answer-footer" in css_response.text
+    assert ".source-chip" in css_response.text
+    assert ".answer-trust" in css_response.text
+
+
 def test_ui_exposes_mindmap_on_demand_wiring() -> None:
     client = TestClient(create_app())
 

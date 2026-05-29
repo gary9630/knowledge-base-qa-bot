@@ -87,7 +87,8 @@
         <section class="workspace-panel is-active" id="panel-chat" role="tabpanel" tabindex="0" data-panel="chat" aria-labelledby="tab-chat">
           <header class="workspace-header">
             <div>
-              <h2>Chat</h2>
+              <h2>Course Assistant</h2>
+              <p class="workspace-subtitle" id="learner-chat-status">Grounded in indexed course sources.</p>
             </div>
             <label class="inline-control" for="chat-limit">
               Limit
@@ -96,22 +97,31 @@
           </header>
 
           <div class="chat-log" id="chat-log" aria-live="polite">
-            <div class="message assistant">
-              <span class="message-label">Assistant</span>
-              <p>Ready.</p>
+            <div class="chat-empty-state" id="chat-empty-state">
+              <div class="message assistant">
+                <span class="message-label">Course Assistant</span>
+                <p>Ask a question about the course materials. Answers cite the indexed sources used.</p>
+              </div>
+              <div class="sample-prompt-grid" aria-label="Sample course questions">
+                <button type="button" data-sample-prompt="課程網站在哪裡？">課程網站在哪裡？</button>
+                <button type="button" data-sample-prompt="作業繳交有哪些規則？">作業繳交有哪些規則？</button>
+                <button type="button" data-sample-prompt="Network Essentials 的基本觀念有哪些？">Network Essentials 基本觀念</button>
+                <button type="button" data-sample-prompt="課程公告有哪些重要提醒？">課程公告重點</button>
+              </div>
             </div>
           </div>
 
           <form class="chat-form" id="chat-form">
             <label class="sr-only" for="chat-query">Question</label>
-            <textarea id="chat-query" name="query" rows="4" placeholder="Ask the knowledge base"></textarea>
+            <textarea id="chat-query" name="query" rows="4" placeholder="Ask about course policies, homework, or Network Essentials"></textarea>
+            <p class="composer-status" id="chat-composer-status" aria-live="polite">Ready for your question.</p>
             <div class="form-actions">
               <select id="chat-strategy" name="strategy" aria-label="Retrieval strategy">
                 <option value="hybrid">Hybrid</option>
                 <option value="markdown">Markdown</option>
                 <option value="vector">Vector</option>
               </select>
-              <button class="primary-button" type="submit">Send</button>
+              <button class="primary-button" id="chat-submit" type="submit">Send</button>
             </div>
           </form>
         </section>
@@ -423,7 +433,7 @@
 
         <section class="inspector-section">
           <h2>Source Markdown Preview</h2>
-          <pre class="markdown-preview" id="markdown-preview">Select a source to preview markdown.</pre>
+          <pre class="markdown-preview" id="markdown-preview" tabindex="0">Select a source to preview markdown.</pre>
         </section>
 
         <section class="inspector-section">
