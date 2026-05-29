@@ -94,6 +94,18 @@ The real-content workflow defaults to an isolated Compose project,
 enter the launch artifact. Use a different project name for a fresh rehearsal rather
 than deleting Docker volumes in bulk.
 
+If another local service already binds Postgres port `5432`, run the package workflow
+with an alternate host port:
+
+```bash
+KB_POSTGRES_PORT=55432 make real-content-package
+```
+
+The latest local launch artifact accepted for trial deploy is
+`backups/real-content-20260529T171708Z/`. It contains 35 course files, 819 indexed
+sections/chunks, and a retrieval acceptance report with 5/5 cases passed. Keep that
+directory out of git and transfer it through an encrypted artifact path.
+
 ## Deploy Sequence
 
 For the Compose deployment model:
@@ -127,6 +139,9 @@ starting the app process.
 9. Protected `POST /admin/jobs/recover-stale` returns successfully; if any stale jobs are
    returned, confirm they are queued or failed according to their attempt budget.
 10. Scheduled eval runner can run `python -m scripts.run_evals --trigger scheduled`.
+11. Run live answer acceptance from `ops/live-answer-acceptance.md`; the current required
+    cases are CAP theorem through `/chat`, RAG flow through `/chat`, and Message Queue
+    through `/chat/stream`.
 
 ## Rollback
 

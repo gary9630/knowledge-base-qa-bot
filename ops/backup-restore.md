@@ -54,6 +54,19 @@ The real-content targets default to an isolated Compose project named
 `REAL_CONTENT_COMPOSE_PROJECT` only when you intentionally want another isolated
 artifact workspace.
 
+If another local service already owns host port `5432`, use an alternate host port for
+the isolated real-content Postgres container:
+
+```bash
+KB_POSTGRES_PORT=55432 make real-content-package
+```
+
+The latest local artifact accepted for trial deploy is
+`backups/real-content-20260529T171708Z/`, with `postgres.dump`,
+`runtime-files.tar.gz`, and `real-content-acceptance-report.json`. The report passed
+5/5 retrieval cases, and the corresponding live answer acceptance passed 3/3 cases with
+`gpt-5.4-mini`. Do not commit the artifact directory.
+
 ## Restore Database
 
 Restoring the database can replace existing tables and data. Require an explicit
@@ -88,6 +101,7 @@ make restore-files \
 4. Confirm `/ready` reports database, pgvector, migrations, storage, platform auth, and
    index checks.
 5. Run a known search/chat smoke test against expected source IDs.
+6. Run `ops/live-answer-acceptance.md` checks before inviting learners.
 
 ## Notes
 

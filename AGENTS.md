@@ -38,6 +38,7 @@
 - Compose app/worker smoke: `make docker-smoke`
 - Compose backup: `make backup BACKUP_DIR=backups/$(date -u +%Y%m%dT%H%M%SZ)`
 - Real content launch package: `OPENAI_API_KEY=... make real-content-package`
+- Real content launch package with local Postgres port conflict: `KB_POSTGRES_PORT=55432 make real-content-package`
 - CI workflow: `.github/workflows/ci.yml`
 
 ## Environment Notes
@@ -47,6 +48,7 @@
 - OpenAI providers require unprefixed `OPENAI_API_KEY`.
 - Keep `KB_EMBEDDING_DIMENSION` aligned with the schema dimension, currently `768`.
 - Real course content lives in local `course-materials-md/` and must remain out of git.
+- Makefile includes `.env` when present, but only exports `OPENAI_API_KEY` and `KB_POSTGRES_PORT` intentionally. Do not use `.EXPORT_ALL_VARIABLES`; it pollutes local tests with deploy-only settings such as Docker-only database hosts.
 - Local Compose defaults are only for development: platform login `student` / `student-password`, admin key `local-admin-key`.
 - App-native abuse controls are enabled by default: tune `KB_RATE_LIMIT_*` values and `KB_MAX_CONCURRENT_UPLOADS` for the deploy target.
 - Background worker reliability controls are `KB_BACKGROUND_JOB_STALE_AFTER_SECONDS`, `KB_BACKGROUND_JOB_RETRY_BASE_DELAY_SECONDS`, and `KB_BACKGROUND_JOB_RETRY_MAX_DELAY_SECONDS`.
@@ -97,6 +99,7 @@ intentionally deferred until traffic or multi-replica deployment requires it.
 - Keep ingestion job metadata useful for operations: original filename, detected file type, raw/canonical artifact filenames, path strategy, warnings, and Markdown byte size.
 - Backup/restore runbook lives at `ops/backup-restore.md`; restore targets require `CONFIRM_RESTORE=yes` and do not remove stale files.
 - Production deploy runbook lives at `ops/deploy.md`.
+- Live answer acceptance runbook lives at `ops/live-answer-acceptance.md`.
 - Production env template lives at `ops/env.production.example`; validate real deploy environments with `make deploy-check` before migration/restart.
 - Do not expose admin endpoints publicly without the admin key or an authenticated gateway.
 - Never store raw admin keys or platform passwords in audit metadata; use `fingerprint_secret()` for admin-key actor IDs.
@@ -109,7 +112,9 @@ intentionally deferred until traffic or multi-replica deployment requires it.
 - First production data loads should use `make real-content-package` to prepare `course-materials-md/`, rebuild the Compose DB index, run `ops/real-content-acceptance-cases.json`, and package `postgres.dump`, `runtime-files.tar.gz`, and `real-content-acceptance-report.json`.
 - Real content packaging defaults to isolated Docker Compose project `kb-real-content`; change `REAL_CONTENT_COMPOSE_PROJECT` for another fresh artifact workspace instead of deleting volumes in bulk.
 - Real content preparation refuses source/destination symlinks and fails on stale runtime Markdown instead of deleting files; stale files must be handled manually one explicit path at a time.
+- Current verified local launch artifact is `backups/real-content-20260529T171708Z/`: 35 course files, 819 sections/chunks, retrieval acceptance 5/5 passed. It is intentionally ignored by git.
 - Current OpenAI answer model default is `gpt-5.4-mini`; `/chat/stream` should forward provider streaming deltas and use the final `done.answer` as the validated persisted answer.
+- Live answer acceptance against the real-content index passed 3/3 with `gpt-5.4-mini`: CAP theorem via `/chat`, RAG flow via `/chat`, and Message Queue via `/chat/stream`. This sends selected snippets to OpenAI Chat API and requires explicit operator approval.
 - OpenAI provider controls are `KB_OPENAI_REQUEST_TIMEOUT_SECONDS`, `KB_OPENAI_MAX_RETRIES`, and `KB_OPENAI_CHAT_MAX_COMPLETION_TOKENS`; provider usage and error metadata should stay user-safe and be recorded through `/metrics` plus `RetrievalEvent.scores_json`.
 - Protected `GET /admin/provider-observability` backs the Provider Ops UI tab with provider call summaries, token usage by operation, latest in-memory calls, and DB-backed answer traces; keep it admin-only and free of raw provider prompts, credentials, or source payload dumps.
 - App-native provider budget guardrails are controlled by `KB_PROVIDER_BUDGET_*`; when `KB_PROVIDER_BUDGET_BLOCK_ON_EXCEEDED=true`, `/chat` returns 429 and `/chat/stream` emits a stable SSE error before calling the answer provider.

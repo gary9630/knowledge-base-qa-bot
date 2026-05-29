@@ -195,6 +195,8 @@ def test_backup_restore_runbook_documents_database_and_file_restore() -> None:
     assert "real-content-package" in runbook
     assert "postgres.dump" in runbook
     assert "runtime-files.tar.gz" in runbook
+    assert "ops/live-answer-acceptance.md" in runbook
+    assert "gpt-5.4-mini" in runbook
 
 
 def test_production_deploy_runbook_documents_release_sequence() -> None:
@@ -212,6 +214,23 @@ def test_production_deploy_runbook_documents_release_sequence() -> None:
     assert "rollback" in runbook.lower()
     assert "course-materials-md" in runbook
     assert "make real-content-package" in runbook
+    assert "ops/live-answer-acceptance.md" in runbook
+    assert "KB_POSTGRES_PORT=55432" in runbook
+
+
+def test_live_answer_acceptance_runbook_documents_required_cases() -> None:
+    runbook = read_project_file("ops/live-answer-acceptance.md")
+
+    assert "gpt-5.4-mini" in runbook
+    assert "text-embedding-3-small" in runbook
+    assert "KB_EMBEDDING_DIMENSION" in runbook
+    assert "CAP theorem" in runbook
+    assert "RAG flow" in runbook
+    assert "Message queue" in runbook
+    assert "/chat/stream" in runbook
+    assert "answer_quality.answer_valid" in runbook
+    assert "selected_source_ids" in runbook
+    assert "cited_source_ids" in runbook
 
 
 def test_real_content_acceptance_cases_are_documented_for_course_materials() -> None:
