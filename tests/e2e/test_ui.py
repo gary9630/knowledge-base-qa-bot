@@ -160,6 +160,25 @@ def test_ui_exposes_background_jobs_wiring() -> None:
     assert "queueDocumentReindexJob" in js_response.text
 
 
+def test_ui_exposes_import_diagnostics_wiring() -> None:
+    client = TestClient(create_app())
+
+    response = client.get("/")
+    js_response = client.get("/static/app.js")
+
+    assert response.status_code == 200
+    assert 'id="import-diagnostics-summary"' in response.text
+    assert "renderImportDiagnosticsSummary" in js_response.text
+    assert "renderImportJobRow" in js_response.text
+    assert "importJobMetadataDetails" in js_response.text
+    assert "metadata.import_warnings" in js_response.text
+    assert "metadata.detected_file_type" in js_response.text
+    assert "metadata.path_strategy" in js_response.text
+    assert "metadata.markdown_bytes" in js_response.text
+    assert "metadata.background_job_id" in js_response.text
+    assert "job.content_hash" in js_response.text
+
+
 def test_ui_exposes_mindmap_on_demand_wiring() -> None:
     client = TestClient(create_app())
 

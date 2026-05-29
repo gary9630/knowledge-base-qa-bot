@@ -363,6 +363,10 @@ button.selected-source {
   border-color: #f0b8b1;
 }
 
+.ops-summary-card.is-warning {
+  border-color: #f2d08a;
+}
+
 .ops-summary-card.is-success {
   border-color: #b7dbc7;
 }
@@ -442,7 +446,8 @@ button.selected-source {
 }
 
 .status-badge.is-running,
-.status-badge.is-stale {
+.status-badge.is-stale,
+.status-badge.is-warning {
   border-color: #f2d08a;
   background: #fff7e6;
   color: var(--warning);

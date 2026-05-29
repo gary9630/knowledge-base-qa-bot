@@ -65,6 +65,7 @@
     evalAdminKey: $("#eval-admin-key"),
     uploadFile: $("#upload-file"),
     refreshImports: $("#refresh-imports"),
+    importDiagnosticsSummary: $("#import-diagnostics-summary"),
     importJobs: $("#import-jobs"),
     rebuildIndex: $("#rebuild-index"),
     queueIndexJob: $("#queue-index-job"),
@@ -1335,12 +1336,14 @@
       renderImportJobs(payload.jobs || []);
     } catch (error) {
       state.importJobs = [];
+      renderImportDiagnosticsSummary([]);
       elements.importJobs.replaceChildren(emptyText(`Import jobs unavailable: ${errorMessage(error)}`));
     }
   }
 
   function renderImportJobs(jobs) {
     state.importJobs = Array.isArray(jobs) ? jobs : [];
+    renderImportDiagnosticsSummary(state.importJobs);
     elements.importJobs.replaceChildren();
 
     if (state.importJobs.length === 0) {
@@ -1349,30 +1352,141 @@
     }
 
     state.importJobs.slice(0, 10).forEach((job) => {
-      const row = document.createElement("div");
-      row.className = `job-row is-${job.status || "unknown"}`;
-
-      const body = document.createElement("div");
-      body.className = "job-body";
-      const title = document.createElement("strong");
-      title.textContent = job.filename || "Uploaded source";
-      const meta = document.createElement("span");
-      meta.className = "source-meta";
-      meta.textContent = [job.kind, job.status, job.updated_at].filter(Boolean).join(" · ");
-      body.append(title, meta);
-      row.append(body);
-
-      if (job.status === "failed") {
-        const retry = document.createElement("button");
-        retry.type = "button";
-        retry.className = "secondary-button";
-        retry.textContent = "Retry";
-        retry.addEventListener("click", () => retryImportJob(job.id));
-        row.append(retry);
-      }
-
-      elements.importJobs.append(row);
+      elements.importJobs.append(renderImportJobRow(job));
     });
+  }
+
+  function renderImportDiagnosticsSummary(jobs) {
+    const safeJobs = Array.isArray(jobs) ? jobs : [];
+    const summary = {
+      total: safeJobs.length,
+      active: safeJobs.filter((job) => ["queued", "running"].includes(job.status)).length,
+      failed: safeJobs.filter((job) => job.status === "failed").length,
+      warnings: safeJobs.filter((job) => importJobWarnings(job).length > 0).length,
+      duplicates: safeJobs.filter((job) => job.status === "duplicate").length,
+    };
+    const cards = [
+      ["Loaded", summary.total, ""],
+      ["Active", summary.active, summary.active > 0 ? "is-warning" : ""],
+      ["Failed", summary.failed, summary.failed > 0 ? "is-danger" : ""],
+      ["Warnings", summary.warnings, summary.warnings > 0 ? "is-warning" : ""],
+      ["Duplicates", summary.duplicates, ""],
+    ];
+
+    elements.importDiagnosticsSummary.replaceChildren();
+    cards.forEach(([label, value, modifier]) => {
+      const card = document.createElement("div");
+      card.className = ["ops-summary-card", modifier].filter(Boolean).join(" ");
+      const title = document.createElement("span");
+      title.textContent = label;
+      const count = document.createElement("strong");
+      count.textContent = String(value);
+      card.append(title, count);
+      elements.importDiagnosticsSummary.append(card);
+    });
+  }
+
+  function renderImportJobRow(job) {
+    const metadata = job.metadata || {};
+    const warnings = importJobWarnings(job);
+    const row = document.createElement("div");
+    row.className = `job-row is-${job.status || "unknown"}`;
+
+    const body = document.createElement("div");
+    body.className = "job-body";
+
+    const heading = document.createElement("div");
+    heading.className = "job-row-heading";
+    const title = document.createElement("strong");
+    title.textContent = job.filename || "Uploaded source";
+    const badges = document.createElement("div");
+    badges.className = "job-badges";
+    badges.append(backgroundJobBadge(job.status || "unknown", job.status || "unknown"));
+    if (warnings.length > 0) {
+      badges.append(backgroundJobBadge("warnings", "warning"));
+    }
+    heading.append(title, badges);
+
+    const meta = document.createElement("span");
+    meta.className = "source-meta";
+    meta.textContent = [job.kind, formatDateTime(job.updated_at)].filter(Boolean).join(" · ");
+
+    const details = document.createElement("span");
+    details.className = "source-meta";
+    details.textContent = importJobMetadataDetails(job);
+
+    const artifacts = document.createElement("span");
+    artifacts.className = "source-meta";
+    artifacts.textContent = importJobArtifactDetails(job);
+
+    const backgroundJob = document.createElement("span");
+    backgroundJob.className = "source-meta";
+    backgroundJob.textContent = metadata.background_job_id
+      ? `background job: ${metadata.background_job_id}`
+      : "background job: not queued";
+
+    body.append(heading, meta, details, artifacts, backgroundJob);
+
+    if (warnings.length > 0) {
+      const warning = document.createElement("span");
+      warning.className = "job-detail is-warning";
+      warning.textContent = `warnings: ${warnings.join(", ")}`;
+      body.append(warning);
+    }
+    if (job.error) {
+      const error = document.createElement("span");
+      error.className = "job-detail is-danger";
+      error.textContent = `error: ${job.error}`;
+      body.append(error);
+    }
+
+    row.append(body);
+
+    if (job.status === "failed") {
+      const retry = document.createElement("button");
+      retry.type = "button";
+      retry.className = "secondary-button";
+      retry.textContent = "Retry";
+      retry.addEventListener("click", () => retryImportJob(job.id));
+      row.append(retry);
+    }
+
+    return row;
+  }
+
+  function importJobMetadataDetails(job) {
+    const metadata = job.metadata || {};
+    return [
+      `type: ${metadata.detected_file_type || metadata.extension || "--"}`,
+      metadata.content_type ? `content type: ${metadata.content_type}` : "content type: --",
+      `size: ${formatBytes(job.size_bytes)}`,
+      metadata.markdown_bytes ? `markdown: ${formatBytes(metadata.markdown_bytes)}` : null,
+      metadata.path_strategy ? `path: ${metadata.path_strategy}` : null,
+      metadata.processed_async ? "processed async" : null,
+      metadata.index_after_import === false ? "index disabled" : "index after import",
+      job.content_hash ? `hash: ${String(job.content_hash).slice(0, 12)}` : null,
+    ]
+      .filter(Boolean)
+      .join(" · ");
+  }
+
+  function importJobArtifactDetails(job) {
+    const metadata = job.metadata || {};
+    return [
+      metadata.original_filename ? `original: ${metadata.original_filename}` : null,
+      metadata.raw_filename ? `raw: ${metadata.raw_filename}` : null,
+      metadata.canonical_filename ? `canonical: ${metadata.canonical_filename}` : null,
+      !metadata.canonical_filename && job.canonical_path ? `canonical: ${job.canonical_path}` : null,
+    ]
+      .filter(Boolean)
+      .join(" · ") || "artifacts: --";
+  }
+
+  function importJobWarnings(job) {
+    const metadata = job.metadata || {};
+    return Array.isArray(metadata.import_warnings)
+      ? metadata.import_warnings.filter(Boolean).map(String)
+      : [];
   }
 
   async function refreshAuditEvents() {
@@ -1944,6 +2058,17 @@
       return "--";
     }
     return `${Math.round(number * 100)}%`;
+  }
+
+  function formatBytes(value) {
+    const number = Number(value);
+    if (!Number.isFinite(number) || number < 0) {
+      return "--";
+    }
+    if (number < 1024) {
+      return `${number} B`;
+    }
+    return `${(number / 1024).toFixed(1)} KB`;
   }
 
   function formatDateTime(value) {
