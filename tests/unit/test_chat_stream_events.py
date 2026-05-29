@@ -15,9 +15,11 @@ from app.api.chat import (
     ChatResponse,
     _chat_decision,
     _chat_response_events,
+    _retrieval_scores_payload,
     _validate_stream_request,
 )
 from app.api.search import RetrievalDiagnosticsResponse
+from app.retrieval.models import RetrievalDiagnostics
 
 
 def test_chat_stream_events_encode_not_indexed_response() -> None:
@@ -84,3 +86,34 @@ def test_validate_stream_request_preserves_missing_conversation_404() -> None:
         )
 
     assert exc_info.value.status_code == 404
+
+
+def test_retrieval_scores_payload_includes_provider_calls() -> None:
+    payload = _retrieval_scores_payload(
+        selected_candidates=[],
+        retrieval_diagnostics=RetrievalDiagnostics(
+            strategy="hybrid",
+            requested_limit=5,
+            score_threshold=0.05,
+        ),
+        answer_quality=AnswerQualityResponse(answer_valid=True),
+        provider_calls=[
+            {
+                "provider": "openai",
+                "operation": "chat.completions.stream",
+                "model": "gpt-test",
+                "status": "succeeded",
+                "usage": {
+                    "prompt_tokens": 30,
+                    "completion_tokens": 6,
+                    "total_tokens": 36,
+                    "cached_tokens": 4,
+                    "reasoning_tokens": 1,
+                },
+                "usage_complete": True,
+            }
+        ],
+    )
+
+    assert payload["provider_calls"][0]["model"] == "gpt-test"
+    assert payload["provider_calls"][0]["usage"]["total_tokens"] == 36

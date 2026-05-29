@@ -105,5 +105,6 @@ intentionally deferred until traffic or multi-replica deployment requires it.
 - Run Alembic migrations once per deploy, then run `make ops-check`.
 - Current real embedding contract is `text-embedding-3-small` with `KB_EMBEDDING_DIMENSION=768`.
 - Current OpenAI answer model default is `gpt-5.4-mini`; `/chat/stream` should forward provider streaming deltas and use the final `done.answer` as the validated persisted answer.
+- OpenAI provider controls are `KB_OPENAI_REQUEST_TIMEOUT_SECONDS`, `KB_OPENAI_MAX_RETRIES`, and `KB_OPENAI_CHAT_MAX_COMPLETION_TOKENS`; provider usage and error metadata should stay user-safe and be recorded through `/metrics` plus `RetrievalEvent.scores_json`.
 - If changing embedding model or dimension later, add a migration and rebuild the index.
 - Sample content lives in `sample-docs/`; do not treat it as production data.

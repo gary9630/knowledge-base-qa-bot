@@ -61,6 +61,8 @@ class OpenAIEmbeddingProvider(EmbeddingProvider):
         dimension: int = PGVECTOR_EMBEDDING_DIMENSION,
         *,
         client: object | None = None,
+        timeout_seconds: float = 30.0,
+        max_retries: int = 2,
     ) -> None:
         if dimension <= 0:
             raise ValueError("dimension must be positive")
@@ -69,7 +71,15 @@ class OpenAIEmbeddingProvider(EmbeddingProvider):
 
         self.model = model or DEFAULT_OPENAI_EMBEDDING_MODEL
         self.dimension = dimension
-        self._client: Any = client if client is not None else _openai_client(api_key)
+        self._client: Any = (
+            client
+            if client is not None
+            else _openai_client(
+                api_key,
+                timeout_seconds=timeout_seconds,
+                max_retries=max_retries,
+            )
+        )
 
     def embed_text(self, text: str) -> list[float]:
         return self.embed_texts([text])[0]
@@ -111,6 +121,8 @@ def create_embedding_provider(settings: Settings) -> EmbeddingProvider:
             api_key=settings.openai_api_key,
             model=settings.openai_embedding_model,
             dimension=settings.embedding_dimension,
+            timeout_seconds=settings.openai_request_timeout_seconds,
+            max_retries=settings.openai_max_retries,
         )
 
     raise ValueError(f"unsupported embedding provider: {settings.embedding_provider}")
@@ -120,10 +132,19 @@ def _tokenize(text: str) -> list[str]:
     return _TOKEN_RE.findall(text.casefold())
 
 
-def _openai_client(api_key: str | None) -> Any:
+def _openai_client(
+    api_key: str | None,
+    *,
+    timeout_seconds: float,
+    max_retries: int,
+) -> Any:
     from openai import OpenAI
 
-    return OpenAI(api_key=api_key)
+    return OpenAI(
+        api_key=api_key,
+        timeout=timeout_seconds,
+        max_retries=max_retries,
+    )
 
 
 def _extract_embedding_vectors(

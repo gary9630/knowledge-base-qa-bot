@@ -8,6 +8,7 @@ import pytest
 from app.answer.citations import CANNOT_CONFIRM_ANSWER, validate_citations
 from app.answer.providers import AnswerSource, FakeAnswerProvider
 from app.answer.service import AnswerService
+from app.provider_telemetry import ProviderCallContext, ProviderCallRecord
 from app.retrieval.models import RetrievedCandidate
 
 
@@ -363,7 +364,7 @@ def test_cannot_confirm_answer_with_no_citations_is_valid_with_sources_available
 def test_stream_answer_uses_provider_deltas_and_validates_final_answer() -> None:
     source = _candidate(source_id="faq.md#course-site")
     provider = StreamingAnswerProvider(["Course ", "site. [faq.md#course-site]"])
-    service = AnswerService(provider)
+    service = AnswerService(provider, client_request_id="request-123")
 
     tokens = list(service.stream_answer("Where is the course site?", [source]))
     result = service.validate_generated_answer("".join(tokens), [source])
@@ -372,7 +373,10 @@ def test_stream_answer_uses_provider_deltas_and_validates_final_answer() -> None
     assert result.answer == "Course site. [faq.md#course-site]"
     assert result.valid
     assert [answer_source.source_id for answer_source in result.sources] == [source.source_id]
-    assert provider.stream_calls == [(False, ("faq.md#course-site",))]
+    assert provider.stream_calls == [
+        (False, ("faq.md#course-site",), "request-123")
+    ]
+    assert service.provider_call_payloads()[0]["client_request_id"] == "request-123-1"
 
 
 def test_validate_generated_stream_answer_downgrades_invalid_citations() -> None:
@@ -417,7 +421,7 @@ def _candidate(
 class StreamingAnswerProvider:
     def __init__(self, tokens: Sequence[str]) -> None:
         self._tokens = list(tokens)
-        self.stream_calls: list[tuple[bool, tuple[str, ...]]] = []
+        self.stream_calls: list[tuple[bool, tuple[str, ...], str | None]] = []
 
     def generate_answer(
         self,
@@ -435,5 +439,28 @@ class StreamingAnswerProvider:
         *,
         strict: bool = False,
     ) -> Iterator[str]:
-        self.stream_calls.append((strict, tuple(source.source_id for source in sources)))
+        self.stream_calls.append((strict, tuple(source.source_id for source in sources), None))
+        yield from self._tokens
+
+    def stream_answer_with_context(
+        self,
+        query: str,
+        sources: Sequence[AnswerSource],
+        *,
+        strict: bool = False,
+        context: ProviderCallContext,
+    ) -> Iterator[str]:
+        self.stream_calls.append(
+            (strict, tuple(source.source_id for source in sources), context.client_request_id)
+        )
+        context.record(
+            ProviderCallRecord(
+                provider="openai",
+                operation="chat.completions.stream",
+                model="gpt-test",
+                status="succeeded",
+                client_request_id=context.next_client_request_id(),
+                usage_complete=False,
+            )
+        )
         yield from self._tokens

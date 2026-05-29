@@ -83,6 +83,9 @@ Settings use the `KB_` prefix unless noted.
 | `OPENAI_API_KEY` | unset | Required by OpenAI providers. |
 | `KB_OPENAI_EMBEDDING_MODEL` | unset | Optional OpenAI embedding model override. |
 | `KB_OPENAI_CHAT_MODEL` | unset | Optional OpenAI chat model override; defaults to `gpt-5.4-mini` when unset. |
+| `KB_OPENAI_REQUEST_TIMEOUT_SECONDS` | `30.0` | OpenAI SDK request timeout for embedding and answer providers. |
+| `KB_OPENAI_MAX_RETRIES` | `2` | OpenAI SDK retry count for transient provider errors. |
+| `KB_OPENAI_CHAT_MAX_COMPLETION_TOKENS` | `1024` | Maximum answer output tokens for OpenAI chat completions. |
 | `KB_EMBEDDING_DIMENSION` | `768` | Embedding vector dimension used by the database schema/provider. |
 | `KB_DEFAULT_RETRIEVAL_STRATEGY` | `hybrid` | Default retrieval mode. |
 | `KB_POSTGRES_PORT` | `5432` | Host port for Compose Postgres. |

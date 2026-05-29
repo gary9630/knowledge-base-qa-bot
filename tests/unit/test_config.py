@@ -11,6 +11,9 @@ _SETTINGS_ENV_KEYS = (
     "KB_OPENAI_API_KEY",
     "KB_OPENAI_EMBEDDING_MODEL",
     "KB_OPENAI_CHAT_MODEL",
+    "KB_OPENAI_REQUEST_TIMEOUT_SECONDS",
+    "KB_OPENAI_MAX_RETRIES",
+    "KB_OPENAI_CHAT_MAX_COMPLETION_TOKENS",
     "KB_PLATFORM_COHORTS",
     "KB_PLATFORM_EXTRA_VISIBILITY_LABELS",
     "KB_ADMIN_API_KEY",
@@ -170,6 +173,28 @@ def test_settings_blank_optional_env_values_are_ignored(
     assert settings.openai_api_key is None
     assert settings.openai_embedding_model is None
     assert settings.openai_chat_model is None
+
+
+def test_settings_openai_reliability_defaults_are_production_safe() -> None:
+    settings = Settings()
+
+    assert settings.openai_request_timeout_seconds == 30.0
+    assert settings.openai_max_retries == 2
+    assert settings.openai_chat_max_completion_tokens == 1024
+
+
+def test_settings_openai_reliability_values_can_be_overridden_by_env(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("KB_OPENAI_REQUEST_TIMEOUT_SECONDS", "12.5")
+    monkeypatch.setenv("KB_OPENAI_MAX_RETRIES", "4")
+    monkeypatch.setenv("KB_OPENAI_CHAT_MAX_COMPLETION_TOKENS", "321")
+
+    settings = Settings()
+
+    assert settings.openai_request_timeout_seconds == 12.5
+    assert settings.openai_max_retries == 4
+    assert settings.openai_chat_max_completion_tokens == 321
 
 
 def test_settings_openai_api_key_can_be_set_by_constructor() -> None:

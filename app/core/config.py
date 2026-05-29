@@ -47,4 +47,7 @@ class Settings(BaseSettings):
     )
     openai_embedding_model: str | None = None
     openai_chat_model: str | None = None
+    openai_request_timeout_seconds: float = Field(default=30.0, gt=0)
+    openai_max_retries: int = Field(default=2, ge=0)
+    openai_chat_max_completion_tokens: int = Field(default=1024, ge=1)
     embedding_dimension: int = PGVECTOR_EMBEDDING_DIMENSION

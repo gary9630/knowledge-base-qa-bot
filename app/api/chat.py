@@ -29,7 +29,9 @@ from app.api.search import (
     retrieval_diagnostics_response,
 )
 from app.models.tables import Conversation, Message, RetrievalEvent
+from app.observability.metrics import InMemoryMetrics
 from app.observability.middleware import mark_stream_error
+from app.provider_telemetry import ProviderCallRecord
 from app.retrieval.hybrid import HybridRetriever
 from app.retrieval.models import (
     RetrievalDecision,
@@ -143,6 +145,7 @@ def _build_chat_response(
             retrieval_diagnostics=retrieval_diagnostics,
             answer_quality=answer_quality,
             latency_ms=_elapsed_ms(started_at),
+            provider_calls=[],
         )
 
     retriever = HybridRetriever(
@@ -159,6 +162,7 @@ def _build_chat_response(
     answer_result = _answer_provider_error_response(
         provider=get_answer_provider(request),
         payload=payload,
+        request=request,
         candidates=retrieval_result.candidates,
     )
     cited_source_ids = {source.source_id for source in answer_result.sources}
@@ -185,6 +189,7 @@ def _build_chat_response(
         retrieval_diagnostics=retrieval_result.diagnostics,
         answer_quality=answer_quality,
         latency_ms=_elapsed_ms(started_at),
+        provider_calls=answer_result.provider_calls,
     )
 
 
@@ -193,11 +198,19 @@ def _answer_provider_error_response(
     provider: AnswerProvider,
     payload: ChatRequest,
     candidates: list[RetrievedCandidate],
+    request: Request | None = None,
 ) -> AnswerResult:
+    answer_service = AnswerService(
+        provider,
+        client_request_id=_request_id_from_request(request),
+    )
     try:
-        return AnswerService(provider).answer(payload.query, candidates)
+        answer_result = answer_service.answer(payload.query, candidates)
     except Exception as error:
+        _record_provider_call_records(request, answer_service.provider_call_records())
         raise HTTPException(status_code=502, detail="Answer provider failed.") from error
+    _record_provider_call_records(request, answer_service.provider_call_records())
+    return answer_result
 
 
 def _chat_decision(
@@ -309,6 +322,7 @@ def _unsafe_chat_stream_response_events(
             retrieval_diagnostics=retrieval_diagnostics,
             answer_quality=answer_quality,
             latency_ms=_elapsed_ms(started_at),
+            provider_calls=[],
         )
         yield from _chat_response_events(response)
         return
@@ -336,6 +350,7 @@ def _unsafe_chat_stream_response_events(
     yield from _stream_answer_response_events(
         provider=get_answer_provider(request),
         payload=payload,
+        request=request,
         session=session,
         conversation=conversation,
         user_message=user_message,
@@ -348,13 +363,17 @@ def _stream_answer_response_events(
     *,
     provider: AnswerProvider,
     payload: ChatRequest,
+    request: Request,
     session: Session,
     conversation: Conversation,
     user_message: Message,
     retrieval_result: RetrievalResult,
     started_at: float,
 ) -> Iterator[dict[str, str]]:
-    answer_service = AnswerService(provider)
+    answer_service = AnswerService(
+        provider,
+        client_request_id=_request_id_from_request(request),
+    )
     answer_parts: list[str] = []
 
     try:
@@ -367,7 +386,9 @@ def _stream_answer_response_events(
             retrieval_result.candidates,
         )
     except Exception as error:
+        _record_provider_call_records(request, answer_service.provider_call_records())
         raise HTTPException(status_code=502, detail="Answer provider failed.") from error
+    _record_provider_call_records(request, answer_service.provider_call_records())
 
     cited_source_ids = {source.source_id for source in answer_result.sources}
     cited_candidates = [
@@ -392,6 +413,7 @@ def _stream_answer_response_events(
         retrieval_diagnostics=retrieval_result.diagnostics,
         answer_quality=answer_quality,
         latency_ms=_elapsed_ms(started_at),
+        provider_calls=answer_result.provider_calls,
     )
     yield _done_event(response)
 
@@ -489,6 +511,7 @@ def _persist_chat_response(
     retrieval_diagnostics: RetrievalDiagnostics,
     answer_quality: AnswerQualityResponse,
     latency_ms: int,
+    provider_calls: list[dict[str, object]],
 ) -> ChatResponse:
     source_responses = [candidate_response(candidate) for candidate in cited_candidates]
     selected_source_responses = [
@@ -513,6 +536,7 @@ def _persist_chat_response(
             selected_candidates=selected_candidates,
             retrieval_diagnostics=retrieval_diagnostics,
             answer_quality=answer_quality,
+            provider_calls=provider_calls,
         ),
         decision=decision,
         latency_ms=latency_ms,
@@ -543,6 +567,7 @@ def _retrieval_scores_payload(
     selected_candidates: list[RetrievedCandidate],
     retrieval_diagnostics: RetrievalDiagnostics,
     answer_quality: AnswerQualityResponse,
+    provider_calls: list[dict[str, object]],
 ) -> dict[str, Any]:
     return {
         "scores_by_source_id": {
@@ -552,7 +577,29 @@ def _retrieval_scores_payload(
             retrieval_diagnostics
         ).model_dump(mode="json"),
         "answer_quality": answer_quality.model_dump(mode="json"),
+        "provider_calls": provider_calls,
     }
+
+
+def _request_id_from_request(request: Request | None) -> str | None:
+    if request is None:
+        return None
+    request_id = getattr(request.state, "request_id", None)
+    return request_id if isinstance(request_id, str) else None
+
+
+def _record_provider_call_records(
+    request: Request | None,
+    records: list[ProviderCallRecord],
+) -> None:
+    if request is None or not records:
+        return
+    metrics = getattr(request.app.state, "metrics", None)
+    if not isinstance(metrics, InMemoryMetrics):
+        metrics = InMemoryMetrics()
+        request.app.state.metrics = metrics
+    for record in records:
+        metrics.record_provider_call(record)
 
 
 def _elapsed_ms(started_at: float) -> int:
