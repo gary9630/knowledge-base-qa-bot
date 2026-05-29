@@ -28,7 +28,7 @@ class RecordingEmbeddingProvider:
 
 
 def test_vector_search_embeds_stripped_natural_query_before_db_access() -> None:
-    provider = RecordingEmbeddingProvider([0.0] * 1536)
+    provider = RecordingEmbeddingProvider([0.0] * 768)
     retriever = VectorRetriever(
         session=cast(Session, NoExecuteSession()),
         embedding_provider=provider,
@@ -47,7 +47,7 @@ def test_vector_search_rejects_wrong_embedding_dimension_before_db_access() -> N
         embedding_provider=provider,
     )
 
-    with pytest.raises(ValueError, match="expected 1536 dimensions"):
+    with pytest.raises(ValueError, match="expected 768 dimensions"):
         retriever.search("課程網站在哪？", limit=3)
 
     assert provider.calls == ["課程網站在哪？"]

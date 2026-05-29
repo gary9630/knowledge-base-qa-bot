@@ -356,6 +356,17 @@ def test_import_file_dispatches_by_extension() -> None:
     assert "Line one\n\nLine two" in markdown
 
 
+def test_import_file_dispatches_markdown_long_extension() -> None:
+    markdown = import_file_to_markdown(
+        "notes.markdown",
+        b"# Notes\n\nBody",
+        imported_at=IMPORTED_AT,
+    )
+
+    assert "source_original: raw/notes.markdown" in markdown
+    assert "# Notes\n\nBody" in markdown
+
+
 def test_import_file_decodes_utf8_sig_text_without_bom() -> None:
     markdown = import_file_to_markdown("bom.txt", b"\xef\xbb\xbfBody", imported_at=IMPORTED_AT)
 

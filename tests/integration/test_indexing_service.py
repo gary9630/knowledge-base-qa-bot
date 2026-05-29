@@ -2,7 +2,7 @@ from collections.abc import Sequence
 from pathlib import Path
 
 import pytest
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session
 
 from app.indexing.service import IndexingService
@@ -27,7 +27,7 @@ class WrongDimensionEmbeddingProvider:
 
 
 class CountingEmbeddingProvider(FakeEmbeddingProvider):
-    def __init__(self, dimension: int = 1536) -> None:
+    def __init__(self, dimension: int = 768) -> None:
         super().__init__(dimension=dimension)
         self.calls: list[str] = []
 
@@ -52,7 +52,7 @@ def test_indexing_service_writes_documents_sections_chunks_and_export(
         session=db_session,
         docs_dir=docs_dir,
         kb_dir=kb_dir,
-        embedding_provider=FakeEmbeddingProvider(dimension=1536),
+        embedding_provider=FakeEmbeddingProvider(dimension=768),
     )
 
     result = service.rebuild_index()
@@ -126,7 +126,7 @@ def test_indexing_service_rejects_active_session_transaction(
         session=db_session,
         docs_dir=docs_dir,
         kb_dir=tmp_path / ".kb",
-        embedding_provider=FakeEmbeddingProvider(dimension=1536),
+        embedding_provider=FakeEmbeddingProvider(dimension=768),
     )
 
     db_session.execute(select(Document))
@@ -155,7 +155,7 @@ def test_indexing_service_rejects_wrong_embedding_dimension_before_export(
         embedding_provider=WrongDimensionEmbeddingProvider(),
     )
 
-    with pytest.raises(ValueError, match="expected 1536 dimensions"):
+    with pytest.raises(ValueError, match="expected 768 dimensions"):
         service.rebuild_index()
 
     assert db_session.scalar(select(func.count()).select_from(Document)) == 0
@@ -196,7 +196,7 @@ def test_indexing_service_repairs_duplicate_documents_by_filename(
         session=db_session,
         docs_dir=docs_dir,
         kb_dir=kb_dir,
-        embedding_provider=FakeEmbeddingProvider(dimension=1536),
+        embedding_provider=FakeEmbeddingProvider(dimension=768),
     )
 
     result = service.rebuild_index()
@@ -229,7 +229,7 @@ def test_indexing_service_persists_imported_document_provenance(
         session=db_session,
         docs_dir=docs_dir,
         kb_dir=tmp_path / ".kb",
-        embedding_provider=FakeEmbeddingProvider(dimension=1536),
+        embedding_provider=FakeEmbeddingProvider(dimension=768),
     )
 
     service.rebuild_index()
@@ -270,7 +270,7 @@ def test_indexing_service_missing_docs_dir_does_not_delete_existing_state(
         session=db_session,
         docs_dir=docs_dir,
         kb_dir=kb_dir,
-        embedding_provider=FakeEmbeddingProvider(dimension=1536),
+        embedding_provider=FakeEmbeddingProvider(dimension=768),
     )
 
     with pytest.raises(FileNotFoundError, match="docs_dir does not exist"):
@@ -293,7 +293,7 @@ def test_indexing_service_splits_long_sections_into_ordered_chunks(
         session=db_session,
         docs_dir=docs_dir,
         kb_dir=tmp_path / ".kb",
-        embedding_provider=FakeEmbeddingProvider(dimension=1536),
+        embedding_provider=FakeEmbeddingProvider(dimension=768),
         chunk_token_limit=10,
         chunk_overlap=2,
     )
@@ -317,7 +317,7 @@ def test_indexing_service_reuses_unchanged_chunk_embeddings_on_rebuild(
         "reuse.md",
         "# Reuse\n\nalpha beta gamma delta epsilon zeta eta theta iota kappa lambda\n",
     )
-    provider = CountingEmbeddingProvider(dimension=1536)
+    provider = CountingEmbeddingProvider(dimension=768)
     service = IndexingService(
         session=db_session,
         docs_dir=docs_dir,
@@ -340,6 +340,42 @@ def test_indexing_service_reuses_unchanged_chunk_embeddings_on_rebuild(
     assert jobs[-1].stats_json["chunks_embedded"] == 0
 
 
+def test_indexing_service_reembeds_unchanged_chunks_when_embeddings_are_missing(
+    db_session: Session,
+    tmp_path: Path,
+) -> None:
+    docs_dir = _docs_dir_with_file(
+        tmp_path,
+        "missing-embeddings.md",
+        "# Missing Embeddings\n\nalpha beta gamma delta epsilon zeta eta theta iota kappa lambda\n",
+    )
+    provider = CountingEmbeddingProvider(dimension=768)
+    service = IndexingService(
+        session=db_session,
+        docs_dir=docs_dir,
+        kb_dir=tmp_path / ".kb",
+        embedding_provider=provider,
+        chunk_token_limit=6,
+        chunk_overlap=1,
+    )
+    first_result = service.rebuild_index()
+    assert first_result.chunks_indexed == 3
+
+    provider.calls.clear()
+    db_session.execute(update(Chunk).values(embedding=None))
+    db_session.commit()
+
+    second_result = service.rebuild_index()
+
+    chunks = db_session.scalars(select(Chunk)).all()
+    jobs = db_session.scalars(select(IndexingJob).order_by(IndexingJob.created_at.asc())).all()
+    assert second_result.chunks_indexed == 3
+    assert all(chunk.embedding is not None for chunk in chunks)
+    assert len(provider.calls) == 3
+    assert jobs[-1].stats_json["chunks_reused"] == 0
+    assert jobs[-1].stats_json["chunks_embedded"] == 3
+
+
 def test_indexing_service_preserves_unchanged_section_and_chunk_identity_on_rebuild(
     db_session: Session,
     tmp_path: Path,
@@ -349,7 +385,7 @@ def test_indexing_service_preserves_unchanged_section_and_chunk_identity_on_rebu
         "stable.md",
         "# Stable\n\nalpha beta gamma delta\n",
     )
-    provider = CountingEmbeddingProvider(dimension=1536)
+    provider = CountingEmbeddingProvider(dimension=768)
     service = IndexingService(
         session=db_session,
         docs_dir=docs_dir,
@@ -388,7 +424,7 @@ def test_indexing_service_rechunks_when_chunk_settings_change(
         "settings.md",
         "# Settings\n\nalpha beta gamma delta epsilon zeta eta theta iota kappa lambda\n",
     )
-    provider = CountingEmbeddingProvider(dimension=1536)
+    provider = CountingEmbeddingProvider(dimension=768)
     first_service = IndexingService(
         session=db_session,
         docs_dir=docs_dir,

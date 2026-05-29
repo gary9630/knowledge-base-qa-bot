@@ -212,6 +212,9 @@ tempCodeRunnerFile.py
 # Local backup artifacts
 backups/
 
+# Local knowledge-base runtime artifacts
+.kb/
+
 # PyPI configuration file
 .pypirc
 

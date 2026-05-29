@@ -83,7 +83,7 @@ Settings use the `KB_` prefix unless noted.
 | `OPENAI_API_KEY` | unset | Required by OpenAI providers. |
 | `KB_OPENAI_EMBEDDING_MODEL` | unset | Optional OpenAI embedding model override. |
 | `KB_OPENAI_CHAT_MODEL` | unset | Optional OpenAI chat model override. |
-| `KB_EMBEDDING_DIMENSION` | `1536` | Embedding vector dimension used by the database schema/provider. |
+| `KB_EMBEDDING_DIMENSION` | `768` | Embedding vector dimension used by the database schema/provider. |
 | `KB_DEFAULT_RETRIEVAL_STRATEGY` | `hybrid` | Default retrieval mode. |
 | `KB_POSTGRES_PORT` | `5432` | Host port for Compose Postgres. |
 
@@ -95,9 +95,13 @@ Seed Markdown locally:
 uv run --python 3.12 python -m scripts.seed_sample_docs
 ```
 
-Upload PDF, Markdown, text, or HTML. Uploads return `202 Accepted` after the raw artifact
-and queued import job are saved; the background worker converts the file to canonical
-Markdown and then queues an index rebuild:
+Upload PDF, Markdown, text, or HTML. Supported extensions are `.pdf`, `.md`,
+`.markdown`, `.txt`, `.html`, and `.htm`. Uploads return `202 Accepted` after the raw
+artifact and queued import job are saved; the background worker converts the file to
+canonical Markdown and then queues an index rebuild. The app rejects empty uploads,
+unsupported extensions, obvious content-type mismatches, invalid PDF signatures,
+HTML files without recognizable markup, and binary-looking text before writing raw
+artifacts.
 
 ```bash
 curl -H "X-KB-Admin-Key: $KB_ADMIN_API_KEY" \
@@ -108,6 +112,11 @@ make worker-once
 curl -H "X-KB-Admin-Key: $KB_ADMIN_API_KEY" \
   -X POST http://localhost:8000/imports/<job-id>/retry
 ```
+
+Identical uploads deduplicate by content hash. Same filename with different content is
+stored as a new version using a content-hash suffix such as `notes-a1b2c3d4e5f6.md`.
+Import job metadata includes the detected file type, original filename, artifact filenames,
+path strategy, warnings, and generated Markdown size.
 
 Rebuild the DB index from `docs/` synchronously:
 
@@ -282,8 +291,9 @@ durable mounted storage or managed object storage, and verify those paths throug
 Set `KB_AUTH_SECRET_KEY`, `KB_PLATFORM_USERNAME`,
 `KB_PLATFORM_PASSWORD`, and `KB_ADMIN_API_KEY`; production/staging fail closed when platform
 auth is incomplete. Keep the platform login separate from admin access, and do not expose
-admin endpoints publicly without the admin key or an authenticated gateway. Use OpenAI or
-another production embedding provider with a stable vector dimension before indexing production data.
+admin endpoints publicly without the admin key or an authenticated gateway. The current
+production embedding contract is `text-embedding-3-small` with 768-dimensional pgvector
+rows; re-run migrations and rebuild the index before changing that contract.
 Wire application logs to the hosting provider's log sink and run `make ops-check` after each
 deploy. Tune the built-in rate limits and source-level access labels before exposing the
 app publicly.

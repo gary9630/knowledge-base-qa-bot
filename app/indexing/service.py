@@ -21,9 +21,9 @@ from app.indexing.export import (
 from app.indexing.frontmatter import parse_product_frontmatter
 from app.indexing.markdown_parser import ParsedSection, parse_markdown_sections
 from app.models.tables import Chunk, Document, IndexingJob, Section
+from app.retrieval.dimensions import PGVECTOR_EMBEDDING_DIMENSION
 from app.retrieval.embeddings import EmbeddingProvider
 
-PGVECTOR_EMBEDDING_DIMENSION = 1536
 DEFAULT_CHUNK_TOKEN_LIMIT = 420
 DEFAULT_CHUNK_OVERLAP = 64
 
@@ -255,7 +255,13 @@ class IndexingService:
 
             existing_chunk_count = self._count_section_chunks(section.id)
             chunk_settings_current = self._section_chunk_settings_match(section.id)
-            if section_unchanged and existing_chunk_count > 0 and chunk_settings_current:
+            chunk_embeddings_present = self._section_chunk_embeddings_present(section.id)
+            if (
+                section_unchanged
+                and existing_chunk_count > 0
+                and chunk_settings_current
+                and chunk_embeddings_present
+            ):
                 chunk_result = _ChunkBuildResult(
                     chunks_indexed=existing_chunk_count,
                     chunks_embedded=0,
@@ -426,6 +432,19 @@ class IndexingService:
             and metadata.get("chunk_overlap") == self.chunk_overlap
             for metadata in metadata_rows
         )
+
+    def _section_chunk_embeddings_present(self, section_id: UUID) -> bool:
+        total_count = self._count_section_chunks(section_id)
+        if total_count == 0:
+            return False
+
+        embedded_count = self.session.scalar(
+            select(func.count())
+            .select_from(Chunk)
+            .where(Chunk.section_id == section_id)
+            .where(Chunk.embedding.is_not(None))
+        )
+        return int(embedded_count or 0) == total_count
 
     def _get_canonical_document(self, filename: str) -> Document | None:
         documents = self.session.scalars(

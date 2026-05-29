@@ -1,6 +1,8 @@
 from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from app.retrieval.dimensions import PGVECTOR_EMBEDDING_DIMENSION
+
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
@@ -45,4 +47,4 @@ class Settings(BaseSettings):
     )
     openai_embedding_model: str | None = None
     openai_chat_model: str | None = None
-    embedding_dimension: int = 1536
+    embedding_dimension: int = PGVECTOR_EMBEDDING_DIMENSION

@@ -25,6 +25,7 @@ _SETTINGS_ENV_KEYS = (
     "KB_BACKGROUND_JOB_STALE_AFTER_SECONDS",
     "KB_BACKGROUND_JOB_RETRY_BASE_DELAY_SECONDS",
     "KB_BACKGROUND_JOB_RETRY_MAX_DELAY_SECONDS",
+    "KB_EMBEDDING_DIMENSION",
 )
 
 
@@ -49,6 +50,12 @@ def test_settings_support_fake_providers_for_tests() -> None:
 
     assert settings.embedding_provider == "fake"
     assert settings.answer_provider == "fake"
+
+
+def test_settings_default_embedding_dimension_matches_schema() -> None:
+    settings = Settings()
+
+    assert settings.embedding_dimension == 768
 
 
 def test_settings_rate_limit_defaults_are_production_safe() -> None:
@@ -172,7 +179,10 @@ def test_settings_openai_api_key_can_be_set_by_constructor() -> None:
 
 
 def test_app_rejects_embedding_dimension_that_does_not_match_schema() -> None:
-    settings = Settings(embedding_dimension=768)
+    settings = Settings(embedding_dimension=1536)
 
-    with pytest.raises(ValueError, match="embedding_dimension must match database schema"):
+    with pytest.raises(
+        ValueError,
+        match="embedding_dimension must match database schema \\(768\\)",
+    ):
         create_app(settings=settings)

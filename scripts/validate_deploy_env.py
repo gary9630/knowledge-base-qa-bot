@@ -6,6 +6,8 @@ import sys
 from collections.abc import Mapping
 from pathlib import PurePosixPath
 
+from app.retrieval.dimensions import PGVECTOR_EMBEDDING_DIMENSION
+
 REQUIRED_SETTINGS = (
     "KB_APP_ENV",
     "KB_AUTH_SECRET_KEY",
@@ -65,8 +67,11 @@ def collect_deploy_env_errors(
     if None not in runtime_paths and "" not in runtime_paths and len(runtime_paths) < 3:
         errors.append("KB_DOCS_DIR, KB_RAW_DIR, and KB_KB_DIR must be distinct paths.")
 
-    if env.get("KB_EMBEDDING_DIMENSION") != "1536":
-        errors.append("KB_EMBEDDING_DIMENSION must be 1536 for the current schema.")
+    expected_dimension = str(PGVECTOR_EMBEDDING_DIMENSION)
+    if env.get("KB_EMBEDDING_DIMENSION") != expected_dimension:
+        errors.append(
+            f"KB_EMBEDDING_DIMENSION must be {expected_dimension} for the current schema."
+        )
 
     for key in ("KB_EMBEDDING_PROVIDER", "KB_ANSWER_PROVIDER"):
         provider = env.get(key, "")

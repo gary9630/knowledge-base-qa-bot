@@ -21,7 +21,7 @@ def import_file_to_markdown(
 ) -> str:
     suffix = Path(filename).suffix.lower()
 
-    if suffix == ".md":
+    if suffix in {".md", ".markdown"}:
         return import_markdown_to_markdown(
             filename,
             _decode_text_body(body),
@@ -37,7 +37,7 @@ def import_file_to_markdown(
             content_hash=content_hash,
             canonical_path=canonical_path,
         )
-    if suffix == ".html":
+    if suffix in {".html", ".htm"}:
         return import_html_to_markdown(
             filename,
             _decode_text_body(body),

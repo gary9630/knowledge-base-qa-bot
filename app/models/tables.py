@@ -12,6 +12,7 @@ from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
+from app.retrieval.dimensions import PGVECTOR_EMBEDDING_DIMENSION
 
 
 def default_visibility() -> list[str]:
@@ -154,7 +155,7 @@ class Chunk(JsonDefaultsMixin, TimestampMixin, Base):
     chunk_index: Mapped[int] = mapped_column(Integer, nullable=False)
     body_text: Mapped[str] = mapped_column(Text, nullable=False)
     token_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
-    embedding: Mapped[list[float] | None] = mapped_column(Vector(1536))
+    embedding: Mapped[list[float] | None] = mapped_column(Vector(PGVECTOR_EMBEDDING_DIMENSION))
     content_hash: Mapped[str] = mapped_column(Text, nullable=False, index=True)
     metadata_json: Mapped[dict[str, Any]] = mapped_column(
         "metadata",

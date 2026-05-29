@@ -12,14 +12,14 @@ def _dot(first: list[float], second: list[float]) -> float:
     return sum(left * right for left, right in zip(first, second, strict=True))
 
 
-def test_fake_embedding_provider_is_deterministic_and_1536_dimensional() -> None:
-    provider = FakeEmbeddingProvider(dimension=1536)
+def test_fake_embedding_provider_is_deterministic_and_768_dimensional() -> None:
+    provider = FakeEmbeddingProvider(dimension=768)
 
     first = provider.embed_text("consistent hashing")
     second = provider.embed_text("consistent hashing")
 
     assert first == second
-    assert len(first) == 1536
+    assert len(first) == 768
     assert any(value != 0 for value in first)
 
 

@@ -1,16 +1,17 @@
 from __future__ import annotations
 
+from hashlib import sha256
 from pathlib import Path
 
 import pytest
 
 from app.ingestion import pipeline as pipeline_module
 from app.ingestion.pipeline import (
-    IngestionDestinationConflictError,
     IngestionPipeline,
     IngestionRetryNotAllowedError,
     InMemoryIngestionJobStore,
 )
+from app.ingestion.validation import IngestionValidationError
 
 IMPORTED_AT = "2026-05-26T12:00:00+00:00"
 
@@ -101,6 +102,105 @@ def test_async_ingestion_deduplicates_same_content_while_original_is_queued(
     assert second.job.metadata["duplicate_of"] == str(first.job.id)
     assert not (tmp_path / "raw" / "copy.txt").exists()
     assert not (tmp_path / "docs" / "copy.md").exists()
+
+
+def test_queue_upload_rejects_empty_files_before_raw_write(tmp_path: Path) -> None:
+    store = InMemoryIngestionJobStore()
+    pipeline = IngestionPipeline(
+        store=store,
+        raw_dir=tmp_path / "raw",
+        docs_dir=tmp_path / "docs",
+    )
+
+    with pytest.raises(IngestionValidationError, match="empty"):
+        pipeline.queue_upload(
+            filename="empty.txt",
+            content_type="text/plain",
+            body=b"",
+        )
+
+    assert store.list_recent(limit=1) == []
+    assert not (tmp_path / "raw").exists()
+
+
+def test_queue_upload_rejects_pdf_without_pdf_signature(tmp_path: Path) -> None:
+    store = InMemoryIngestionJobStore()
+    pipeline = IngestionPipeline(
+        store=store,
+        raw_dir=tmp_path / "raw",
+        docs_dir=tmp_path / "docs",
+    )
+
+    with pytest.raises(IngestionValidationError, match="PDF"):
+        pipeline.queue_upload(
+            filename="guide.pdf",
+            content_type="application/pdf",
+            body=b"not a pdf",
+        )
+
+    assert store.list_recent(limit=1) == []
+    assert not (tmp_path / "raw").exists()
+
+
+def test_async_ingestion_versions_same_filename_with_different_content(
+    tmp_path: Path,
+) -> None:
+    store = InMemoryIngestionJobStore()
+    pipeline = IngestionPipeline(
+        store=store,
+        raw_dir=tmp_path / "raw",
+        docs_dir=tmp_path / "docs",
+    )
+
+    first = pipeline.queue_upload(
+        filename="guide.txt",
+        content_type="text/plain",
+        body=b"First body",
+    )
+    second_body = b"Different body"
+    second = pipeline.queue_upload(
+        filename="guide.txt",
+        content_type="text/plain",
+        body=second_body,
+    )
+    expected_suffix = sha256(second_body).hexdigest()[:12]
+
+    assert first.job.status == "queued"
+    assert second.job.status == "queued"
+    assert second.job.raw_path is not None
+    assert second.job.canonical_path is not None
+    assert Path(second.job.raw_path).name == f"guide-{expected_suffix}.txt"
+    assert Path(second.job.canonical_path).name == f"guide-{expected_suffix}.md"
+    assert Path(second.job.raw_path).read_bytes() == second_body
+    assert second.job.metadata["path_strategy"] == "content_hash_suffix"
+    assert second.job.metadata["original_filename"] == "guide.txt"
+    assert second.job.metadata["raw_filename"] == f"guide-{expected_suffix}.txt"
+    assert second.job.metadata["canonical_filename"] == f"guide-{expected_suffix}.md"
+
+
+def test_run_queued_job_records_conversion_diagnostics(tmp_path: Path) -> None:
+    store = InMemoryIngestionJobStore()
+    pipeline = IngestionPipeline(
+        store=store,
+        raw_dir=tmp_path / "raw",
+        docs_dir=tmp_path / "docs",
+    )
+    queued = pipeline.queue_upload(
+        filename="guide.txt",
+        content_type="text/plain",
+        body=b"Question\n\nAnswer",
+    )
+
+    result = pipeline.run_queued_job(job_id=queued.job.id, imported_at=IMPORTED_AT)
+
+    assert result.job.status == "succeeded"
+    assert result.job.metadata["detected_file_type"] == "text"
+    assert result.job.metadata["original_filename"] == "guide.txt"
+    assert result.job.metadata["canonical_filename"] == "guide.md"
+    assert result.job.metadata["raw_filename"] == "guide.txt"
+    assert isinstance(result.job.metadata["markdown_bytes"], int)
+    assert result.job.metadata["markdown_bytes"] > 0
+    assert result.job.metadata["processed_async"] is True
 
 
 def test_async_ingestion_only_processes_queued_jobs(tmp_path: Path) -> None:
@@ -249,7 +349,7 @@ def test_ingestion_pipeline_retry_marks_missing_raw_artifact_as_failed(
     assert "FileNotFoundError" in (retried_job.error or "")
 
 
-def test_ingestion_pipeline_rejects_same_destination_with_different_content(
+def test_ingestion_pipeline_versions_same_destination_with_different_content(
     tmp_path: Path,
 ) -> None:
     store = InMemoryIngestionJobStore()
@@ -264,13 +364,20 @@ def test_ingestion_pipeline_rejects_same_destination_with_different_content(
         body=b"First body",
         imported_at=IMPORTED_AT,
     )
+    second_body = b"Different body"
 
-    with pytest.raises(IngestionDestinationConflictError):
-        pipeline.import_upload(
-            filename="guide.txt",
-            content_type="text/plain",
-            body=b"Different body",
-            imported_at=IMPORTED_AT,
-        )
+    second = pipeline.import_upload(
+        filename="guide.txt",
+        content_type="text/plain",
+        body=second_body,
+        imported_at=IMPORTED_AT,
+    )
+    expected_suffix = sha256(second_body).hexdigest()[:12]
 
-    assert store.list_recent(limit=1)[0].status == "failed"
+    assert second.job.status == "succeeded"
+    assert second.job.raw_path is not None
+    assert second.job.canonical_path is not None
+    assert Path(second.job.raw_path).name == f"guide-{expected_suffix}.txt"
+    assert Path(second.job.canonical_path).name == f"guide-{expected_suffix}.md"
+    assert Path(second.job.raw_path).read_bytes() == second_body
+    assert Path(second.job.canonical_path).exists()

@@ -5,6 +5,7 @@ from math import sqrt
 from typing import Any, Protocol
 
 from app.core.config import Settings
+from app.retrieval.dimensions import PGVECTOR_EMBEDDING_DIMENSION
 
 DEFAULT_OPENAI_EMBEDDING_MODEL = "text-embedding-3-small"
 _BUCKETS_PER_TOKEN = 4
@@ -22,7 +23,7 @@ class EmbeddingProvider(Protocol):
 
 
 class FakeEmbeddingProvider(EmbeddingProvider):
-    def __init__(self, dimension: int = 1536) -> None:
+    def __init__(self, dimension: int = PGVECTOR_EMBEDDING_DIMENSION) -> None:
         if dimension <= 0:
             raise ValueError("dimension must be positive")
         self.dimension = dimension
@@ -57,7 +58,7 @@ class OpenAIEmbeddingProvider(EmbeddingProvider):
         self,
         api_key: str | None,
         model: str | None,
-        dimension: int = 1536,
+        dimension: int = PGVECTOR_EMBEDDING_DIMENSION,
         *,
         client: object | None = None,
     ) -> None:

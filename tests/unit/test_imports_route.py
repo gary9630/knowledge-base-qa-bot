@@ -11,7 +11,7 @@ from app.ingestion.pipeline import IngestionPipeline, InMemoryIngestionJobStore
 from app.main import create_app
 
 
-def test_import_upload_rejects_existing_destination(tmp_path: Path) -> None:
+def test_import_upload_versions_existing_destination(tmp_path: Path) -> None:
     client, _store, _enqueuer = _imports_client(tmp_path)
 
     first_response = client.post(
@@ -24,8 +24,12 @@ def test_import_upload_rejects_existing_destination(tmp_path: Path) -> None:
     )
 
     assert first_response.status_code == 202
-    assert second_response.status_code == 409
-    assert "already exists" in second_response.json()["detail"]
+    assert second_response.status_code == 202
+    second_body = second_response.json()
+    assert second_body["status"] == "queued"
+    assert second_body["metadata"]["path_strategy"] == "content_hash_suffix"
+    assert Path(second_body["raw_path"]).name.startswith("upload-")
+    assert Path(second_body["canonical_path"]).name.startswith("upload-")
 
 
 def test_import_upload_defers_invalid_utf8_to_worker(tmp_path: Path) -> None:
@@ -90,6 +94,20 @@ def test_import_upload_rejects_oversized_file(tmp_path: Path) -> None:
     )
 
     assert response.status_code == 413
+
+
+def test_import_upload_rejects_content_type_extension_mismatch(tmp_path: Path) -> None:
+    client, store, enqueuer = _imports_client(tmp_path)
+
+    response = client.post(
+        "/imports",
+        files={"file": ("guide.pdf", b"%PDF-1.4\n", "text/plain")},
+    )
+
+    assert response.status_code == 400
+    assert "content type" in response.json()["detail"]
+    assert store.list_recent(limit=1) == []
+    assert enqueuer.calls == []
 
 
 def test_import_upload_returns_queued_job_status_and_can_fetch_job(tmp_path: Path) -> None:

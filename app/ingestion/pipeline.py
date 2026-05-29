@@ -11,6 +11,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.ingestion.service import import_file_to_markdown
+from app.ingestion.validation import UploadInspection, inspect_upload
 from app.models.tables import IngestionJob
 
 
@@ -46,6 +47,13 @@ class IngestionJobNotFoundError(Exception):
 
 class IngestionRetryNotAllowedError(Exception):
     pass
+
+
+@dataclass(frozen=True)
+class _UploadPaths:
+    raw_path: Path
+    canonical_path: Path
+    path_strategy: str
 
 
 class IngestionJobStore(Protocol):
@@ -580,15 +588,26 @@ class IngestionPipeline:
         imported_at: str | datetime | None = None,
     ) -> IngestionPipelineResult:
         content_hash = _content_hash(body)
-        raw_path = self.raw_dir / filename
-        canonical_path = self.docs_dir / f"{Path(filename).stem or 'document'}.md"
+        inspection = inspect_upload(filename=filename, content_type=content_type, body=body)
+        paths = _resolve_upload_paths(
+            filename=filename,
+            content_hash=content_hash,
+            raw_dir=self.raw_dir,
+            docs_dir=self.docs_dir,
+        )
         job = self.store.create_running(
             filename=filename,
             content_type=content_type,
             content_hash=content_hash,
             size_bytes=len(body),
-            raw_path=str(raw_path),
-            canonical_path=str(canonical_path),
+            raw_path=str(paths.raw_path),
+            canonical_path=str(paths.canonical_path),
+            metadata=_queued_metadata(
+                inspection=inspection,
+                paths=paths,
+                async_import=False,
+                index_after_import=True,
+            ),
         )
 
         duplicate = self.store.find_by_content_hash(
@@ -601,42 +620,43 @@ class IngestionPipeline:
                 job=self.store.mark_duplicate(job.id, duplicate_of=duplicate)
             )
 
-        if raw_path.exists() or canonical_path.exists():
+        if paths.raw_path.exists() or paths.canonical_path.exists():
             error = "Import destination already exists."
             self.store.mark_failed(
                 job.id,
                 error=error,
-                raw_path=str(raw_path),
-                canonical_path=str(canonical_path),
+                raw_path=str(paths.raw_path),
+                canonical_path=str(paths.canonical_path),
             )
             raise IngestionDestinationConflictError(error)
 
         try:
             self.raw_dir.mkdir(parents=True, exist_ok=True)
             self.docs_dir.mkdir(parents=True, exist_ok=True)
-            raw_path.write_bytes(body)
+            paths.raw_path.write_bytes(body)
             markdown = import_file_to_markdown(
                 filename,
                 body,
                 imported_at=imported_at or _utc_now().isoformat(),
                 content_hash=content_hash,
-                canonical_path=_display_path(canonical_path),
+                canonical_path=_display_path(paths.canonical_path),
             )
-            canonical_path.write_text(markdown, encoding="utf-8")
+            paths.canonical_path.write_text(markdown, encoding="utf-8")
         except Exception as error:
             self.store.mark_failed(
                 job.id,
                 error=f"{type(error).__name__}: {error}",
-                raw_path=str(raw_path),
-                canonical_path=str(canonical_path),
+                raw_path=str(paths.raw_path),
+                canonical_path=str(paths.canonical_path),
             )
             raise
 
         return IngestionPipelineResult(
             job=self.store.mark_succeeded(
                 job.id,
-                raw_path=str(raw_path),
-                canonical_path=str(canonical_path),
+                raw_path=str(paths.raw_path),
+                canonical_path=str(paths.canonical_path),
+                metadata=_succeeded_metadata(markdown=markdown, async_import=False),
             )
         )
 
@@ -649,19 +669,26 @@ class IngestionPipeline:
         index_after_import: bool = True,
     ) -> IngestionPipelineResult:
         content_hash = _content_hash(body)
-        raw_path = self.raw_dir / filename
-        canonical_path = self.docs_dir / f"{Path(filename).stem or 'document'}.md"
+        inspection = inspect_upload(filename=filename, content_type=content_type, body=body)
+        paths = _resolve_upload_paths(
+            filename=filename,
+            content_hash=content_hash,
+            raw_dir=self.raw_dir,
+            docs_dir=self.docs_dir,
+        )
         job = self.store.create_queued(
             filename=filename,
             content_type=content_type,
             content_hash=content_hash,
             size_bytes=len(body),
-            raw_path=str(raw_path),
-            canonical_path=str(canonical_path),
-            metadata={
-                "async": True,
-                "index_after_import": index_after_import,
-            },
+            raw_path=str(paths.raw_path),
+            canonical_path=str(paths.canonical_path),
+            metadata=_queued_metadata(
+                inspection=inspection,
+                paths=paths,
+                async_import=True,
+                index_after_import=index_after_import,
+            ),
         )
 
         duplicate = self.store.find_by_content_hash(
@@ -674,26 +701,26 @@ class IngestionPipeline:
                 job=self.store.mark_duplicate(job.id, duplicate_of=duplicate)
             )
 
-        if raw_path.exists() or canonical_path.exists():
+        if paths.raw_path.exists() or paths.canonical_path.exists():
             error = "Import destination already exists."
             self.store.mark_failed(
                 job.id,
                 error=error,
-                raw_path=str(raw_path),
-                canonical_path=str(canonical_path),
+                raw_path=str(paths.raw_path),
+                canonical_path=str(paths.canonical_path),
             )
             raise IngestionDestinationConflictError(error)
 
         try:
             self.raw_dir.mkdir(parents=True, exist_ok=True)
             self.docs_dir.mkdir(parents=True, exist_ok=True)
-            raw_path.write_bytes(body)
+            paths.raw_path.write_bytes(body)
         except Exception as error:
             self.store.mark_failed(
                 job.id,
                 error=f"{type(error).__name__}: {error}",
-                raw_path=str(raw_path),
-                canonical_path=str(canonical_path),
+                raw_path=str(paths.raw_path),
+                canonical_path=str(paths.canonical_path),
             )
             raise
 
@@ -744,7 +771,7 @@ class IngestionPipeline:
                 job.id,
                 raw_path=str(raw_path),
                 canonical_path=str(canonical_path),
-                metadata={"processed_async": True},
+                metadata=_succeeded_metadata(markdown=markdown, async_import=True),
             )
         )
 
@@ -839,13 +866,75 @@ class IngestionPipeline:
                 job.id,
                 raw_path=str(raw_path),
                 canonical_path=str(canonical_path),
-                metadata={"retried": True},
+                metadata={
+                    **_succeeded_metadata(markdown=markdown, async_import=False),
+                    "retried": True,
+                },
             )
         )
 
 
 def _content_hash(body: bytes) -> str:
     return sha256(body).hexdigest()
+
+
+def _resolve_upload_paths(
+    *,
+    filename: str,
+    content_hash: str,
+    raw_dir: Path,
+    docs_dir: Path,
+) -> _UploadPaths:
+    source_path = Path(filename)
+    stem = source_path.stem or "document"
+    suffix = source_path.suffix
+    raw_path = raw_dir / filename
+    canonical_path = docs_dir / f"{stem}.md"
+    if not raw_path.exists() and not canonical_path.exists():
+        return _UploadPaths(
+            raw_path=raw_path,
+            canonical_path=canonical_path,
+            path_strategy="original_filename",
+        )
+
+    hash_suffix = content_hash[:12]
+    raw_path = raw_dir / f"{stem}-{hash_suffix}{suffix}"
+    canonical_path = docs_dir / f"{stem}-{hash_suffix}.md"
+    return _UploadPaths(
+        raw_path=raw_path,
+        canonical_path=canonical_path,
+        path_strategy="content_hash_suffix",
+    )
+
+
+def _queued_metadata(
+    *,
+    inspection: UploadInspection,
+    paths: _UploadPaths,
+    async_import: bool,
+    index_after_import: bool,
+) -> dict[str, object]:
+    return {
+        "async": async_import,
+        "index_after_import": index_after_import,
+        "original_filename": inspection.original_filename,
+        "extension": inspection.extension,
+        "content_type": inspection.content_type,
+        "detected_file_type": inspection.detected_file_type,
+        "import_warnings": list(inspection.warnings),
+        "raw_filename": paths.raw_path.name,
+        "canonical_filename": paths.canonical_path.name,
+        "path_strategy": paths.path_strategy,
+    }
+
+
+def _succeeded_metadata(*, markdown: str, async_import: bool) -> dict[str, object]:
+    metadata: dict[str, object] = {
+        "markdown_bytes": len(markdown.encode("utf-8")),
+    }
+    if async_import:
+        metadata["processed_async"] = True
+    return metadata
 
 
 def _utc_now() -> datetime:

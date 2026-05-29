@@ -25,6 +25,17 @@ def test_initial_migration_creates_core_tables(db_engine: Engine) -> None:
         worker_heartbeat_indexes = {
             index["name"] for index in inspector.get_indexes("background_worker_heartbeats")
         }
+        chunk_embedding_type = connection.execute(
+            text(
+                """
+                SELECT format_type(attribute.atttypid, attribute.atttypmod)
+                FROM pg_attribute AS attribute
+                JOIN pg_class AS class ON class.oid = attribute.attrelid
+                WHERE class.relname = 'chunks'
+                  AND attribute.attname = 'embedding'
+                """
+            )
+        ).scalar_one()
 
     assert {
         "documents",
@@ -91,3 +102,4 @@ def test_initial_migration_creates_core_tables(db_engine: Engine) -> None:
         "updated_at",
     }.issubset(worker_heartbeat_columns)
     assert "ix_background_worker_heartbeats_last_seen_at" in worker_heartbeat_indexes
+    assert chunk_embedding_type == "vector(768)"

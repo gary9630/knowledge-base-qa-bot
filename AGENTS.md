@@ -44,7 +44,7 @@
 - Settings use the `KB_` prefix unless noted.
 - Required for production/staging: `KB_AUTH_SECRET_KEY`, `KB_PLATFORM_USERNAME`, `KB_PLATFORM_PASSWORD`, `KB_ADMIN_API_KEY`.
 - OpenAI providers require unprefixed `OPENAI_API_KEY`.
-- Keep `KB_EMBEDDING_DIMENSION` aligned with the schema dimension, currently `1536`.
+- Keep `KB_EMBEDDING_DIMENSION` aligned with the schema dimension, currently `768`.
 - Local Compose defaults are only for development: platform login `student` / `student-password`, admin key `local-admin-key`.
 - App-native abuse controls are enabled by default: tune `KB_RATE_LIMIT_*` values and `KB_MAX_CONCURRENT_UPLOADS` for the deploy target.
 - Background worker reliability controls are `KB_BACKGROUND_JOB_STALE_AFTER_SECONDS`, `KB_BACKGROUND_JOB_RETRY_BASE_DELAY_SECONDS`, and `KB_BACKGROUND_JOB_RETRY_MAX_DELAY_SECONDS`.
@@ -82,6 +82,9 @@ intentionally deferred until traffic or multi-replica deployment requires it.
 - Apply source access filtering consistently across search, chat, streaming chat, source preview, and mindmap. Admin eval routes are still admin-only and should be reviewed if learner-specific eval personas are added.
 - Store raw uploads and canonical Markdown on durable production storage before public launch.
 - `POST /imports` must stay lightweight: save the raw artifact, create a queued ingestion job, enqueue `ingest.upload`, and let the worker convert Markdown and enqueue index rebuilds.
+- Ingestion supports `.pdf`, `.md`, `.markdown`, `.txt`, `.html`, and `.htm`; reject empty uploads, obvious content-type mismatches, invalid PDF signatures, HTML without recognizable markup, and binary-looking text before writing raw artifacts.
+- Same filename with different content should be kept as a new artifact using the content-hash suffix path strategy; identical content should remain deduplicated by hash.
+- Keep ingestion job metadata useful for operations: original filename, detected file type, raw/canonical artifact filenames, path strategy, warnings, and Markdown byte size.
 - Backup/restore runbook lives at `ops/backup-restore.md`; restore targets require `CONFIRM_RESTORE=yes` and do not remove stale files.
 - Production deploy runbook lives at `ops/deploy.md`.
 - Production env template lives at `ops/env.production.example`; validate real deploy environments with `make deploy-check` before migration/restart.
@@ -92,5 +95,6 @@ intentionally deferred until traffic or multi-replica deployment requires it.
 - Production Compose should run the `worker` profile so `python -m scripts.run_background_worker` keeps processing jobs and writing DB-backed heartbeats.
 - Workers recover stale `running` jobs before claiming new work. Use protected `POST /admin/jobs/recover-stale` for manual recovery and `POST /admin/jobs/{job_id}/requeue` for failed/canceled jobs.
 - Run Alembic migrations once per deploy, then run `make ops-check`.
-- If switching to real embeddings, lock the model and vector dimension before indexing production data.
+- Current real embedding contract is `text-embedding-3-small` with `KB_EMBEDDING_DIMENSION=768`.
+- If changing embedding model or dimension later, add a migration and rebuild the index.
 - Sample content lives in `sample-docs/`; do not treat it as production data.

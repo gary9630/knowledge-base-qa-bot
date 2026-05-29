@@ -8,10 +8,9 @@ from sqlalchemy.orm import Session
 
 from app.document_lifecycle import active_document_filter
 from app.models.tables import Chunk, Document, Section
+from app.retrieval.dimensions import PGVECTOR_EMBEDDING_DIMENSION
 from app.retrieval.embeddings import EmbeddingProvider
 from app.retrieval.models import RetrievedCandidate, source_priority_for
-
-PGVECTOR_EMBEDDING_DIMENSION = 1536
 
 
 class VectorRetriever:

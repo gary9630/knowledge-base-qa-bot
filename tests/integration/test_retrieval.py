@@ -14,7 +14,7 @@ from app.retrieval.vector import VectorRetriever
 
 class StaticEmbeddingProvider:
     def embed_text(self, text: str) -> list[float]:
-        return [1.0, *([0.0] * 1535)]
+        return [1.0, *([0.0] * 767)]
 
     def embed_texts(self, texts: Sequence[str]) -> list[list[float]]:
         return [self.embed_text(text) for text in texts]
@@ -40,7 +40,7 @@ def test_hybrid_retriever_finds_course_site_section_after_indexing(
         "每週三晚上上課。\n",
         encoding="utf-8",
     )
-    embedding_provider = FakeEmbeddingProvider(dimension=1536)
+    embedding_provider = FakeEmbeddingProvider(dimension=768)
     service = IndexingService(
         session=db_session,
         docs_dir=docs_dir,
@@ -74,7 +74,7 @@ def test_vector_retriever_returns_best_chunk_evidence_after_indexing(
         "retrieval-needle official-course-url nu xi omicron pi rho sigma tau\n",
         encoding="utf-8",
     )
-    embedding_provider = FakeEmbeddingProvider(dimension=1536)
+    embedding_provider = FakeEmbeddingProvider(dimension=768)
     service = IndexingService(
         session=db_session,
         docs_dir=docs_dir,
@@ -117,7 +117,7 @@ def test_retriever_excludes_non_public_documents_by_default(
         "staffonlytoken should not be visible to public search.\n",
         encoding="utf-8",
     )
-    embedding_provider = FakeEmbeddingProvider(dimension=1536)
+    embedding_provider = FakeEmbeddingProvider(dimension=768)
     service = IndexingService(
         session=db_session,
         docs_dir=docs_dir,
@@ -152,7 +152,7 @@ def test_retriever_allows_configured_visibility_labels(
         "staffonlytoken should be visible to staff search.\n",
         encoding="utf-8",
     )
-    embedding_provider = FakeEmbeddingProvider(dimension=1536)
+    embedding_provider = FakeEmbeddingProvider(dimension=768)
     service = IndexingService(
         session=db_session,
         docs_dir=docs_dir,
@@ -219,7 +219,7 @@ def test_vector_retriever_fetches_more_rows_until_limit_unique_sections(
                 chunk_index=chunk_index,
                 body_text=f"dominant chunk {chunk_index}",
                 token_count=3,
-                embedding=[1.0, *([0.0] * 1535)],
+                embedding=[1.0, *([0.0] * 767)],
                 content_hash=f"first-chunk-{chunk_index}",
             )
         )
@@ -229,7 +229,7 @@ def test_vector_retriever_fetches_more_rows_until_limit_unique_sections(
             chunk_index=0,
             body_text="second section evidence",
             token_count=3,
-            embedding=[0.99, 0.01, *([0.0] * 1534)],
+            embedding=[0.99, 0.01, *([0.0] * 766)],
             content_hash="second-chunk",
         )
     )

@@ -27,10 +27,11 @@ from app.observability.middleware import (
     request_id_exception_handler,
 )
 from app.observability.rate_limit import RateLimitMiddleware
+from app.retrieval.dimensions import PGVECTOR_EMBEDDING_DIMENSION
 from app.retrieval.embeddings import EmbeddingProvider, create_embedding_provider
 
 SessionFactory = Callable[[], Session]
-SCHEMA_EMBEDDING_DIMENSION = 1536
+SCHEMA_EMBEDDING_DIMENSION = PGVECTOR_EMBEDDING_DIMENSION
 
 
 def create_app(

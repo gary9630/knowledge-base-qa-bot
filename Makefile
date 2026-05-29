@@ -46,7 +46,7 @@ deploy-check-ci:
 	KB_KB_DIR=/app/.kb \
 	KB_EMBEDDING_PROVIDER=openai \
 	KB_ANSWER_PROVIDER=openai \
-	KB_EMBEDDING_DIMENSION=1536 \
+	KB_EMBEDDING_DIMENSION=768 \
 	OPENAI_API_KEY=sk-ci-placeholder \
 	$(UV) python -m scripts.validate_deploy_env
 

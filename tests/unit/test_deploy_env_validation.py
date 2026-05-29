@@ -14,7 +14,7 @@ def valid_env() -> dict[str, str]:
         "KB_KB_DIR": "/app/.kb",
         "KB_EMBEDDING_PROVIDER": "openai",
         "KB_ANSWER_PROVIDER": "openai",
-        "KB_EMBEDDING_DIMENSION": "1536",
+        "KB_EMBEDDING_DIMENSION": "768",
         "OPENAI_API_KEY": "sk-ci-placeholder",
     }
 
@@ -47,3 +47,10 @@ def test_deploy_env_validation_rejects_fake_providers_by_default() -> None:
 
     assert any("KB_EMBEDDING_PROVIDER" in error for error in collect_deploy_env_errors(env))
     assert collect_deploy_env_errors(env, allow_fake_providers=True) == []
+
+
+def test_deploy_env_validation_rejects_old_embedding_dimension() -> None:
+    env = valid_env()
+    env["KB_EMBEDDING_DIMENSION"] = "1536"
+
+    assert any("KB_EMBEDDING_DIMENSION" in error for error in collect_deploy_env_errors(env))
