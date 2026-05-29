@@ -160,6 +160,28 @@ def test_ui_exposes_background_jobs_wiring() -> None:
     assert "queueDocumentReindexJob" in js_response.text
 
 
+def test_ui_exposes_provider_observability_wiring() -> None:
+    client = TestClient(create_app())
+
+    response = client.get("/")
+    js_response = client.get("/static/app.js")
+
+    assert response.status_code == 200
+    assert 'id="tab-ops"' in response.text
+    assert 'id="panel-ops"' in response.text
+    assert 'id="ops-admin-key"' in response.text
+    assert 'id="refresh-provider-observability"' in response.text
+    assert 'id="provider-summary"' in response.text
+    assert 'id="provider-usage"' in response.text
+    assert 'id="provider-latest-calls"' in response.text
+    assert 'id="provider-traces"' in response.text
+    assert "fetch(\"/admin/provider-observability" in js_response.text
+    assert "renderProviderObservability" in js_response.text
+    assert "renderProviderSummary" in js_response.text
+    assert "renderProviderCallRow" in js_response.text
+    assert "usage_complete" in js_response.text
+
+
 def test_ui_exposes_import_diagnostics_wiring() -> None:
     client = TestClient(create_app())
 

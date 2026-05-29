@@ -13,6 +13,7 @@
     importJobs: [],
     backgroundJobs: [],
     workerRuntime: null,
+    providerObservability: null,
     adminDocuments: [],
     auditEvents: [],
     evalCases: [],
@@ -87,6 +88,12 @@
     backgroundJobLimit: $("#background-job-limit"),
     workerRuntime: $("#worker-runtime"),
     backgroundJobs: $("#background-jobs"),
+    opsAdminKey: $("#ops-admin-key"),
+    refreshProviderObservability: $("#refresh-provider-observability"),
+    providerSummary: $("#provider-summary"),
+    providerUsage: $("#provider-usage"),
+    providerLatestCalls: $("#provider-latest-calls"),
+    providerTraces: $("#provider-traces"),
     operationLog: $("#operation-log"),
     evalForm: $("#eval-form"),
     evalName: $("#eval-name"),
@@ -242,6 +249,10 @@
       panel.classList.toggle("is-active", selected);
       panel.hidden = !selected;
     });
+
+    if (tabName === "ops" && !state.providerObservability) {
+      refreshProviderObservability();
+    }
   }
 
   function nextTabForKey(currentTab, key) {
@@ -1339,6 +1350,7 @@
     elements.refreshBackgroundJobs.addEventListener("click", refreshBackgroundJobs);
     elements.backgroundJobStatusFilter.addEventListener("change", refreshBackgroundJobs);
     elements.backgroundJobLimit.addEventListener("change", refreshBackgroundJobs);
+    elements.refreshProviderObservability.addEventListener("click", refreshProviderObservability);
     elements.refreshAudit.addEventListener("click", refreshAuditEvents);
   }
 
@@ -1547,6 +1559,239 @@
       card.append(heading, meta);
       elements.workerRuntime.append(card);
     });
+  }
+
+  async function refreshProviderObservability() {
+    elements.refreshProviderObservability.disabled = true;
+    try {
+      const response = await fetch("/admin/provider-observability?limit=50", {
+        headers: adminHeaders(),
+      });
+      if (!response.ok) {
+        throw new Error(await responseError(response));
+      }
+      const payload = await response.json();
+      renderProviderObservability(payload);
+    } catch (error) {
+      state.providerObservability = null;
+      const message = `Provider observability unavailable: ${errorMessage(error)}`;
+      elements.providerSummary.replaceChildren(emptyText(message));
+      elements.providerUsage.replaceChildren(emptyText("No provider usage loaded."));
+      elements.providerLatestCalls.replaceChildren(emptyText("No provider calls loaded."));
+      elements.providerTraces.replaceChildren(emptyText("No provider traces loaded."));
+    } finally {
+      elements.refreshProviderObservability.disabled = false;
+    }
+  }
+
+  function renderProviderObservability(payload) {
+    state.providerObservability = payload || null;
+    renderProviderSummary(payload && payload.summary);
+    renderProviderUsage(payload && payload.usage_by_key);
+    renderProviderLatestCalls(payload && payload.latest_calls);
+    renderProviderTraces(payload && payload.traces);
+  }
+
+  function renderProviderSummary(summary) {
+    const safeSummary = summary || {};
+    const errorRate = Number(safeSummary.error_rate || 0);
+    const cards = [
+      ["Calls", safeSummary.total_calls || 0, ""],
+      ["Errors", safeSummary.error_calls || 0, safeSummary.error_calls > 0 ? "is-danger" : ""],
+      ["Error Rate", formatPercent(errorRate), errorRate > 0 ? "is-warning" : ""],
+      ["Tokens", safeSummary.total_tokens || 0, ""],
+      ["Cached", safeSummary.cached_tokens || 0, ""],
+      ["Reasoning", safeSummary.reasoning_tokens || 0, ""],
+    ];
+
+    elements.providerSummary.replaceChildren();
+    cards.forEach(([label, value, modifier]) => {
+      const card = document.createElement("div");
+      card.className = ["ops-summary-card", modifier].filter(Boolean).join(" ");
+      const title = document.createElement("span");
+      title.textContent = label;
+      const count = document.createElement("strong");
+      count.textContent = String(value);
+      card.append(title, count);
+      elements.providerSummary.append(card);
+    });
+  }
+
+  function renderProviderUsage(items) {
+    const usageItems = Array.isArray(items) ? items : [];
+    elements.providerUsage.replaceChildren();
+    if (usageItems.length === 0) {
+      elements.providerUsage.append(emptyText("No provider usage loaded."));
+      return;
+    }
+
+    usageItems.forEach((item) => {
+      const row = document.createElement("div");
+      row.className = "job-row provider-row";
+
+      const body = document.createElement("div");
+      body.className = "job-body";
+      const heading = document.createElement("div");
+      heading.className = "job-row-heading";
+      const title = document.createElement("strong");
+      title.textContent = item.key || "provider operation";
+      const badges = document.createElement("div");
+      badges.className = "job-badges";
+      badges.append(backgroundJobBadge(`${item.calls || 0} calls`, "succeeded"));
+      heading.append(title, badges);
+
+      const usage = document.createElement("span");
+      usage.className = "source-meta";
+      usage.textContent = providerUsageText(item.usage);
+      body.append(heading, usage);
+      row.append(body);
+      elements.providerUsage.append(row);
+    });
+  }
+
+  function renderProviderLatestCalls(calls) {
+    const providerCalls = Array.isArray(calls) ? calls : [];
+    elements.providerLatestCalls.replaceChildren();
+    if (providerCalls.length === 0) {
+      elements.providerLatestCalls.append(emptyText("No provider calls loaded."));
+      return;
+    }
+
+    providerCalls.slice(0, 20).forEach((call) => {
+      elements.providerLatestCalls.append(renderProviderCallRow(call));
+    });
+  }
+
+  function renderProviderTraces(traces) {
+    const providerTraces = Array.isArray(traces) ? traces : [];
+    elements.providerTraces.replaceChildren();
+    if (providerTraces.length === 0) {
+      elements.providerTraces.append(emptyText("No provider traces loaded."));
+      return;
+    }
+
+    providerTraces.forEach((trace) => {
+      const row = document.createElement("div");
+      row.className = "job-row provider-trace";
+
+      const body = document.createElement("div");
+      body.className = "job-body";
+
+      const heading = document.createElement("div");
+      heading.className = "job-row-heading";
+      const title = document.createElement("strong");
+      title.textContent = trace.query || "provider-backed answer";
+      const badges = document.createElement("div");
+      badges.className = "job-badges";
+      badges.append(backgroundJobBadge(trace.decision || "unknown", trace.decision === "can_answer" ? "succeeded" : "warning"));
+      heading.append(title, badges);
+
+      const meta = document.createElement("span");
+      meta.className = "source-meta";
+      meta.textContent = [
+        trace.strategy ? `strategy ${trace.strategy}` : null,
+        trace.latency_ms == null ? null : `${trace.latency_ms} ms`,
+        trace.created_at ? formatDateTime(trace.created_at) : null,
+        trace.retrieval_event_id ? `event ${trace.retrieval_event_id}` : null,
+      ]
+        .filter(Boolean)
+        .join(" · ");
+
+      const callSummary = document.createElement("span");
+      callSummary.className = "source-meta";
+      callSummary.textContent = providerTraceCallSummary(trace.provider_calls);
+
+      body.append(heading, meta, callSummary);
+      row.append(body);
+      elements.providerTraces.append(row);
+    });
+  }
+
+  function renderProviderCallRow(call) {
+    const row = document.createElement("div");
+    row.className = `job-row provider-call is-${providerCallStatusClass(call)}`;
+
+    const body = document.createElement("div");
+    body.className = "job-body";
+
+    const heading = document.createElement("div");
+    heading.className = "job-row-heading";
+    const title = document.createElement("strong");
+    title.textContent = [call.provider || "provider", call.operation || "operation"].join(" · ");
+    const badges = document.createElement("div");
+    badges.className = "job-badges";
+    badges.append(backgroundJobBadge(call.status || "unknown", providerCallStatusClass(call)));
+    badges.append(
+      backgroundJobBadge(call.usage_complete ? "usage complete" : "usage pending", call.usage_complete ? "succeeded" : "warning"),
+    );
+    if (call.error_type) {
+      badges.append(backgroundJobBadge(call.error_type, "failed"));
+    }
+    heading.append(title, badges);
+
+    const meta = document.createElement("span");
+    meta.className = "source-meta";
+    meta.textContent = [
+      call.model ? `model ${call.model}` : null,
+      call.latency_ms == null ? null : `${call.latency_ms} ms`,
+      call.client_request_id ? `client ${call.client_request_id}` : null,
+      call.provider_request_id ? `provider ${call.provider_request_id}` : null,
+    ]
+      .filter(Boolean)
+      .join(" · ");
+
+    const usage = document.createElement("span");
+    usage.className = "source-meta";
+    usage.textContent = providerUsageText(call.usage);
+
+    body.append(heading, meta, usage);
+    row.append(body);
+    return row;
+  }
+
+  function providerTraceCallSummary(calls) {
+    const providerCalls = Array.isArray(calls) ? calls : [];
+    if (providerCalls.length === 0) {
+      return "provider calls: none recorded";
+    }
+    return providerCalls
+      .slice(0, 4)
+      .map((call) =>
+        [
+          call.provider || "provider",
+          call.operation || "operation",
+          call.model || null,
+          call.status || "unknown",
+          call.usage && call.usage.total_tokens != null ? `${call.usage.total_tokens} tokens` : null,
+        ]
+          .filter(Boolean)
+          .join(" "),
+      )
+      .join(" · ");
+  }
+
+  function providerUsageText(usage) {
+    const safeUsage = usage || {};
+    return [
+      `prompt ${safeUsage.prompt_tokens || 0}`,
+      `completion ${safeUsage.completion_tokens || 0}`,
+      `total ${safeUsage.total_tokens || 0}`,
+      `cached ${safeUsage.cached_tokens || 0}`,
+      `reasoning ${safeUsage.reasoning_tokens || 0}`,
+    ].join(" · ");
+  }
+
+  function providerCallStatusClass(call) {
+    if (!call || !call.status) {
+      return "unknown";
+    }
+    if (call.status === "succeeded") {
+      return "succeeded";
+    }
+    if (call.status === "failed") {
+      return "failed";
+    }
+    return "warning";
   }
 
   function backgroundJobQueryParams() {
@@ -2581,6 +2826,7 @@
       elements.adminKey.value ||
       elements.documentAdminKey.value ||
       elements.auditAdminKey.value ||
+      elements.opsAdminKey.value ||
       elements.evalAdminKey.value ||
       ""
     ).trim();

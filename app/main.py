@@ -15,6 +15,7 @@ from app.api.imports import router as imports_router
 from app.api.indexing import router as indexing_router
 from app.api.jobs import router as jobs_router
 from app.api.mindmap import router as mindmap_router
+from app.api.provider_observability import router as provider_observability_router
 from app.api.search import router as search_router
 from app.api.sources import router as sources_router
 from app.api.ui import mount_ui_static
@@ -73,6 +74,7 @@ def create_app(
     app.include_router(audit_router)
     app.include_router(documents_router)
     app.include_router(jobs_router)
+    app.include_router(provider_observability_router)
     return app
 
 

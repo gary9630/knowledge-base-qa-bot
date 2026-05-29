@@ -52,6 +52,12 @@
             </svg>
             Admin Uploads
           </button>
+          <button class="tab" id="tab-ops" type="button" role="tab" aria-selected="false" aria-controls="panel-ops" tabindex="-1" data-tab="ops">
+            <svg aria-hidden="true" viewBox="0 0 24 24">
+              <path d="M4 19V5m0 14h16M8 16v-5m4 5V8m4 8v-3m3-7-5 5-3-3-4 4" />
+            </svg>
+            Provider Ops
+          </button>
           <button class="tab" id="tab-audit" type="button" role="tab" aria-selected="false" aria-controls="panel-audit" tabindex="-1" data-tab="audit">
             <svg aria-hidden="true" viewBox="0 0 24 24">
               <path d="M6 3h12l1 4v13H5V7zm0 4h12M9 11h6M9 15h4" />
@@ -244,6 +250,72 @@
           </section>
 
           <pre class="operation-log" id="operation-log" aria-live="polite">No admin operations yet.</pre>
+        </section>
+
+        <section class="workspace-panel" id="panel-ops" role="tabpanel" tabindex="0" data-panel="ops" aria-labelledby="tab-ops" hidden>
+          <header class="workspace-header">
+            <div>
+              <h2>Provider Ops</h2>
+              <p class="workspace-subtitle">OpenAI/provider reliability, usage, and answer trace health.</p>
+            </div>
+            <button class="secondary-button" type="button" id="refresh-provider-observability">Refresh</button>
+          </header>
+
+          <form class="audit-form" id="provider-observability-form">
+            <label for="ops-admin-key">Admin Key</label>
+            <input id="ops-admin-key" name="ops-admin-key" type="password" autocomplete="current-password" />
+          </form>
+
+          <section class="tool-section" aria-labelledby="provider-summary-heading">
+            <div class="section-heading">
+              <h3 id="provider-summary-heading">Provider Summary</h3>
+            </div>
+            <div class="ops-summary" id="provider-summary" aria-live="polite">
+              <div class="ops-summary-card">
+                <span>Calls</span>
+                <strong>0</strong>
+              </div>
+              <div class="ops-summary-card">
+                <span>Errors</span>
+                <strong>0</strong>
+              </div>
+              <div class="ops-summary-card">
+                <span>Error Rate</span>
+                <strong>0%</strong>
+              </div>
+              <div class="ops-summary-card">
+                <span>Tokens</span>
+                <strong>0</strong>
+              </div>
+            </div>
+          </section>
+
+          <section class="tool-section" aria-labelledby="provider-usage-heading">
+            <div class="section-heading">
+              <h3 id="provider-usage-heading">Usage By Operation</h3>
+            </div>
+            <div class="provider-usage" id="provider-usage" aria-live="polite">
+              <p class="muted">No provider usage loaded.</p>
+            </div>
+          </section>
+
+          <section class="tool-section" aria-labelledby="provider-latest-calls-heading">
+            <div class="section-heading">
+              <h3 id="provider-latest-calls-heading">Latest Provider Calls</h3>
+            </div>
+            <div class="provider-calls" id="provider-latest-calls" aria-live="polite">
+              <p class="muted">No provider calls loaded.</p>
+            </div>
+          </section>
+
+          <section class="tool-section" aria-labelledby="provider-traces-heading">
+            <div class="section-heading">
+              <h3 id="provider-traces-heading">Answer Traces</h3>
+            </div>
+            <div class="provider-traces" id="provider-traces" aria-live="polite">
+              <p class="muted">No provider traces loaded.</p>
+            </div>
+          </section>
         </section>
 
         <section class="workspace-panel" id="panel-audit" role="tabpanel" tabindex="0" data-panel="audit" aria-labelledby="tab-audit" hidden>

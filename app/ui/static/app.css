@@ -286,6 +286,9 @@ textarea:disabled {
 .import-jobs,
 .background-jobs,
 .worker-runtime,
+.provider-usage,
+.provider-calls,
+.provider-traces,
 .admin-documents,
 .audit-events,
 .eval-cases,
@@ -533,6 +536,12 @@ button.selected-source {
 
 .job-row.is-canceled {
   border-color: var(--border-strong);
+}
+
+.provider-trace strong,
+.provider-call strong,
+.provider-row strong {
+  overflow-wrap: anywhere;
 }
 
 .document-row.is-indexed {
