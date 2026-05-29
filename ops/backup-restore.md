@@ -28,6 +28,32 @@ This writes:
 For managed Postgres, use the provider's scheduled backups as the primary recovery
 mechanism and keep this `pg_dump` path as an application-level export.
 
+## Package Real Course Content
+
+Before the first learner-facing deploy, build a deployable artifact from the private
+`course-materials-md/` directory instead of indexing repository docs:
+
+```bash
+OPENAI_API_KEY=... make real-content-package
+```
+
+The target prepares `/app/docs`, rebuilds the index with `text-embedding-3-small` at
+768 dimensions, runs `ops/real-content-acceptance-cases.json`, and writes a backup
+directory containing:
+
+- `postgres.dump`
+- `runtime-files.tar.gz`
+- `real-content-acceptance-report.json`
+
+The real course files stay outside git. If the runtime docs volume contains stale
+Markdown not present in `course-materials-md/`, preparation fails and the stale files
+must be handled manually one explicit path at a time.
+
+The real-content targets default to an isolated Compose project named
+`kb-real-content`, so local development `docs_data` volumes are not reused. Override
+`REAL_CONTENT_COMPOSE_PROJECT` only when you intentionally want another isolated
+artifact workspace.
+
 ## Restore Database
 
 Restoring the database can replace existing tables and data. Require an explicit

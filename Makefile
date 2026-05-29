@@ -1,15 +1,33 @@
+ifneq (,$(wildcard .env))
+include .env
+endif
+export OPENAI_API_KEY
+export KB_POSTGRES_PORT
+
 UV := uv run --python 3.12
 COMPOSE ?= docker compose
 API_URL ?= http://localhost:8000
 KB_ADMIN_API_KEY ?= local-admin-key
+KB_ADMIN_API_KEY := $(or $(KB_ADMIN_API_KEY),local-admin-key)
 KB_TEST_DATABASE_URL ?= postgresql+psycopg://kb:kb@postgres:5432/kb_test
 BACKUP_DIR ?= backups/$(shell date -u +%Y%m%dT%H%M%SZ)
 BACKUP_DB_FILE ?= $(BACKUP_DIR)/postgres.dump
 BACKUP_FILES_FILE ?= $(BACKUP_DIR)/runtime-files.tar.gz
 RESTORE_DB_FILE ?= $(BACKUP_DB_FILE)
 RESTORE_FILES_FILE ?= $(BACKUP_FILES_FILE)
+REAL_CONTENT_SOURCE_DIR ?= course-materials-md
+REAL_CONTENT_CASES ?= ops/real-content-acceptance-cases.json
+REAL_CONTENT_REPORT ?= tmp/real-content-acceptance-report.json
+REAL_CONTENT_BACKUP_DIR ?= backups/real-content-$(shell date -u +%Y%m%dT%H%M%SZ)
+REAL_CONTENT_EMBEDDING_PROVIDER ?= openai
+REAL_CONTENT_EMBEDDING_MODEL ?= text-embedding-3-small
+REAL_CONTENT_EMBEDDING_DIMENSION ?= 768
+REAL_CONTENT_ANSWER_PROVIDER ?= fake
+REAL_CONTENT_COMPOSE_PROJECT ?= kb-real-content
+REAL_CONTENT_COMPOSE ?= $(COMPOSE) -p $(REAL_CONTENT_COMPOSE_PROJECT)
+REAL_CONTENT_COMPOSE_ENV := KB_EMBEDDING_PROVIDER=$(REAL_CONTENT_EMBEDDING_PROVIDER) KB_OPENAI_EMBEDDING_MODEL=$(REAL_CONTENT_EMBEDDING_MODEL) KB_EMBEDDING_DIMENSION=$(REAL_CONTENT_EMBEDDING_DIMENSION) KB_ANSWER_PROVIDER=$(REAL_CONTENT_ANSWER_PROVIDER)
 
-.PHONY: backup backup-db backup-files deploy-check deploy-check-ci dev test test-unit test-integration test-e2e lint format migrate index worker worker-once worker-status eval-seed eval-run ops-check docker-build docker-up docker-down docker-logs docker-test docker-smoke restore-db restore-files
+.PHONY: backup backup-db backup-files deploy-check deploy-check-ci dev test test-unit test-integration test-e2e lint format migrate index worker worker-once worker-status eval-seed eval-run ops-check docker-build docker-up docker-down docker-logs docker-test docker-smoke restore-db restore-files real-content-env-check real-content-prepare real-content-index real-content-acceptance real-content-package
 
 backup: backup-db backup-files
 
@@ -30,6 +48,32 @@ restore-files:
 	@test "$(CONFIRM_RESTORE)" = "yes" || (echo "Set CONFIRM_RESTORE=yes to restore runtime files."; exit 1)
 	@test -f "$(RESTORE_FILES_FILE)" || (echo "Missing RESTORE_FILES_FILE=$(RESTORE_FILES_FILE)"; exit 1)
 	$(COMPOSE) run --rm --no-deps --entrypoint sh app -c 'tar -xzf - -C /app' < "$(RESTORE_FILES_FILE)"
+
+real-content-env-check:
+	@test "$(REAL_CONTENT_EMBEDDING_DIMENSION)" = "768" || (echo "REAL_CONTENT_EMBEDDING_DIMENSION must be 768 for the current pgvector schema."; exit 1)
+	@test "$(REAL_CONTENT_EMBEDDING_PROVIDER)" != "openai" || test -n "$$OPENAI_API_KEY" || (echo "OPENAI_API_KEY is required when REAL_CONTENT_EMBEDDING_PROVIDER=openai."; exit 1)
+
+real-content-prepare:
+	@test -d "$(REAL_CONTENT_SOURCE_DIR)" || (echo "Missing REAL_CONTENT_SOURCE_DIR=$(REAL_CONTENT_SOURCE_DIR)"; exit 1)
+	$(REAL_CONTENT_COMPOSE) build app
+	$(REAL_CONTENT_COMPOSE) run --rm --no-deps --volume "$(CURDIR)/$(REAL_CONTENT_SOURCE_DIR):/real-content:ro" app python -m scripts.prepare_real_content --source-dir /real-content --docs-dir /app/docs
+
+real-content-index: real-content-env-check
+	$(REAL_CONTENT_COMPOSE_ENV) $(REAL_CONTENT_COMPOSE) build app
+	$(REAL_CONTENT_COMPOSE_ENV) $(REAL_CONTENT_COMPOSE) up -d postgres
+	$(REAL_CONTENT_COMPOSE_ENV) $(REAL_CONTENT_COMPOSE) run --rm migrate
+	$(REAL_CONTENT_COMPOSE_ENV) $(REAL_CONTENT_COMPOSE) run --rm --no-deps app python -m scripts.rebuild_index --docs-dir /app/docs --kb-dir /app/.kb
+
+real-content-acceptance: real-content-env-check
+	mkdir -p "$(dir $(REAL_CONTENT_REPORT))"
+	$(REAL_CONTENT_COMPOSE_ENV) $(REAL_CONTENT_COMPOSE) build app
+	$(REAL_CONTENT_COMPOSE_ENV) $(REAL_CONTENT_COMPOSE) up -d postgres
+	$(REAL_CONTENT_COMPOSE_ENV) $(REAL_CONTENT_COMPOSE) run --rm --no-deps app python -m scripts.real_content_acceptance --cases /app/$(REAL_CONTENT_CASES) > "$(REAL_CONTENT_REPORT)"
+	@cat "$(REAL_CONTENT_REPORT)"
+
+real-content-package: real-content-prepare real-content-index real-content-acceptance
+	$(MAKE) backup COMPOSE="$(REAL_CONTENT_COMPOSE)" BACKUP_DIR="$(REAL_CONTENT_BACKUP_DIR)" BACKUP_DB_FILE="$(REAL_CONTENT_BACKUP_DIR)/postgres.dump" BACKUP_FILES_FILE="$(REAL_CONTENT_BACKUP_DIR)/runtime-files.tar.gz"
+	cp "$(REAL_CONTENT_REPORT)" "$(REAL_CONTENT_BACKUP_DIR)/real-content-acceptance-report.json"
 
 deploy-check:
 	$(UV) python -m scripts.validate_deploy_env

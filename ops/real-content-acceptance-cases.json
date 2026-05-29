@@ -1,0 +1,37 @@
+[
+  {
+    "id": "cap-theorem",
+    "query": "CAP theorem 是什麼？系統設計時應該怎麼取捨？",
+    "expected_sources": ["1-基本觀念-03-CAP Theorem.md"],
+    "strategy": "hybrid",
+    "limit": 8
+  },
+  {
+    "id": "overload-protection",
+    "query": "Overload Protection 要怎麼做？有哪些常見保護方式？",
+    "expected_sources": ["4-維運與可靠性-02-Overload Protection.md"],
+    "strategy": "hybrid",
+    "limit": 8
+  },
+  {
+    "id": "rag",
+    "query": "RAG 的資料流程是什麼？retrieval 跟 generation 怎麼配合？",
+    "expected_sources": ["2-設計模式-08-RAG (Retrieval-Augmented Generation).md"],
+    "strategy": "hybrid",
+    "limit": 8
+  },
+  {
+    "id": "message-queue",
+    "query": "Message Queue 適合用在哪些情境？可以解決什麼問題？",
+    "expected_sources": ["3-常用技術-07-Message Queue.md"],
+    "strategy": "hybrid",
+    "limit": 8
+  },
+  {
+    "id": "database-indexing",
+    "query": "Database Indexing 的用途是什麼？什麼時候需要加 index？",
+    "expected_sources": ["1-基本觀念-07-Database Indexing.md"],
+    "strategy": "hybrid",
+    "limit": 8
+  }
+]

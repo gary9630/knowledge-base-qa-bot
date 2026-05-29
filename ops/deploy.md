@@ -61,6 +61,39 @@ make docker-smoke
 make backup BACKUP_DIR=backups/$(date -u +%Y%m%dT%H%M%SZ)
 ```
 
+## Real Content Launch Artifact
+
+For the first production data load, keep `course-materials-md/` private and build a
+deployable DB/runtime artifact from the repository root:
+
+```bash
+OPENAI_API_KEY=... make real-content-package
+```
+
+This uses the real embedding contract, `text-embedding-3-small` with
+`KB_EMBEDDING_DIMENSION=768`, prepares the Compose `docs_data` volume, rebuilds the
+Postgres + pgvector index, runs retrieval acceptance cases, and packages:
+
+- `postgres.dump`
+- `runtime-files.tar.gz`
+- `real-content-acceptance-report.json`
+
+Move the backup directory to the deploy target through your normal encrypted artifact
+path, then restore it before starting app traffic:
+
+```bash
+make restore-db RESTORE_DB_FILE=<artifact>/postgres.dump CONFIRM_RESTORE=yes
+make restore-files RESTORE_FILES_FILE=<artifact>/runtime-files.tar.gz CONFIRM_RESTORE=yes
+make ops-check API_URL=https://your-app.example.com KB_ADMIN_API_KEY=$KB_ADMIN_API_KEY
+```
+
+Do not commit `course-materials-md/` or generated backup artifacts.
+
+The real-content workflow defaults to an isolated Compose project,
+`REAL_CONTENT_COMPOSE_PROJECT=kb-real-content`, so stale local development docs do not
+enter the launch artifact. Use a different project name for a fresh rehearsal rather
+than deleting Docker volumes in bulk.
+
 ## Deploy Sequence
 
 For the Compose deployment model:

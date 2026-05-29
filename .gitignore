@@ -225,3 +225,7 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Local data artifacts
+course-materials-md/
+course-materials-raw/

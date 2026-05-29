@@ -134,6 +134,10 @@ def test_makefile_exposes_dev_test_lint_migration_and_docker_targets() -> None:
         "docker-smoke",
         "restore-db",
         "restore-files",
+        "real-content-prepare",
+        "real-content-index",
+        "real-content-acceptance",
+        "real-content-package",
     )
 
     for target in expected_targets:
@@ -141,6 +145,10 @@ def test_makefile_exposes_dev_test_lint_migration_and_docker_targets() -> None:
 
     assert "uv run --python 3.12" in makefile
     assert "docker compose" in makefile
+    assert "include .env" in makefile
+    assert "export OPENAI_API_KEY" in makefile
+    assert "export KB_POSTGRES_PORT" in makefile
+    assert ".EXPORT_ALL_VARIABLES:" not in makefile
     assert "|| true" not in makefile
     assert "pg_isready" in makefile
     assert "$(API_URL)/ready" in makefile
@@ -160,6 +168,18 @@ def test_makefile_exposes_dev_test_lint_migration_and_docker_targets() -> None:
     assert "pg_dump" in makefile
     assert "pg_restore" in makefile
     assert "CONFIRM_RESTORE=yes" in makefile
+    assert "REAL_CONTENT_SOURCE_DIR" in makefile
+    assert "REAL_CONTENT_COMPOSE_PROJECT" in makefile
+    assert "course-materials-md" in makefile
+    assert "python -m scripts.prepare_real_content" in makefile
+    assert "python -m scripts.rebuild_index" in makefile
+    assert "python -m scripts.real_content_acceptance" in makefile
+    assert 'test -n "$$OPENAI_API_KEY"' in makefile
+    assert 'BACKUP_DB_FILE="$(REAL_CONTENT_BACKUP_DIR)/postgres.dump"' in makefile
+    assert (
+        'BACKUP_FILES_FILE="$(REAL_CONTENT_BACKUP_DIR)/runtime-files.tar.gz"'
+        in makefile
+    )
 
 
 def test_backup_restore_runbook_documents_database_and_file_restore() -> None:
@@ -172,6 +192,9 @@ def test_backup_restore_runbook_documents_database_and_file_restore() -> None:
     assert "kb_data" in runbook
     assert "make ops-check" in runbook
     assert "CONFIRM_RESTORE=yes" in runbook
+    assert "real-content-package" in runbook
+    assert "postgres.dump" in runbook
+    assert "runtime-files.tar.gz" in runbook
 
 
 def test_production_deploy_runbook_documents_release_sequence() -> None:
@@ -187,6 +210,18 @@ def test_production_deploy_runbook_documents_release_sequence() -> None:
     assert "make ops-check" in runbook
     assert "docker compose" in runbook
     assert "rollback" in runbook.lower()
+    assert "course-materials-md" in runbook
+    assert "make real-content-package" in runbook
+
+
+def test_real_content_acceptance_cases_are_documented_for_course_materials() -> None:
+    cases = read_project_file("ops/real-content-acceptance-cases.json")
+
+    assert "CAP theorem" in cases
+    assert "Overload Protection" in cases
+    assert "RAG" in cases
+    assert "Message Queue" in cases
+    assert "Database Indexing" in cases
 
 
 def test_production_env_example_documents_required_deploy_settings() -> None:
