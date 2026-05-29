@@ -56,6 +56,7 @@ def test_chat_stream_events_encode_not_indexed_response() -> None:
     assert "".join(event["data"] for event in events[1:-1]) == NOT_INDEXED_ANSWER
     done_payload = json.loads(events[-1]["data"])
     assert done_payload["decision"] == "cannot_confirm"
+    assert done_payload["answer"] == NOT_INDEXED_ANSWER
     assert done_payload["answer_quality"]["cannot_confirm_reason"] == "not_indexed"
     assert done_payload["conversation_id"] == str(response.conversation_id)
 

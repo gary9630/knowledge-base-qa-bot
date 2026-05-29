@@ -82,7 +82,7 @@ Settings use the `KB_` prefix unless noted.
 | `KB_ANSWER_PROVIDER` | `fake` | Use `fake` for deterministic dev/test or `openai` for generated answers. |
 | `OPENAI_API_KEY` | unset | Required by OpenAI providers. |
 | `KB_OPENAI_EMBEDDING_MODEL` | unset | Optional OpenAI embedding model override. |
-| `KB_OPENAI_CHAT_MODEL` | unset | Optional OpenAI chat model override. |
+| `KB_OPENAI_CHAT_MODEL` | unset | Optional OpenAI chat model override; defaults to `gpt-5.4-mini` when unset. |
 | `KB_EMBEDDING_DIMENSION` | `768` | Embedding vector dimension used by the database schema/provider. |
 | `KB_DEFAULT_RETRIEVAL_STRATEGY` | `hybrid` | Default retrieval mode. |
 | `KB_POSTGRES_PORT` | `5432` | Host port for Compose Postgres. |

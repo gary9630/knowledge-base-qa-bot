@@ -39,20 +39,44 @@ class RecordingEmbeddingClient:
 
 
 class RecordingChatCompletionsEndpoint:
-    def __init__(self, content: str | None) -> None:
+    def __init__(
+        self,
+        content: str | None,
+        stream_chunks: list[str | None] | None = None,
+    ) -> None:
         self._content = content
+        self._stream_chunks = stream_chunks
         self.calls: list[dict[str, Any]] = []
 
-    def create(self, *, model: str, messages: list[dict[str, str]]) -> SimpleNamespace:
-        self.calls.append({"model": model, "messages": messages})
+    def create(
+        self,
+        *,
+        model: str,
+        messages: list[dict[str, str]],
+        stream: bool = False,
+    ) -> SimpleNamespace | list[SimpleNamespace]:
+        self.calls.append({"model": model, "messages": messages, "stream": stream})
+        if stream:
+            return [
+                SimpleNamespace(
+                    choices=[
+                        SimpleNamespace(delta=SimpleNamespace(content=chunk_content))
+                    ]
+                )
+                for chunk_content in (self._stream_chunks or [])
+            ]
         message = SimpleNamespace(content=self._content)
         return SimpleNamespace(choices=[SimpleNamespace(message=message)])
 
 
 class RecordingChatClient:
-    def __init__(self, content: str | None) -> None:
+    def __init__(
+        self,
+        content: str | None,
+        stream_chunks: list[str | None] | None = None,
+    ) -> None:
         self.chat = SimpleNamespace(
-            completions=RecordingChatCompletionsEndpoint(content),
+            completions=RecordingChatCompletionsEndpoint(content, stream_chunks),
         )
 
 
@@ -138,6 +162,7 @@ def test_openai_answer_provider_calls_chat_completions_with_sources() -> None:
     assert answer == "Use the source. [faq.md#course-site]"
     completions = client.chat.completions
     assert completions.calls[0]["model"] == "gpt-test"
+    assert completions.calls[0]["stream"] is False
     messages = completions.calls[0]["messages"]
     assert messages[0]["role"] == "system"
     assert "Where is the course site?" in messages[-1]["content"]
@@ -216,6 +241,26 @@ def test_openai_answer_provider_returns_cannot_confirm_for_missing_content() -> 
     assert answer == CANNOT_CONFIRM_ANSWER
 
 
+def test_openai_answer_provider_streams_chat_completion_deltas() -> None:
+    client = RecordingChatClient(
+        "ignored sync response",
+        stream_chunks=["Use ", "the source", None, ". [faq.md#course-site]"],
+    )
+    provider = OpenAIAnswerProvider(api_key=None, model="gpt-test", client=client)
+    source = AnswerSource(
+        source_id="faq.md#course-site",
+        filename="faq.md",
+        heading="Course Site",
+        body_md="## Course Site\n\nUse the source.",
+    )
+
+    tokens = list(provider.stream_answer("Where is the course site?", [source]))
+
+    assert tokens == ["Use ", "the source", ". [faq.md#course-site]"]
+    assert client.chat.completions.calls[0]["model"] == "gpt-test"
+    assert client.chat.completions.calls[0]["stream"] is True
+
+
 def test_openai_answer_provider_requires_api_key_without_injected_client() -> None:
     with pytest.raises(ValueError, match="OPENAI_API_KEY is required"):
         OpenAIAnswerProvider(api_key=None, model="gpt-test")
@@ -260,7 +305,7 @@ def test_create_answer_provider_uses_default_openai_model() -> None:
     )
 
     assert isinstance(provider, OpenAIAnswerProvider)
-    assert provider.model == "gpt-4o-mini"
+    assert provider.model == "gpt-5.4-mini"
 
 
 def test_create_answer_provider_rejects_unsupported_provider() -> None:

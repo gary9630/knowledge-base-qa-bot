@@ -34,6 +34,7 @@ from app.retrieval.hybrid import HybridRetriever
 from app.retrieval.models import (
     RetrievalDecision,
     RetrievalDiagnostics,
+    RetrievalResult,
     RetrievalStrategy,
     RetrievedCandidate,
 )
@@ -332,11 +333,41 @@ def _unsafe_chat_stream_response_events(
         retrieval_diagnostics=retrieval_diagnostics_response(retrieval_result.diagnostics),
     )
 
-    answer_result = _answer_provider_error_response(
+    yield from _stream_answer_response_events(
         provider=get_answer_provider(request),
         payload=payload,
-        candidates=retrieval_result.candidates,
+        session=session,
+        conversation=conversation,
+        user_message=user_message,
+        retrieval_result=retrieval_result,
+        started_at=started_at,
     )
+
+
+def _stream_answer_response_events(
+    *,
+    provider: AnswerProvider,
+    payload: ChatRequest,
+    session: Session,
+    conversation: Conversation,
+    user_message: Message,
+    retrieval_result: RetrievalResult,
+    started_at: float,
+) -> Iterator[dict[str, str]]:
+    answer_service = AnswerService(provider)
+    answer_parts: list[str] = []
+
+    try:
+        for token in answer_service.stream_answer(payload.query, retrieval_result.candidates):
+            answer_parts.append(token)
+            yield {"event": "token", "data": token}
+        generated_answer = "".join(answer_parts).strip() or CANNOT_CONFIRM_ANSWER
+        answer_result = answer_service.validate_generated_answer(
+            generated_answer,
+            retrieval_result.candidates,
+        )
+    except Exception as error:
+        raise HTTPException(status_code=502, detail="Answer provider failed.") from error
 
     cited_source_ids = {source.source_id for source in answer_result.sources}
     cited_candidates = [
@@ -362,9 +393,6 @@ def _unsafe_chat_stream_response_events(
         answer_quality=answer_quality,
         latency_ms=_elapsed_ms(started_at),
     )
-
-    for token in _answer_token_chunks(response.answer):
-        yield {"event": "token", "data": token}
     yield _done_event(response)
 
 
@@ -413,6 +441,7 @@ def _done_event(response: ChatResponse) -> dict[str, str]:
                 "user_message_id": str(response.user_message_id),
                 "assistant_message_id": str(response.assistant_message_id),
                 "retrieval_event_id": str(response.retrieval_event_id),
+                "answer": response.answer,
                 "decision": response.decision,
                 "answer_quality": response.answer_quality.model_dump(mode="json"),
             }

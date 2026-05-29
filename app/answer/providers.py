@@ -1,14 +1,14 @@
 from __future__ import annotations
 
 import json
-from collections.abc import Sequence
+from collections.abc import Iterator, Sequence
 from dataclasses import dataclass
-from typing import Any, Protocol
+from typing import Any, Protocol, runtime_checkable
 
 from app.answer.citations import CANNOT_CONFIRM_ANSWER
 from app.core.config import Settings
 
-DEFAULT_OPENAI_CHAT_MODEL = "gpt-4o-mini"
+DEFAULT_OPENAI_CHAT_MODEL = "gpt-5.4-mini"
 
 
 @dataclass(frozen=True)
@@ -37,6 +37,17 @@ class AnswerProvider(Protocol):
     ) -> str: ...
 
 
+@runtime_checkable
+class StreamingAnswerProvider(Protocol):
+    def stream_answer(
+        self,
+        query: str,
+        sources: Sequence[AnswerSource],
+        *,
+        strict: bool = False,
+    ) -> Iterator[str]: ...
+
+
 class FakeAnswerProvider:
     def __init__(self, answers: Sequence[str] | None = None) -> None:
         self._answers = list(answers or [])
@@ -60,6 +71,15 @@ class FakeAnswerProvider:
             return CANNOT_CONFIRM_ANSWER
         return self._answers.pop(0)
 
+    def stream_answer(
+        self,
+        query: str,
+        sources: Sequence[AnswerSource],
+        *,
+        strict: bool = False,
+    ) -> Iterator[str]:
+        yield from _text_chunks(self.generate_answer(query, sources, strict=strict))
+
 
 class TopSourceAnswerProvider:
     def generate_answer(
@@ -75,6 +95,15 @@ class TopSourceAnswerProvider:
         source = sources[0]
         excerpt = _first_content_line(source.body_md) or source.heading
         return f"{excerpt} [{source.source_id}]"
+
+    def stream_answer(
+        self,
+        query: str,
+        sources: Sequence[AnswerSource],
+        *,
+        strict: bool = False,
+    ) -> Iterator[str]:
+        yield from _text_chunks(self.generate_answer(query, sources, strict=strict))
 
 
 class OpenAIAnswerProvider:
@@ -103,6 +132,23 @@ class OpenAIAnswerProvider:
             messages=_chat_messages(query=query, sources=sources, strict=strict),
         )
         return _assistant_message_content(response)
+
+    def stream_answer(
+        self,
+        query: str,
+        sources: Sequence[AnswerSource],
+        *,
+        strict: bool = False,
+    ) -> Iterator[str]:
+        response = self._client.chat.completions.create(
+            model=self.model,
+            messages=_chat_messages(query=query, sources=sources, strict=strict),
+            stream=True,
+        )
+        for chunk in response:
+            content = _chat_completion_chunk_content(chunk)
+            if content:
+                yield content
 
 
 def create_answer_provider(
@@ -181,6 +227,31 @@ def _assistant_message_content(response: object) -> str:
     if not isinstance(content, str) or not content.strip():
         return CANNOT_CONFIRM_ANSWER
     return content.strip()
+
+
+def _chat_completion_chunk_content(chunk: object) -> str:
+    choices = _object_value(chunk, "choices")
+    if not isinstance(choices, Sequence) or isinstance(choices, (str, bytes)) or not choices:
+        return ""
+
+    delta = _object_value(choices[0], "delta")
+    content = _object_value(delta, "content")
+    return content if isinstance(content, str) else ""
+
+
+def _object_value(value: object, key: str) -> object:
+    if isinstance(value, dict):
+        return value.get(key)
+    return getattr(value, key, None)
+
+
+def _text_chunks(text: str, *, chunk_size: int = 12) -> Iterator[str]:
+    if not text:
+        yield ""
+        return
+
+    for start in range(0, len(text), chunk_size):
+        yield text[start : start + chunk_size]
 
 
 def _first_content_line(body_md: str) -> str:

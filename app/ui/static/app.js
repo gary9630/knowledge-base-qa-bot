@@ -406,6 +406,10 @@
 
       if (event.event === "done") {
         const payload = safeJson(event.data);
+        if (typeof payload.answer === "string" && answerNode.textContent !== payload.answer) {
+          answerNode.textContent = payload.answer;
+          answerNode.classList.remove("is-streaming-status");
+        }
         renderAnswerQuality(payload);
         renderAnswerFooter(answerNode, payload);
       }
