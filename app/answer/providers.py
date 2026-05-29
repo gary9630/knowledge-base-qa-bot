@@ -184,11 +184,22 @@ def _assistant_message_content(response: object) -> str:
 
 
 def _first_content_line(body_md: str) -> str:
-    for line in body_md.splitlines():
-        stripped = line.strip()
-        if stripped and not stripped.startswith("#"):
-            return stripped
-    return ""
+    lines = [_clean_content_line(line) for line in body_md.splitlines()]
+    answer_line = next((line for line in lines if _is_answer_line(line)), "")
+    if answer_line:
+        return answer_line
+    return next((line for line in lines if line), "")
+
+
+def _clean_content_line(line: str) -> str:
+    stripped = line.strip()
+    if not stripped or stripped.startswith("#"):
+        return ""
+    return stripped
+
+
+def _is_answer_line(line: str) -> bool:
+    return line.startswith(("答覆：", "答覆:", "回答：", "回答:", "Answer:", "A:"))
 
 
 def _openai_client(api_key: str | None) -> Any:

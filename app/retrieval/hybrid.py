@@ -14,6 +14,7 @@ from app.retrieval.models import (
     RetrievalResult,
     RetrievalStrategy,
     RetrievedCandidate,
+    expand_query_terms,
 )
 from app.retrieval.vector import VectorRetriever
 
@@ -75,7 +76,7 @@ class HybridRetriever:
         if normalized_strategy in ("vector", "hybrid"):
             candidates.extend(self.vector_retriever.search(query, limit))
 
-        merged = merge_results(candidates)
+        merged = rerank_results_for_query(query, merge_results(candidates))
         accepted = [candidate for candidate in merged if candidate.score >= self.score_threshold][
             :limit
         ]
@@ -132,6 +133,72 @@ def merge_results(candidates: Iterable[RetrievedCandidate]) -> list[RetrievedCan
         merged,
         key=lambda candidate: (-candidate.score, candidate.filename, candidate.source_id),
     )
+
+
+def rerank_results_for_query(
+    query: str,
+    candidates: list[RetrievedCandidate],
+) -> list[RetrievedCandidate]:
+    reranked: list[RetrievedCandidate] = []
+    for candidate in candidates:
+        boost = _query_relevance_boost(query, candidate)
+        if boost <= 0.0:
+            reranked.append(candidate)
+            continue
+        reranked.append(
+            replace(
+                candidate,
+                score=min(1.0, candidate.score + boost),
+                debug_scores={
+                    **candidate.debug_scores,
+                    "base_score": candidate.score,
+                    "query_relevance_boost": boost,
+                },
+            )
+        )
+    return sorted(
+        reranked,
+        key=lambda candidate: (-candidate.score, candidate.filename, candidate.source_id),
+    )
+
+
+def _query_relevance_boost(query: str, candidate: RetrievedCandidate) -> float:
+    terms = [
+        term
+        for term in expand_query_terms(query, max_terms=24)
+        if _significant_query_term(term)
+    ]
+    if not terms:
+        return 0.0
+
+    haystack = _normalized_candidate_text(candidate)
+    boost = 0.0
+    for term in terms:
+        if _normalize_text(term) not in haystack:
+            continue
+        boost += min(0.03, len(term) * 0.005)
+    return min(0.08, boost)
+
+
+def _significant_query_term(term: str) -> bool:
+    return len(term) >= 3
+
+
+def _normalized_candidate_text(candidate: RetrievedCandidate) -> str:
+    return _normalize_text(
+        "\n".join(
+            [
+                candidate.filename,
+                candidate.source_id,
+                candidate.heading,
+                candidate.body_md,
+            ]
+        )
+    )
+
+
+def _normalize_text(value: str) -> str:
+    return value.casefold()
 
 
 def _strategy_scores(candidates: list[RetrievedCandidate]) -> dict[str, float]:

@@ -48,10 +48,11 @@
     chatSubmit: $("#chat-submit"),
     learnerChatStatus: $("#learner-chat-status"),
     samplePrompts: $$("[data-sample-prompt]"),
-    selectedSources: $("#selected-sources"),
+    selectedSources: $("#answer-sources"),
     selectedSourceCount: $("#selected-source-count"),
     answerQuality: $("#answer-quality"),
     markdownPreview: $("#markdown-preview"),
+    previewSourceMeta: $("#preview-source-meta"),
     sourceList: $("#source-list"),
     sourceTable: $("#source-table"),
     documentAdminKey: $("#document-admin-key"),
@@ -570,7 +571,8 @@
     elements.selectedSourceCount.textContent = String(state.selectedSources.length);
 
     if (state.selectedSources.length === 0) {
-      elements.selectedSources.append(emptyText("No selected sources"));
+      elements.selectedSources.append(emptyText("No answer sources for the latest response."));
+      resetPreviewSourceMeta();
       elements.markdownPreview.textContent = "Select a source to preview markdown.";
       return;
     }
@@ -606,6 +608,11 @@
     const heading = source.heading || source.source_id || "Source";
     const body = source.body_md || "No markdown body returned for this source.";
     const diagnostics = scoreBreakdownText(source);
+    renderPreviewSourceMeta({
+      title: heading,
+      summary: source.source_id || source.filename || "Answer source",
+      kind: "Answer source",
+    });
     elements.markdownPreview.textContent = [
       heading,
       diagnostics ? `Diagnostics: ${diagnostics}` : null,
@@ -710,10 +717,11 @@
     row.addEventListener("click", () => previewDocument(documentItem));
 
     const title = document.createElement("strong");
-    title.textContent = documentItem.title || documentItem.filename;
+    title.className = "source-title";
+    title.textContent = documentDisplayTitle(documentItem);
     const meta = document.createElement("span");
     meta.className = "source-meta";
-    meta.textContent = `${documentItem.section_count} sections · ${documentItem.source_type}`;
+    meta.textContent = documentSourceSummary(documentItem);
 
     row.append(title, meta);
     return row;
@@ -725,7 +733,7 @@
     row.className = "source-table-row source-row";
     row.addEventListener("click", () => previewDocument(documentItem));
 
-    [documentItem.filename, `${documentItem.section_count} sections`, documentItem.source_type].forEach(
+    [documentDisplayTitle(documentItem), `${documentItem.section_count} sections`, documentItem.source_type].forEach(
       (value) => {
         const cell = document.createElement("span");
         cell.textContent = value || "--";
@@ -870,17 +878,19 @@
 
   async function previewDocument(documentItem) {
     elements.markdownPreview.textContent = "Loading source metadata...";
-    setSelectedSources([
-      {
-        source_id: documentItem.filename,
-        filename: documentItem.filename,
-        heading: documentItem.title || documentItem.filename,
-        body_md: "",
-      },
-    ]);
+    renderPreviewSourceMeta({
+      title: documentDisplayTitle(documentItem),
+      summary: documentSourceSummary(documentItem),
+      kind: "Source browser",
+    });
 
     try {
       const documentDetail = await getJson(`/sources/${documentItem.id}`);
+      renderPreviewSourceMeta({
+        title: documentDisplayTitle(documentDetail),
+        summary: documentSourceSummary(documentDetail),
+        kind: "Source browser",
+      });
       elements.markdownPreview.textContent = await formatDocumentPreview(documentDetail);
     } catch (error) {
       elements.markdownPreview.textContent = `Source preview unavailable: ${errorMessage(error)}`;
@@ -902,6 +912,43 @@
       "",
       sections.join("\n\n") || "No sections indexed.",
     ].join("\n");
+  }
+
+  function documentDisplayTitle(documentItem) {
+    const title = documentItem.title || "";
+    if (title && title !== documentItem.filename?.replace(/\.md$/i, "")) {
+      return title;
+    }
+    const filename = documentItem.filename || title || "Untitled source";
+    return filename.replace(/\.md$/i, "");
+  }
+
+  function documentSourceSummary(documentItem) {
+    const parts = [
+      `${documentItem.section_count || 0} sections`,
+      documentItem.source_type || "source",
+      documentItem.imported_from ? `from ${documentItem.imported_from}` : documentItem.filename,
+    ];
+    return parts.filter(Boolean).join(" · ");
+  }
+
+  function renderPreviewSourceMeta({ title, summary, kind }) {
+    elements.previewSourceMeta.replaceChildren();
+    const wrapper = document.createElement("div");
+    wrapper.className = "preview-source-card";
+    const label = document.createElement("span");
+    label.textContent = kind || "Preview";
+    const heading = document.createElement("strong");
+    heading.textContent = title || "Untitled source";
+    const meta = document.createElement("span");
+    meta.className = "source-meta";
+    meta.textContent = summary || "No source metadata available.";
+    wrapper.append(label, heading, meta);
+    elements.previewSourceMeta.append(wrapper);
+  }
+
+  function resetPreviewSourceMeta() {
+    elements.previewSourceMeta.replaceChildren(emptyText("No preview selected."));
   }
 
   function chatLimit() {
@@ -1025,25 +1072,22 @@
     }
 
     if (node.type === "section" && metadata.document_id && metadata.section_id) {
-      setSelectedSources([
-        {
-          source_id: metadata.source_id || node.label,
-          heading: metadata.heading || node.label,
-          body_md: "Loading source section...",
-        },
-      ]);
       elements.markdownPreview.textContent = "Loading source section...";
+      renderPreviewSourceMeta({
+        title: metadata.heading || node.label,
+        summary: metadata.source_id || "Mindmap section",
+        kind: "Mindmap preview",
+      });
       try {
         const section = await getJson(
           `/sources/${metadata.document_id}/sections/${metadata.section_id}`,
         );
-        setSelectedSources([
-          {
-            source_id: section.source_id,
-            heading: section.heading,
-            body_md: section.body_md,
-          },
-        ]);
+        renderPreviewSourceMeta({
+          title: section.heading,
+          summary: section.source_id,
+          kind: "Mindmap preview",
+        });
+        elements.markdownPreview.textContent = [section.heading, section.body_md].join("\n\n");
       } catch (error) {
         elements.markdownPreview.textContent = `Source preview unavailable: ${errorMessage(error)}`;
       }

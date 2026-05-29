@@ -121,6 +121,34 @@ def test_hybrid_search_reports_retrieval_diagnostics() -> None:
     assert result.diagnostics.score_debug_by_source_id[accepted_candidate.source_id]
 
 
+def test_hybrid_search_boosts_exact_query_match_above_tied_generic_match() -> None:
+    generic_website_match = _candidate(
+        score=0.30,
+        strategy="lexical",
+        filename="network.md",
+        heading="L4 vs L7",
+        body_md="## L4 vs L7\n\nREST、HTTP API、網站",
+    )
+    faq_match = _candidate(
+        score=0.30,
+        strategy="lexical",
+        filename="常見問題FAQ.md",
+        heading="常見問題FAQ",
+        body_md="問題：課程網站在哪？\n答覆：課程網站是 https://buildmoat.org/",
+    )
+    retriever = HybridRetriever(
+        lexical_retriever=StubRetriever([generic_website_match, faq_match]),
+        vector_retriever=StubRetriever([]),
+        score_threshold=0.10,
+    )
+
+    result = retriever.search("課程網站在哪裡？", strategy="hybrid", limit=2)
+
+    assert result.candidates[0].source_id == faq_match.source_id
+    assert result.candidates[0].score > generic_website_match.score
+    assert result.candidates[0].debug_scores["query_relevance_boost"] > 0
+
+
 def test_hybrid_search_respects_strategy_selection() -> None:
     lexical_candidate = _candidate(score=0.75, strategy="lexical")
     vector_candidate = _candidate(score=0.70, strategy="vector", heading="Vector")
@@ -158,7 +186,9 @@ def _candidate(
     section_id: UUID | None = None,
     score: float,
     strategy: str,
+    filename: str = "faq.md",
     heading: str = "Course Site",
+    body_md: str | None = None,
     source_type: str = "markdown",
     source_priority: int = 0,
 ) -> RetrievedCandidate:
@@ -166,9 +196,9 @@ def _candidate(
     return RetrievedCandidate(
         section_id=candidate_section_id,
         source_id=f"faq.md#{heading.lower().replace(' ', '-')}",
-        filename="faq.md",
+        filename=filename,
         heading=heading,
-        body_md=f"## {heading}\n\nBody",
+        body_md=body_md or f"## {heading}\n\nBody",
         score=score,
         strategy=strategy,
         source_type=source_type,

@@ -236,6 +236,20 @@ def test_create_answer_provider_preserves_fake_top_source_behavior() -> None:
     )
 
 
+def test_fake_top_source_provider_prefers_answer_line_in_qa_source() -> None:
+    provider = create_answer_provider(Settings(answer_provider="fake"))
+    source = AnswerSource(
+        source_id="常見問題FAQ.md#常見問題faq",
+        filename="常見問題FAQ.md",
+        heading="常見問題FAQ",
+        body_md="問題：課程網站在哪？\n答覆：課程網站是 https://buildmoat.org/",
+    )
+
+    assert provider.generate_answer("課程網站在哪裡？", [source]) == (
+        "答覆：課程網站是 https://buildmoat.org/ [常見問題FAQ.md#常見問題faq]"
+    )
+
+
 def test_create_answer_provider_uses_default_openai_model() -> None:
     provider = create_answer_provider(
         Settings(

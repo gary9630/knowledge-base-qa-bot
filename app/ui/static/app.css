@@ -335,6 +335,33 @@ button.selected-source {
   font-size: 13px;
 }
 
+.source-title {
+  display: block;
+}
+
+.preview-source-meta {
+  display: grid;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.preview-source-card {
+  display: grid;
+  gap: 3px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #fbfcfd;
+  padding: 10px;
+}
+
+.preview-source-card > span:first-child {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
 .tool-section {
   margin-top: 16px;
 }

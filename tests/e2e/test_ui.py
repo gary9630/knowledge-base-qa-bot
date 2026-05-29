@@ -13,7 +13,7 @@ def test_ui_serves_three_column_workbench() -> None:
     assert "Mindmap" in response.text
     assert "Admin Uploads" in response.text
     assert "Feedback / Evals" in response.text
-    assert "selected sources" in response.text.lower()
+    assert "answer sources" in response.text.lower()
     assert 'role="tabpanel"' in response.text
     assert 'aria-controls="panel-chat"' in response.text
 
@@ -237,6 +237,35 @@ def test_ui_exposes_learner_chat_polish_wiring() -> None:
     assert ".answer-footer" in css_response.text
     assert ".source-chip" in css_response.text
     assert ".answer-trust" in css_response.text
+
+
+def test_ui_separates_answer_sources_from_previewed_source() -> None:
+    client = TestClient(create_app())
+
+    response = client.get("/")
+    js_response = client.get("/static/app.js")
+    css_response = client.get("/static/app.css")
+
+    assert response.status_code == 200
+    assert "Answer Sources" in response.text
+    assert 'id="answer-sources"' in response.text
+    assert 'id="preview-source-meta"' in response.text
+    assert "Previewed Source" in response.text
+    assert "No answer sources for the latest response." in response.text
+
+    assert js_response.status_code == 200
+    assert "documentDisplayTitle" in js_response.text
+    assert "documentSourceSummary" in js_response.text
+    assert "renderPreviewSourceMeta" in js_response.text
+    assert "No preview selected." in js_response.text
+    preview_document_body = js_response.text.split("async function previewDocument", 1)[1].split(
+        "async function formatDocumentPreview", 1
+    )[0]
+    assert "setSelectedSources" not in preview_document_body
+
+    assert css_response.status_code == 200
+    assert ".preview-source-meta" in css_response.text
+    assert ".source-title" in css_response.text
 
 
 def test_ui_exposes_mindmap_on_demand_wiring() -> None:
