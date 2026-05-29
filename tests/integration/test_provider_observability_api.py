@@ -93,6 +93,9 @@ def _provider_retrieval_event(db_session: Session) -> RetrievalEvent:
         role="assistant",
         content="answer",
     )
+    db_session.add_all([conversation, message])
+    db_session.flush()
+
     retrieval_event = RetrievalEvent(
         id=uuid4(),
         conversation_id=conversation.id,
@@ -121,6 +124,6 @@ def _provider_retrieval_event(db_session: Session) -> RetrievalEvent:
         decision="can_answer",
         latency_ms=11,
     )
-    db_session.add_all([conversation, message, retrieval_event])
+    db_session.add(retrieval_event)
     db_session.commit()
     return retrieval_event
