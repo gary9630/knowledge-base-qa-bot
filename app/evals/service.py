@@ -100,6 +100,8 @@ class EvaluationService:
             expected_source_ids=expected_source_ids,
             selected_source_ids=selected_source_ids,
             cited_source_ids=cited_source_ids,
+            answer_valid=answer_result.valid,
+            citation_error_count=len(answer_result.citation_errors),
         )
         passed = _passed(
             expected_decision=case.expected_decision,
@@ -161,11 +163,17 @@ def _metrics(
     expected_source_ids: tuple[str, ...],
     selected_source_ids: tuple[str, ...],
     cited_source_ids: tuple[str, ...],
+    answer_valid: bool,
+    citation_error_count: int,
 ) -> dict[str, float]:
     return {
         "decision_match": 1.0 if actual_decision == expected_decision else 0.0,
+        "top1_hit": _top1_hit(expected_source_ids, selected_source_ids),
         "retrieval_recall": _recall(expected_source_ids, selected_source_ids),
         "citation_recall": _citation_recall(expected_source_ids, cited_source_ids),
+        "citation_precision": _citation_precision(expected_source_ids, cited_source_ids),
+        "answer_valid": 1.0 if answer_valid else 0.0,
+        "citation_error_count": float(citation_error_count),
     }
 
 
@@ -192,7 +200,10 @@ def _passed(
 def _score(metrics: dict[str, float]) -> float:
     if not metrics:
         return 0.0
-    return sum(metrics.values()) / len(metrics)
+    score_values = [
+        value for key, value in metrics.items() if not key.endswith("_count")
+    ]
+    return sum(score_values) / len(score_values) if score_values else 0.0
 
 
 def _recall(expected_source_ids: tuple[str, ...], actual_source_ids: tuple[str, ...]) -> float:
@@ -209,6 +220,29 @@ def _citation_recall(
     if expected_source_ids:
         return _recall(expected_source_ids, cited_source_ids)
     return 1.0 if not cited_source_ids else 0.0
+
+
+def _top1_hit(
+    expected_source_ids: tuple[str, ...],
+    selected_source_ids: tuple[str, ...],
+) -> float:
+    if not expected_source_ids:
+        return 1.0
+    if not selected_source_ids:
+        return 0.0
+    return 1.0 if selected_source_ids[0] in expected_source_ids else 0.0
+
+
+def _citation_precision(
+    expected_source_ids: tuple[str, ...],
+    cited_source_ids: tuple[str, ...],
+) -> float:
+    if not cited_source_ids:
+        return 1.0 if not expected_source_ids else 0.0
+    if not expected_source_ids:
+        return 0.0
+    matched = sum(1 for source_id in cited_source_ids if source_id in expected_source_ids)
+    return matched / len(cited_source_ids)
 
 
 def _unique(source_ids: tuple[str, ...]) -> tuple[str, ...]:

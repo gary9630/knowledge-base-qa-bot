@@ -54,6 +54,7 @@
 - Admin/security audit events are DB-backed in `audit_events` and exposed through protected `GET /admin/audit-events`.
 - Document lifecycle is managed through protected `/admin/documents` routes. Non-active documents must stay hidden from sources, search/chat retrieval, and mindmap.
 - Async orchestration is DB-backed in `background_jobs`; `POST /imports` enqueues `ingest.upload`, `POST /admin/jobs` can enqueue `index.rebuild`, `document.reindex`, and `eval.run`, and `python -m scripts.run_background_worker` processes them.
+- Retrieval / answer quality is app-native: `/search`, `/chat`, and `/chat/stream` expose retrieval diagnostics and answer quality metadata without adding a reranker or LLM judge.
 
 ## Testing Expectations
 
@@ -80,6 +81,13 @@ intentionally deferred until traffic or multi-replica deployment requires it.
 
 - Keep learner platform access separate from admin API key access.
 - Apply source access filtering consistently across search, chat, streaming chat, source preview, and mindmap. Admin eval routes are still admin-only and should be reviewed if learner-specific eval personas are added.
+- Preserve the retrieval quality contract: every search/chat result should keep selected source IDs, rejected source IDs, score threshold, raw/merged/accepted/rejected counts, strategy counts, top score, and score debug data available through response diagnostics.
+- Preserve the answer quality contract: every chat result should expose `answer_valid`, `citation_errors`, `selected_source_ids`, `cited_source_ids`, and `cannot_confirm_reason`.
+- Streaming chat must send retrieval diagnostics in the `sources` event and answer quality in the `done` event.
+- Persist retrieval diagnostics and answer quality in `RetrievalEvent.scores_json`; keep cited sources separate from selected sources.
+- Never expose unselected source IDs as cited sources. Invalid provider citations should downgrade to the exact cannot-confirm answer with `cannot_confirm_reason="invalid_citations"`.
+- Eval metrics should distinguish retrieval failure from citation failure. Keep `top1_hit`, `retrieval_recall`, `citation_recall`, `citation_precision`, `answer_valid`, and `citation_error_count` useful for dashboard/reporting.
+- The right-side UI inspector owns answer quality and retrieval score breakdowns; avoid cluttering the main learner chat transcript with admin diagnostics.
 - Store raw uploads and canonical Markdown on durable production storage before public launch.
 - `POST /imports` must stay lightweight: save the raw artifact, create a queued ingestion job, enqueue `ingest.upload`, and let the worker convert Markdown and enqueue index rebuilds.
 - Ingestion supports `.pdf`, `.md`, `.markdown`, `.txt`, `.html`, and `.htm`; reject empty uploads, obvious content-type mismatches, invalid PDF signatures, HTML without recognizable markup, and binary-looking text before writing raw artifacts.

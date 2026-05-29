@@ -70,8 +70,12 @@ def test_eval_case_create_list_run_and_latest_workflow(
     assert run_body["results"][0]["passed"] is True
     assert run_body["results"][0]["metrics"] == {
         "decision_match": 1.0,
+        "top1_hit": 1.0,
         "retrieval_recall": 1.0,
         "citation_recall": 1.0,
+        "citation_precision": 1.0,
+        "answer_valid": 1.0,
+        "citation_error_count": 0.0,
     }
 
     latest_response = client.get("/evals/runs/latest")

@@ -43,8 +43,12 @@ def test_evaluation_service_passes_when_decision_and_cited_source_match() -> Non
     assert result.missing_source_ids == ()
     assert result.metrics == {
         "decision_match": 1.0,
+        "top1_hit": 1.0,
         "retrieval_recall": 1.0,
         "citation_recall": 1.0,
+        "citation_precision": 1.0,
+        "answer_valid": 1.0,
+        "citation_error_count": 0.0,
     }
 
 
@@ -68,8 +72,11 @@ def test_evaluation_service_fails_when_expected_source_is_not_cited() -> None:
     assert result.actual_decision == "cannot_confirm"
     assert result.missing_source_ids == ("faq.md#course-site",)
     assert result.metrics["decision_match"] == 0.0
+    assert result.metrics["top1_hit"] == 1.0
     assert result.metrics["retrieval_recall"] == 1.0
     assert result.metrics["citation_recall"] == 0.0
+    assert result.metrics["citation_precision"] == 0.0
+    assert result.metrics["answer_valid"] == 1.0
 
 
 def test_evaluation_service_passes_cannot_confirm_without_sources() -> None:

@@ -116,6 +116,10 @@ def test_chat_stream_sends_sources_tokens_and_done(
     sources_payload = json.loads(events[0]["data"])
     assert sources_payload["sources"] == []
     assert sources_payload["selected_sources"][0]["source_id"] == "常見問題FAQ.md#課程網站"
+    assert sources_payload["retrieval_diagnostics"]["accepted_count"] >= 1
+    assert sources_payload["retrieval_diagnostics"]["selected_source_ids"][0] == (
+        "常見問題FAQ.md#課程網站"
+    )
 
     token_data = [event["data"] for event in events[1:-1]]
     assert all(len(token) == 12 for token in token_data[:-1])
@@ -124,6 +128,8 @@ def test_chat_stream_sends_sources_tokens_and_done(
 
     done_payload = json.loads(events[-1]["data"])
     assert done_payload["decision"] == "can_answer"
+    assert done_payload["answer_quality"]["answer_valid"] is True
+    assert done_payload["answer_quality"]["cited_source_ids"] == ["常見問題FAQ.md#課程網站"]
     assert UUID(done_payload["conversation_id"])
     assert UUID(done_payload["user_message_id"])
     assert UUID(done_payload["assistant_message_id"])

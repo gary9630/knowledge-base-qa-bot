@@ -13,7 +13,12 @@ from app.api.dependencies import (
     get_source_principal,
 )
 from app.retrieval.hybrid import HybridRetriever
-from app.retrieval.models import RetrievalDecision, RetrievalStrategy, RetrievedCandidate
+from app.retrieval.models import (
+    RetrievalDecision,
+    RetrievalDiagnostics,
+    RetrievalStrategy,
+    RetrievedCandidate,
+)
 from app.source_access import SourcePrincipal, visibility_labels_for_principal
 
 router = APIRouter()
@@ -34,6 +39,21 @@ class CandidateResponse(BaseModel):
     debug_scores: dict[str, float] = Field(default_factory=dict)
 
 
+class RetrievalDiagnosticsResponse(BaseModel):
+    strategy: str
+    requested_limit: int
+    score_threshold: float
+    raw_candidate_count: int
+    merged_candidate_count: int
+    accepted_count: int
+    rejected_count: int
+    top_score: float | None
+    selected_source_ids: list[str] = Field(default_factory=list)
+    rejected_source_ids: list[str] = Field(default_factory=list)
+    strategy_counts: dict[str, int] = Field(default_factory=dict)
+    score_debug_by_source_id: dict[str, dict[str, float]] = Field(default_factory=dict)
+
+
 class SearchRequest(BaseModel):
     query: str = Field(min_length=1)
     strategy: RetrievalStrategy = "hybrid"
@@ -45,6 +65,7 @@ class SearchResponse(BaseModel):
     decision: RetrievalDecision
     candidates: list[CandidateResponse]
     rejected_candidates: list[CandidateResponse] = Field(default_factory=list)
+    diagnostics: RetrievalDiagnosticsResponse
 
 
 @router.post("/search", response_model=SearchResponse)
@@ -72,6 +93,7 @@ def search(
         rejected_candidates=[
             candidate_response(candidate) for candidate in result.rejected_candidates
         ],
+        diagnostics=retrieval_diagnostics_response(result.diagnostics),
     )
 
 
@@ -87,4 +109,26 @@ def candidate_response(candidate: RetrievedCandidate) -> CandidateResponse:
         source_type=candidate.source_type,
         source_priority=candidate.source_priority,
         debug_scores=dict(candidate.debug_scores),
+    )
+
+
+def retrieval_diagnostics_response(
+    diagnostics: RetrievalDiagnostics,
+) -> RetrievalDiagnosticsResponse:
+    return RetrievalDiagnosticsResponse(
+        strategy=diagnostics.strategy,
+        requested_limit=diagnostics.requested_limit,
+        score_threshold=diagnostics.score_threshold,
+        raw_candidate_count=diagnostics.raw_candidate_count,
+        merged_candidate_count=diagnostics.merged_candidate_count,
+        accepted_count=diagnostics.accepted_count,
+        rejected_count=diagnostics.rejected_count,
+        top_score=diagnostics.top_score,
+        selected_source_ids=list(diagnostics.selected_source_ids),
+        rejected_source_ids=list(diagnostics.rejected_source_ids),
+        strategy_counts=dict(diagnostics.strategy_counts),
+        score_debug_by_source_id={
+            source_id: dict(scores)
+            for source_id, scores in diagnostics.score_debug_by_source_id.items()
+        },
     )

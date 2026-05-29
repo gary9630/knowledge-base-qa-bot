@@ -55,10 +55,33 @@ class RetrievedCandidate:
 
 
 @dataclass(frozen=True)
+class RetrievalDiagnostics:
+    strategy: str
+    requested_limit: int
+    score_threshold: float
+    raw_candidate_count: int = 0
+    merged_candidate_count: int = 0
+    accepted_count: int = 0
+    rejected_count: int = 0
+    top_score: float | None = None
+    selected_source_ids: tuple[str, ...] = ()
+    rejected_source_ids: tuple[str, ...] = ()
+    strategy_counts: dict[str, int] = field(default_factory=dict)
+    score_debug_by_source_id: dict[str, dict[str, float]] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
 class RetrievalResult(Sequence[RetrievedCandidate]):
     decision: RetrievalDecision
     candidates: list[RetrievedCandidate]
     rejected_candidates: list[RetrievedCandidate] = field(default_factory=list)
+    diagnostics: RetrievalDiagnostics = field(
+        default_factory=lambda: RetrievalDiagnostics(
+            strategy="hybrid",
+            requested_limit=0,
+            score_threshold=0.0,
+        )
+    )
 
     def __iter__(self) -> Iterator[RetrievedCandidate]:
         return iter(self.candidates)

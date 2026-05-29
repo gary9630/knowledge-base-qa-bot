@@ -20,6 +20,8 @@
     evalReport: null,
     feedbackItems: [],
     selectedSources: [],
+    retrievalDiagnostics: null,
+    answerQuality: null,
     auth: {
       authRequired: false,
       authenticated: true,
@@ -41,6 +43,7 @@
     chatLog: $("#chat-log"),
     selectedSources: $("#selected-sources"),
     selectedSourceCount: $("#selected-source-count"),
+    answerQuality: $("#answer-quality"),
     markdownPreview: $("#markdown-preview"),
     sourceList: $("#source-list"),
     sourceTable: $("#source-table"),
@@ -254,6 +257,7 @@
       const answerNode = addMessage("assistant", "");
       elements.chatQuery.value = "";
       setSelectedSources([]);
+      renderAnswerQuality(null);
 
       try {
         await streamChat(query, answerNode);
@@ -288,6 +292,9 @@
       if (event.event === "sources") {
         const payload = safeJson(event.data);
         setSelectedSources(payload.selected_sources || payload.sources || []);
+        renderAnswerQuality({
+          retrieval_diagnostics: payload.retrieval_diagnostics,
+        });
         return;
       }
 
@@ -300,6 +307,11 @@
       if (event.event === "error") {
         const payload = safeJson(event.data);
         answerNode.textContent = payload.detail || event.data || "Chat stream failed.";
+      }
+
+      if (event.event === "done") {
+        const payload = safeJson(event.data);
+        renderAnswerQuality(payload);
       }
     });
   }
@@ -403,6 +415,7 @@
       meta.textContent = [
         source.strategy,
         typeof source.score === "number" ? source.score.toFixed(3) : null,
+        scoreBreakdownText(source),
       ]
         .filter(Boolean)
         .join(" · ");
@@ -419,7 +432,66 @@
   function previewCandidate(source) {
     const heading = source.heading || source.source_id || "Source";
     const body = source.body_md || "No markdown body returned for this source.";
-    elements.markdownPreview.textContent = `${heading}\n\n${body}`;
+    const diagnostics = scoreBreakdownText(source);
+    elements.markdownPreview.textContent = [
+      heading,
+      diagnostics ? `Diagnostics: ${diagnostics}` : null,
+      body,
+    ]
+      .filter(Boolean)
+      .join("\n\n");
+  }
+
+  function renderAnswerQuality(payload) {
+    if (!payload) {
+      state.retrievalDiagnostics = null;
+      state.answerQuality = null;
+      elements.answerQuality.replaceChildren(
+        statusRow("Decision", "Unknown"),
+        statusRow("Grounding", "--"),
+        statusRow("Retrieval", "--"),
+      );
+      return;
+    }
+
+    if (payload.retrieval_diagnostics) {
+      state.retrievalDiagnostics = payload.retrieval_diagnostics;
+    }
+    if (payload.answer_quality) {
+      state.answerQuality = payload.answer_quality;
+    }
+
+    const diagnostics = state.retrievalDiagnostics || {};
+    const quality = state.answerQuality || {};
+    const grounding = quality.answer_valid === false
+      ? `invalid: ${(quality.citation_errors || []).join(", ") || "citation validation"}`
+      : quality.cannot_confirm_reason
+        ? `cannot confirm: ${quality.cannot_confirm_reason}`
+        : quality.answer_valid === true
+          ? "valid citations"
+          : "--";
+    const retrieval = diagnostics.accepted_count == null
+      ? "--"
+      : `${diagnostics.accepted_count} selected · ${diagnostics.rejected_count || 0} rejected`;
+
+    elements.answerQuality.replaceChildren(
+      statusRow("Decision", payload.decision || "--"),
+      statusRow("Grounding", grounding),
+      statusRow("Retrieval", retrieval),
+      statusRow("Top Score", diagnostics.top_score == null ? "--" : Number(diagnostics.top_score).toFixed(3)),
+    );
+  }
+
+  function scoreBreakdownText(source) {
+    const debugScores = source.debug_scores || {};
+    const parts = [
+      debugScores.lexical_score != null ? `lexical ${Number(debugScores.lexical_score).toFixed(3)}` : null,
+      debugScores.vector_score != null ? `vector ${Number(debugScores.vector_score).toFixed(3)}` : null,
+      debugScores.source_priority_boost != null
+        ? `priority +${Number(debugScores.source_priority_boost).toFixed(3)}`
+        : null,
+    ];
+    return parts.filter(Boolean).join(" · ");
   }
 
   function bindSources() {

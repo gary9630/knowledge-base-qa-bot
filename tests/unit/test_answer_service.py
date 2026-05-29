@@ -281,6 +281,7 @@ def test_answer_without_sources_returns_cannot_confirm_without_provider_call() -
     assert result.sources == []
     assert result.valid
     assert result.citation_errors == []
+    assert result.cannot_confirm_reason == "no_sources"
     assert provider.calls == []
 
 
@@ -299,6 +300,7 @@ def test_answer_with_valid_fake_provider_answer_returns_selected_sources() -> No
     assert result.answer == "課程網站位於學習平台首頁。 [常見問題FAQ.md#課程網站]"
     assert result.valid
     assert result.citation_errors == []
+    assert result.cannot_confirm_reason is None
     assert [answer_source.source_id for answer_source in result.sources] == [source.source_id]
     assert [call.strict for call in provider.calls] == [False]
 
@@ -318,6 +320,7 @@ def test_answer_retries_once_after_invalid_citation_and_returns_retry_answer() -
     assert result.answer == "課程網站在平台首頁。 [faq.md#course-site]"
     assert result.valid
     assert result.citation_errors == []
+    assert result.cannot_confirm_reason is None
     assert [call.strict for call in provider.calls] == [False, True]
 
 
@@ -337,6 +340,7 @@ def test_answer_falls_back_when_retry_still_has_invalid_citation() -> None:
     assert result.sources == []
     assert not result.valid
     assert result.citation_errors
+    assert result.cannot_confirm_reason == "invalid_citations"
     assert [call.strict for call in provider.calls] == [False, True]
 
 
@@ -351,6 +355,7 @@ def test_cannot_confirm_answer_with_no_citations_is_valid_with_sources_available
     assert result.sources == []
     assert result.valid
     assert result.citation_errors == []
+    assert result.cannot_confirm_reason == "provider_cannot_confirm"
     assert [call.strict for call in provider.calls] == [False]
 
 

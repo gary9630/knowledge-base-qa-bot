@@ -10,6 +10,7 @@ from app.retrieval.embeddings import EmbeddingProvider
 from app.retrieval.lexical import LexicalRetriever
 from app.retrieval.models import (
     RetrievalDecision,
+    RetrievalDiagnostics,
     RetrievalResult,
     RetrievalStrategy,
     RetrievedCandidate,
@@ -57,7 +58,15 @@ class HybridRetriever:
         if strategy not in ("lexical", "markdown", "vector", "hybrid"):
             raise ValueError(f"unsupported retrieval strategy: {strategy}")
         if limit <= 0 or not query.strip():
-            return RetrievalResult(decision="cannot_confirm", candidates=[])
+            return RetrievalResult(
+                decision="cannot_confirm",
+                candidates=[],
+                diagnostics=RetrievalDiagnostics(
+                    strategy=strategy,
+                    requested_limit=limit,
+                    score_threshold=self.score_threshold,
+                ),
+            )
 
         normalized_strategy: RetrievalStrategy = "lexical" if strategy == "markdown" else strategy
         candidates: list[RetrievedCandidate] = []
@@ -75,11 +84,21 @@ class HybridRetriever:
             accepted = [replace(candidate, strategy="markdown") for candidate in accepted]
             rejected = [replace(candidate, strategy="markdown") for candidate in rejected]
         decision: RetrievalDecision = "can_answer" if accepted else "cannot_confirm"
+        diagnostics = retrieval_diagnostics(
+            strategy=strategy,
+            requested_limit=limit,
+            score_threshold=self.score_threshold,
+            raw_candidates=candidates,
+            merged_candidates=merged,
+            accepted_candidates=accepted,
+            rejected_candidates=rejected,
+        )
 
         return RetrievalResult(
             decision=decision,
             candidates=accepted,
             rejected_candidates=rejected if debug else [],
+            diagnostics=diagnostics,
         )
 
 
@@ -147,6 +166,46 @@ def _score_with_source_priority(
         "source_priority": float(source_priority),
         "source_priority_boost": boost,
     }
+
+
+def retrieval_diagnostics(
+    *,
+    strategy: str,
+    requested_limit: int,
+    score_threshold: float,
+    raw_candidates: list[RetrievedCandidate],
+    merged_candidates: list[RetrievedCandidate],
+    accepted_candidates: list[RetrievedCandidate],
+    rejected_candidates: list[RetrievedCandidate],
+) -> RetrievalDiagnostics:
+    score_debug_by_source_id: dict[str, dict[str, float]] = {}
+    for candidate in merged_candidates:
+        score_debug_by_source_id[candidate.source_id] = {
+            "score": candidate.score,
+            **candidate.debug_scores,
+        }
+
+    return RetrievalDiagnostics(
+        strategy=strategy,
+        requested_limit=requested_limit,
+        score_threshold=score_threshold,
+        raw_candidate_count=len(raw_candidates),
+        merged_candidate_count=len(merged_candidates),
+        accepted_count=len(accepted_candidates),
+        rejected_count=len(rejected_candidates),
+        top_score=accepted_candidates[0].score if accepted_candidates else None,
+        selected_source_ids=tuple(candidate.source_id for candidate in accepted_candidates),
+        rejected_source_ids=tuple(candidate.source_id for candidate in rejected_candidates),
+        strategy_counts=_strategy_counts(raw_candidates),
+        score_debug_by_source_id=score_debug_by_source_id,
+    )
+
+
+def _strategy_counts(candidates: list[RetrievedCandidate]) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for candidate in candidates:
+        counts[candidate.strategy] = counts.get(candidate.strategy, 0) + 1
+    return counts
 
 
 def _build_lexical_retriever(

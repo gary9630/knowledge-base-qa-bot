@@ -179,6 +179,22 @@ def test_ui_exposes_import_diagnostics_wiring() -> None:
     assert "job.content_hash" in js_response.text
 
 
+def test_ui_exposes_answer_quality_wiring() -> None:
+    client = TestClient(create_app())
+
+    response = client.get("/")
+    js_response = client.get("/static/app.js")
+
+    assert response.status_code == 200
+    assert 'id="answer-quality"' in response.text
+    assert "renderAnswerQuality" in js_response.text
+    assert "retrieval_diagnostics" in js_response.text
+    assert "answer_quality" in js_response.text
+    assert "scoreBreakdownText" in js_response.text
+    assert "source.debug_scores" in js_response.text
+    assert "cannot_confirm_reason" in js_response.text
+
+
 def test_ui_exposes_mindmap_on_demand_wiring() -> None:
     client = TestClient(create_app())
 

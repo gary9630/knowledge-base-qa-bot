@@ -17,6 +17,7 @@ class AnswerResult:
     sources: list[AnswerSource]
     valid: bool = True
     citation_errors: list[str] = field(default_factory=list)
+    cannot_confirm_reason: str | None = None
 
 
 class AnswerService:
@@ -26,7 +27,11 @@ class AnswerService:
     def answer(self, query: str, sources: Sequence[object]) -> AnswerResult:
         answer_sources = [_to_answer_source(source) for source in sources]
         if not answer_sources:
-            return AnswerResult(answer=CANNOT_CONFIRM_ANSWER, sources=[])
+            return AnswerResult(
+                answer=CANNOT_CONFIRM_ANSWER,
+                sources=[],
+                cannot_confirm_reason="no_sources",
+            )
 
         first_answer = self._provider.generate_answer(query, answer_sources, strict=False)
         first_validation = validate_citations(
@@ -49,6 +54,7 @@ class AnswerService:
             sources=[],
             valid=False,
             citation_errors=_citation_errors(retry_validation),
+            cannot_confirm_reason="invalid_citations",
         )
 
 
@@ -60,7 +66,13 @@ def _result_from_valid_answer(
     cited_sources = [
         source for source in sources if source.source_id in validation.cited_source_ids
     ]
-    return AnswerResult(answer=answer, sources=cited_sources)
+    return AnswerResult(
+        answer=answer,
+        sources=cited_sources,
+        cannot_confirm_reason=(
+            "provider_cannot_confirm" if answer == CANNOT_CONFIRM_ANSWER else None
+        ),
+    )
 
 
 def _to_answer_source(source: object) -> AnswerSource:

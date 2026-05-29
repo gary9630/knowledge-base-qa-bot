@@ -96,6 +96,31 @@ def test_hybrid_search_keeps_rejected_candidates_only_when_debug_enabled() -> No
     ]
 
 
+def test_hybrid_search_reports_retrieval_diagnostics() -> None:
+    accepted_candidate = _candidate(score=0.72, strategy="lexical", heading="Accepted")
+    rejected_candidate = _candidate(score=0.08, strategy="vector", heading="Rejected")
+    retriever = HybridRetriever(
+        lexical_retriever=StubRetriever([accepted_candidate]),
+        vector_retriever=StubRetriever([rejected_candidate]),
+        score_threshold=0.20,
+    )
+
+    result = retriever.search("課程網站在哪？", strategy="hybrid", limit=3, debug=True)
+
+    assert result.diagnostics.strategy == "hybrid"
+    assert result.diagnostics.requested_limit == 3
+    assert result.diagnostics.score_threshold == pytest.approx(0.20)
+    assert result.diagnostics.raw_candidate_count == 2
+    assert result.diagnostics.merged_candidate_count == 2
+    assert result.diagnostics.accepted_count == 1
+    assert result.diagnostics.rejected_count == 1
+    assert result.diagnostics.top_score == pytest.approx(0.72)
+    assert result.diagnostics.selected_source_ids == (accepted_candidate.source_id,)
+    assert result.diagnostics.rejected_source_ids == (rejected_candidate.source_id,)
+    assert result.diagnostics.strategy_counts == {"lexical": 1, "vector": 1}
+    assert result.diagnostics.score_debug_by_source_id[accepted_candidate.source_id]
+
+
 def test_hybrid_search_respects_strategy_selection() -> None:
     lexical_candidate = _candidate(score=0.75, strategy="lexical")
     vector_candidate = _candidate(score=0.70, strategy="vector", heading="Vector")

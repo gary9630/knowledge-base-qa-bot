@@ -24,12 +24,19 @@ from app.api.indexing import index_is_ready
 from app.api.search import (
     API_RETRIEVAL_SCORE_THRESHOLD,
     CandidateResponse,
+    RetrievalDiagnosticsResponse,
     candidate_response,
+    retrieval_diagnostics_response,
 )
 from app.models.tables import Conversation, Message, RetrievalEvent
 from app.observability.middleware import mark_stream_error
 from app.retrieval.hybrid import HybridRetriever
-from app.retrieval.models import RetrievalDecision, RetrievalStrategy, RetrievedCandidate
+from app.retrieval.models import (
+    RetrievalDecision,
+    RetrievalDiagnostics,
+    RetrievalStrategy,
+    RetrievedCandidate,
+)
 from app.source_access import SourcePrincipal, visibility_labels_for_principal
 
 router = APIRouter()
@@ -44,6 +51,14 @@ class ChatRequest(BaseModel):
     limit: int = Field(default=5, ge=1, le=20)
 
 
+class AnswerQualityResponse(BaseModel):
+    answer_valid: bool
+    citation_errors: list[str] = Field(default_factory=list)
+    selected_source_ids: list[str] = Field(default_factory=list)
+    cited_source_ids: list[str] = Field(default_factory=list)
+    cannot_confirm_reason: str | None = None
+
+
 class ChatResponse(BaseModel):
     conversation_id: UUID
     user_message_id: UUID
@@ -53,6 +68,8 @@ class ChatResponse(BaseModel):
     decision: RetrievalDecision
     sources: list[CandidateResponse]
     selected_sources: list[CandidateResponse]
+    retrieval_diagnostics: RetrievalDiagnosticsResponse
+    answer_quality: AnswerQualityResponse
 
 
 @router.post("/chat", response_model=ChatResponse)
@@ -106,6 +123,12 @@ def _build_chat_response(
     session.flush()
 
     if not index_is_ready(session):
+        retrieval_diagnostics = _empty_retrieval_diagnostics(payload)
+        answer_quality = _answer_quality_response(
+            selected_candidates=[],
+            answer_result=None,
+            cannot_confirm_reason="not_indexed",
+        )
         return _persist_chat_response(
             session=session,
             conversation=conversation,
@@ -116,6 +139,8 @@ def _build_chat_response(
             decision="cannot_confirm",
             selected_candidates=[],
             cited_candidates=[],
+            retrieval_diagnostics=retrieval_diagnostics,
+            answer_quality=answer_quality,
             latency_ms=_elapsed_ms(started_at),
         )
 
@@ -141,6 +166,10 @@ def _build_chat_response(
         for candidate in retrieval_result.candidates
         if candidate.source_id in cited_source_ids
     ]
+    answer_quality = _answer_quality_response(
+        selected_candidates=retrieval_result.candidates,
+        answer_result=answer_result,
+    )
 
     return _persist_chat_response(
         session=session,
@@ -152,6 +181,8 @@ def _build_chat_response(
         decision=_chat_decision(retrieval_result.decision, answer_result),
         selected_candidates=retrieval_result.candidates,
         cited_candidates=cited_candidates,
+        retrieval_diagnostics=retrieval_result.diagnostics,
+        answer_quality=answer_quality,
         latency_ms=_elapsed_ms(started_at),
     )
 
@@ -180,6 +211,40 @@ def _chat_decision(
     ):
         return "cannot_confirm"
     return "can_answer"
+
+
+def _empty_retrieval_diagnostics(payload: ChatRequest) -> RetrievalDiagnostics:
+    return RetrievalDiagnostics(
+        strategy=payload.strategy,
+        requested_limit=payload.limit,
+        score_threshold=API_RETRIEVAL_SCORE_THRESHOLD,
+    )
+
+
+def _answer_quality_response(
+    *,
+    selected_candidates: list[RetrievedCandidate],
+    answer_result: AnswerResult | None,
+    cannot_confirm_reason: str | None = None,
+) -> AnswerQualityResponse:
+    selected_source_ids = [candidate.source_id for candidate in selected_candidates]
+    if answer_result is None:
+        return AnswerQualityResponse(
+            answer_valid=True,
+            citation_errors=[],
+            selected_source_ids=selected_source_ids,
+            cited_source_ids=[],
+            cannot_confirm_reason=cannot_confirm_reason,
+        )
+
+    return AnswerQualityResponse(
+        answer_valid=answer_result.valid,
+        citation_errors=list(answer_result.citation_errors),
+        selected_source_ids=selected_source_ids,
+        cited_source_ids=[source.source_id for source in answer_result.sources],
+        cannot_confirm_reason=answer_result.cannot_confirm_reason
+        or cannot_confirm_reason,
+    )
 
 
 def _chat_stream_response_events(
@@ -224,6 +289,12 @@ def _unsafe_chat_stream_response_events(
     session.flush()
 
     if not index_is_ready(session):
+        retrieval_diagnostics = _empty_retrieval_diagnostics(payload)
+        answer_quality = _answer_quality_response(
+            selected_candidates=[],
+            answer_result=None,
+            cannot_confirm_reason="not_indexed",
+        )
         response = _persist_chat_response(
             session=session,
             conversation=conversation,
@@ -234,6 +305,8 @@ def _unsafe_chat_stream_response_events(
             decision="cannot_confirm",
             selected_candidates=[],
             cited_candidates=[],
+            retrieval_diagnostics=retrieval_diagnostics,
+            answer_quality=answer_quality,
             latency_ms=_elapsed_ms(started_at),
         )
         yield from _chat_response_events(response)
@@ -253,7 +326,11 @@ def _unsafe_chat_stream_response_events(
     selected_source_responses = [
         candidate_response(candidate) for candidate in retrieval_result.candidates
     ]
-    yield _sources_event(sources=[], selected_sources=selected_source_responses)
+    yield _sources_event(
+        sources=[],
+        selected_sources=selected_source_responses,
+        retrieval_diagnostics=retrieval_diagnostics_response(retrieval_result.diagnostics),
+    )
 
     answer_result = _answer_provider_error_response(
         provider=get_answer_provider(request),
@@ -267,6 +344,10 @@ def _unsafe_chat_stream_response_events(
         for candidate in retrieval_result.candidates
         if candidate.source_id in cited_source_ids
     ]
+    answer_quality = _answer_quality_response(
+        selected_candidates=retrieval_result.candidates,
+        answer_result=answer_result,
+    )
     response = _persist_chat_response(
         session=session,
         conversation=conversation,
@@ -277,6 +358,8 @@ def _unsafe_chat_stream_response_events(
         decision=_chat_decision(retrieval_result.decision, answer_result),
         selected_candidates=retrieval_result.candidates,
         cited_candidates=cited_candidates,
+        retrieval_diagnostics=retrieval_result.diagnostics,
+        answer_quality=answer_quality,
         latency_ms=_elapsed_ms(started_at),
     )
 
@@ -293,7 +376,11 @@ def _validate_stream_request(*, payload: ChatRequest, session: Session) -> None:
 
 
 def _chat_response_events(response: ChatResponse) -> Iterator[dict[str, str]]:
-    yield _sources_event(sources=response.sources, selected_sources=response.selected_sources)
+    yield _sources_event(
+        sources=response.sources,
+        selected_sources=response.selected_sources,
+        retrieval_diagnostics=response.retrieval_diagnostics,
+    )
     for token in _answer_token_chunks(response.answer):
         yield {"event": "token", "data": token}
     yield _done_event(response)
@@ -303,6 +390,7 @@ def _sources_event(
     *,
     sources: list[CandidateResponse],
     selected_sources: list[CandidateResponse],
+    retrieval_diagnostics: RetrievalDiagnosticsResponse,
 ) -> dict[str, str]:
     return {
         "event": "sources",
@@ -310,6 +398,7 @@ def _sources_event(
             {
                 "sources": _responses_to_json(sources),
                 "selected_sources": _responses_to_json(selected_sources),
+                "retrieval_diagnostics": retrieval_diagnostics.model_dump(mode="json"),
             }
         ),
     }
@@ -325,6 +414,7 @@ def _done_event(response: ChatResponse) -> dict[str, str]:
                 "assistant_message_id": str(response.assistant_message_id),
                 "retrieval_event_id": str(response.retrieval_event_id),
                 "decision": response.decision,
+                "answer_quality": response.answer_quality.model_dump(mode="json"),
             }
         ),
     }
@@ -367,6 +457,8 @@ def _persist_chat_response(
     decision: RetrievalDecision,
     selected_candidates: list[RetrievedCandidate],
     cited_candidates: list[RetrievedCandidate],
+    retrieval_diagnostics: RetrievalDiagnostics,
+    answer_quality: AnswerQualityResponse,
     latency_ms: int,
 ) -> ChatResponse:
     source_responses = [candidate_response(candidate) for candidate in cited_candidates]
@@ -388,9 +480,11 @@ def _persist_chat_response(
         query=query,
         strategy=strategy,
         selected_sources_json=_responses_to_json(selected_source_responses),
-        scores_json={
-            candidate.source_id: candidate.score for candidate in selected_candidates
-        },
+        scores_json=_retrieval_scores_payload(
+            selected_candidates=selected_candidates,
+            retrieval_diagnostics=retrieval_diagnostics,
+            answer_quality=answer_quality,
+        ),
         decision=decision,
         latency_ms=latency_ms,
     )
@@ -406,11 +500,30 @@ def _persist_chat_response(
         decision=decision,
         sources=source_responses,
         selected_sources=selected_source_responses,
+        retrieval_diagnostics=retrieval_diagnostics_response(retrieval_diagnostics),
+        answer_quality=answer_quality,
     )
 
 
 def _responses_to_json(responses: list[CandidateResponse]) -> list[dict[str, Any]]:
     return [response.model_dump(mode="json") for response in responses]
+
+
+def _retrieval_scores_payload(
+    *,
+    selected_candidates: list[RetrievedCandidate],
+    retrieval_diagnostics: RetrievalDiagnostics,
+    answer_quality: AnswerQualityResponse,
+) -> dict[str, Any]:
+    return {
+        "scores_by_source_id": {
+            candidate.source_id: candidate.score for candidate in selected_candidates
+        },
+        "retrieval_diagnostics": retrieval_diagnostics_response(
+            retrieval_diagnostics
+        ).model_dump(mode="json"),
+        "answer_quality": answer_quality.model_dump(mode="json"),
+    }
 
 
 def _elapsed_ms(started_at: float) -> int:

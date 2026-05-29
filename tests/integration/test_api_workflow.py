@@ -18,7 +18,14 @@ from app.background_jobs.service import (
 from app.background_jobs.worker import BackgroundWorker
 from app.core.config import Settings
 from app.main import create_app
-from app.models.tables import BackgroundJob, Document, Feedback, IngestionJob, Section
+from app.models.tables import (
+    BackgroundJob,
+    Document,
+    Feedback,
+    IngestionJob,
+    RetrievalEvent,
+    Section,
+)
 from app.retrieval.embeddings import FakeEmbeddingProvider
 
 
@@ -90,6 +97,8 @@ def test_index_search_chat_sources_and_feedback_workflow(
     search_body = search_response.json()
     assert search_body["decision"] == "can_answer"
     assert search_body["candidates"][0]["source_id"] == "常見問題FAQ.md#課程網站"
+    assert search_body["diagnostics"]["accepted_count"] >= 1
+    assert search_body["diagnostics"]["selected_source_ids"][0] == "常見問題FAQ.md#課程網站"
 
     markdown_search_response = client.post(
         "/search",
@@ -103,7 +112,15 @@ def test_index_search_chat_sources_and_feedback_workflow(
     chat_body = chat_response.json()
     assert "常見問題FAQ.md#課程網站" in chat_body["answer"]
     assert chat_body["sources"][0]["source_id"] == "常見問題FAQ.md#課程網站"
+    assert chat_body["retrieval_diagnostics"]["accepted_count"] >= 1
+    assert chat_body["answer_quality"]["answer_valid"] is True
+    assert chat_body["answer_quality"]["cited_source_ids"] == ["常見問題FAQ.md#課程網站"]
     assert chat_body["assistant_message_id"]
+
+    retrieval_event = db_session.get(RetrievalEvent, UUID(chat_body["retrieval_event_id"]))
+    assert retrieval_event is not None
+    assert retrieval_event.scores_json["retrieval_diagnostics"]["accepted_count"] >= 1
+    assert retrieval_event.scores_json["answer_quality"]["answer_valid"] is True
 
     sources_response = client.get("/sources")
     assert sources_response.status_code == 200
