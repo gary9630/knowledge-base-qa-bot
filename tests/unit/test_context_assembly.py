@@ -58,7 +58,8 @@ def test_select_within_budget_prioritizes_hits_then_close_neighbors() -> None:
 
     selected_ids = [entry.source_id for entry in selection.selected]
     assert selected_ids == ["doc.md#hit", "doc.md#near"]
-    assert selection.dropped_count == 1
+    assert selection.dropped_hit_count == 0
+    assert selection.dropped_neighbor_count == 1
     assert selection.tokens_used == 200
 
 
@@ -79,6 +80,17 @@ def test_select_within_budget_orders_hits_by_score() -> None:
     selection = select_within_budget([low, high], token_budget=700)
 
     assert [entry.source_id for entry in selection.selected] == ["doc.md#high"]
+
+
+def test_select_within_budget_drops_oversized_non_first_hit() -> None:
+    first_hit = _entry(source_id="doc.md#a", score=0.9, anchor_score=0.9, token_count=100)
+    big_hit = _entry(source_id="doc.md#b", score=0.8, anchor_score=0.8, token_count=5000)
+
+    selection = select_within_budget([first_hit, big_hit], token_budget=150)
+
+    assert [entry.source_id for entry in selection.selected] == ["doc.md#a"]
+    assert selection.dropped_hit_count == 1
+    assert selection.truncated_count == 0
 
 
 def test_order_for_output_groups_by_document_in_reading_order() -> None:

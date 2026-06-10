@@ -40,7 +40,8 @@ class CandidateEntry:
 class BudgetSelection:
     selected: list[CandidateEntry]
     tokens_used: int
-    dropped_count: int
+    dropped_hit_count: int
+    dropped_neighbor_count: int
     truncated_count: int
 
 
@@ -51,7 +52,8 @@ class ContextAssemblyDiagnostics:
     tokens_used: int
     hit_count: int
     neighbor_count: int
-    dropped_count: int
+    dropped_hit_count: int
+    dropped_neighbor_count: int
     truncated_count: int
 
     def to_payload(self) -> dict[str, Any]:
@@ -61,7 +63,8 @@ class ContextAssemblyDiagnostics:
             "tokens_used": self.tokens_used,
             "hit_count": self.hit_count,
             "neighbor_count": self.neighbor_count,
-            "dropped_count": self.dropped_count,
+            "dropped_hit_count": self.dropped_hit_count,
+            "dropped_neighbor_count": self.dropped_neighbor_count,
             "truncated_count": self.truncated_count,
         }
 
@@ -102,7 +105,8 @@ def select_within_budget(
 
     selected: list[CandidateEntry] = []
     tokens_used = 0
-    dropped_count = 0
+    dropped_hit_count = 0
+    dropped_neighbor_count = 0
     truncated_count = 0
     for entry in [*hits, *neighbors]:
         if tokens_used + entry.token_count <= token_budget:
@@ -127,17 +131,22 @@ def select_within_budget(
             tokens_used += truncated_tokens
             truncated_count += 1
             continue
-        dropped_count += 1
+        if entry.is_hit:
+            dropped_hit_count += 1
+        else:
+            dropped_neighbor_count += 1
 
     return BudgetSelection(
         selected=selected,
         tokens_used=tokens_used,
-        dropped_count=dropped_count,
+        dropped_hit_count=dropped_hit_count,
+        dropped_neighbor_count=dropped_neighbor_count,
         truncated_count=truncated_count,
     )
 
 
 def order_for_output(entries: Sequence[CandidateEntry]) -> list[CandidateEntry]:
+    # filename identifies a document system-wide: ingestion upserts canonically by filename.
     best_hit_score: dict[str, float] = {}
     for entry in entries:
         score = entry.anchor_score
@@ -176,7 +185,7 @@ class ContextAssembler:
 
     def assemble(self, candidates: Sequence[RetrievedCandidate]) -> AssembledContext:
         if not candidates:
-            return AssembledContext(sources=[], diagnostics=self._diagnostics([], 0, 0, 0))
+            return AssembledContext(sources=[], diagnostics=self._diagnostics([], 0, 0, 0, 0))
 
         entries = self._collect_entries(candidates)
         selection = select_within_budget(
@@ -204,7 +213,8 @@ class ContextAssembler:
             diagnostics=self._diagnostics(
                 ordered,
                 selection.tokens_used,
-                selection.dropped_count,
+                selection.dropped_hit_count,
+                selection.dropped_neighbor_count,
                 selection.truncated_count,
             ),
         )
@@ -249,7 +259,12 @@ class ContextAssembler:
                     distance = abs((neighbor.position or 0) - (section.position or 0))
                     existing = entries.get(neighbor.id)
                     if existing is not None and (
-                        existing.is_hit or existing.neighbor_distance <= distance
+                        existing.is_hit
+                        or existing.neighbor_distance < distance
+                        or (
+                            existing.neighbor_distance == distance
+                            and candidate.score <= existing.anchor_score
+                        )
                     ):
                         continue
                     entries[neighbor.id] = self._entry_from_section(
@@ -305,6 +320,9 @@ class ContextAssembler:
             is_hit=is_hit,
             neighbor_distance=neighbor_distance,
             anchor_score=anchor_score,
+            # Recount rather than trusting Section.token_count: the column carries no
+            # encoding provenance and may be stale for rows indexed before tiktoken or
+            # under a different encoding.
             token_count=count_tokens(section.body_md, encoding_name=self.encoding_name),
             position=section.position,
         )
@@ -328,7 +346,8 @@ class ContextAssembler:
         self,
         entries: list[CandidateEntry],
         tokens_used: int,
-        dropped_count: int,
+        dropped_hit_count: int,
+        dropped_neighbor_count: int,
         truncated_count: int,
     ) -> ContextAssemblyDiagnostics:
         return ContextAssemblyDiagnostics(
@@ -337,6 +356,7 @@ class ContextAssembler:
             tokens_used=tokens_used,
             hit_count=sum(1 for entry in entries if entry.is_hit),
             neighbor_count=sum(1 for entry in entries if not entry.is_hit),
-            dropped_count=dropped_count,
+            dropped_hit_count=dropped_hit_count,
+            dropped_neighbor_count=dropped_neighbor_count,
             truncated_count=truncated_count,
         )
