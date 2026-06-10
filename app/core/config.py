@@ -57,6 +57,7 @@ class Settings(BaseSettings):
     provider_budget_warning_ratio: float = Field(default=0.8, ge=0.0, le=1.0)
     provider_budget_block_on_exceeded: bool = False
     embedding_dimension: int = PGVECTOR_EMBEDDING_DIMENSION
+    # baked into Docker image — keep in sync with Dockerfile tiktoken pre-download
     token_encoding: str = "o200k_base"
     context_neighbor_sections: int = Field(default=1, ge=0)
     context_token_budget: int = Field(default=8000, ge=1000)

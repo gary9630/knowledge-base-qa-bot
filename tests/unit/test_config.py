@@ -36,6 +36,9 @@ _SETTINGS_ENV_KEYS = (
     "KB_BACKGROUND_JOB_RETRY_BASE_DELAY_SECONDS",
     "KB_BACKGROUND_JOB_RETRY_MAX_DELAY_SECONDS",
     "KB_EMBEDDING_DIMENSION",
+    "KB_TOKEN_ENCODING",
+    "KB_CONTEXT_NEIGHBOR_SECTIONS",
+    "KB_CONTEXT_TOKEN_BUDGET",
 )
 
 
@@ -259,15 +262,15 @@ def test_context_expansion_defaults() -> None:
 
 
 def test_token_encoding_rejects_unknown_encoding() -> None:
-    with pytest.raises(ValidationError):
+    with pytest.raises(ValidationError, match="token_encoding"):
         Settings(token_encoding="not-a-real-encoding")
 
 
 def test_context_token_budget_enforces_floor() -> None:
-    with pytest.raises(ValidationError):
+    with pytest.raises(ValidationError, match="context_token_budget"):
         Settings(context_token_budget=500)
 
 
 def test_context_neighbor_sections_rejects_negative() -> None:
-    with pytest.raises(ValidationError):
+    with pytest.raises(ValidationError, match="context_neighbor_sections"):
         Settings(context_neighbor_sections=-1)
