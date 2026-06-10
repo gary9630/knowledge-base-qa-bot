@@ -26,7 +26,7 @@ RUN mkdir -p /opt/tiktoken-cache \
 COPY . .
 
 RUN useradd --create-home --shell /usr/sbin/nologin appuser \
-    && mkdir -p /app/docs /app/raw /app/.kb /tmp/uv-cache \
+    && mkdir -p /app/docs /app/raw /app/.kb /opt/tiktoken-cache /tmp/uv-cache \
     && chown -R appuser:appuser /app /opt/tiktoken-cache /tmp/uv-cache
 
 USER appuser

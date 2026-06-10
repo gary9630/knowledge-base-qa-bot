@@ -136,6 +136,7 @@ class BackgroundWorker:
                 docs_dir=Path(self.settings.docs_dir),
                 kb_dir=Path(self.settings.kb_dir),
                 embedding_provider=self._embedding_provider(),
+                token_encoding=self.settings.token_encoding,
             ).rebuild_index()
         return _indexing_result_payload(result)
 
@@ -147,6 +148,7 @@ class BackgroundWorker:
                 docs_dir=Path(self.settings.docs_dir),
                 kb_dir=Path(self.settings.kb_dir),
                 embedding_provider=self._embedding_provider(),
+                token_encoding=self.settings.token_encoding,
             ).reindex_document(document_id)
         return {
             "document_id": str(document_id),
