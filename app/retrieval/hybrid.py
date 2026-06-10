@@ -19,7 +19,7 @@ from app.retrieval.models import (
 from app.retrieval.vector import VectorRetriever
 
 RRF_K = 60
-_RRF_MAX = 2.0 / (RRF_K + 1)
+_RRF_MAX = 2.0 / (RRF_K + 1)  # best case: rank 1 in both of the 2 fused strategies
 
 
 class Retriever(Protocol):
@@ -88,7 +88,7 @@ class HybridRetriever:
             strategy_name: [c for c in results if c.score >= self.score_threshold]
             for strategy_name, results in strategy_candidates.items()
         }
-        rejected = [
+        _rejected_pre = [
             candidate
             for results in strategy_candidates.values()
             for candidate in results
@@ -96,6 +96,19 @@ class HybridRetriever:
         ]
         merged = rerank_results_for_query(query, fuse_results(floored))
         accepted = merged[:limit]
+        # Dedupe rejected by section_id (keep highest score) and remove any
+        # section that passed the floor in another strategy (present in accepted).
+        # Note: rejected entries carry raw per-strategy scores (pre-fusion scale),
+        # unlike accepted candidates whose scores are normalized RRF values.
+        _accepted_ids = {c.section_id for c in accepted}
+        _rejected_by_id: dict[object, RetrievedCandidate] = {}
+        for c in _rejected_pre:
+            if c.section_id in _accepted_ids:
+                continue
+            existing = _rejected_by_id.get(c.section_id)
+            if existing is None or c.score > existing.score:
+                _rejected_by_id[c.section_id] = c
+        rejected = list(_rejected_by_id.values())
         if strategy == "markdown":
             accepted = [replace(candidate, strategy="markdown") for candidate in accepted]
             rejected = [replace(candidate, strategy="markdown") for candidate in rejected]
@@ -121,7 +134,11 @@ class HybridRetriever:
 def fuse_results(
     strategy_results: Mapping[str, Sequence[RetrievedCandidate]],
 ) -> list[RetrievedCandidate]:
-    """Reciprocal Rank Fusion across per-strategy ranked lists, normalized to [0, 1]."""
+    """Reciprocal Rank Fusion across per-strategy ranked lists, normalized to [0, 1].
+
+    Each value in *strategy_results* must be ordered best-first; ranks are derived
+    from list position (index 0 → rank 1).
+    """
     rrf_scores: dict[str, float] = {}
     ranks: dict[str, dict[str, int]] = {}
     candidates_by_strategy: dict[str, dict[str, RetrievedCandidate]] = {}
@@ -142,7 +159,7 @@ def fuse_results(
         debug_scores = dict(representative.debug_scores)
         for strat, candidate in section_candidates.items():
             debug_scores[f"{strat}_score"] = candidate.score
-            debug_scores[f"{strat}_rank"] = float(section_ranks[strat])
+            debug_scores[f"{strat}_fusion_rank"] = float(section_ranks[strat])
         debug_scores["rrf_score"] = rrf_score
         score, priority_debug_scores = _score_with_source_priority(
             normalized,

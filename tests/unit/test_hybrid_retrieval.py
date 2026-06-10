@@ -34,6 +34,9 @@ def test_fuse_results_section_in_both_strategies_outranks_single_strategy() -> N
     assert fused[0].strategy == "hybrid"
     # rank 1 in both strategies -> normalized RRF == 1.0
     assert fused[0].score == 1.0
+    # lexical-only rank-2 candidate: (1/62) / (2/61) normalized
+    assert fused[1].source_id == "doc.md#lex-only"
+    assert fused[1].score == pytest.approx((1 / 62) / (2 / 61))
 
 
 def test_fuse_results_single_strategy_rank_one_scores_half() -> None:
@@ -42,7 +45,7 @@ def test_fuse_results_single_strategy_rank_one_scores_half() -> None:
     assert len(fused) == 1
     assert fused[0].score == 0.5
     assert fused[0].strategy == "lexical"
-    assert fused[0].debug_scores["lexical_rank"] == 1.0
+    assert fused[0].debug_scores["lexical_fusion_rank"] == 1.0
 
 
 def test_fuse_results_applies_source_priority_boost_after_normalization() -> None:
@@ -201,6 +204,100 @@ def test_hybrid_search_rejects_unknown_strategy() -> None:
 
     with pytest.raises(ValueError, match="unsupported retrieval strategy"):
         retriever.search("query", strategy=cast(Any, "semantic"))
+
+
+def test_fuse_results_vector_representative_when_vector_has_better_rank() -> None:
+    """When vector has the strictly better (lower) rank, the vector candidate is chosen."""
+    shared_id = uuid4()
+    other_lexical = RetrievedCandidate(
+        section_id=uuid4(),
+        source_id="doc.md#other",
+        filename="doc.md",
+        heading="Other",
+        body_md="other lexical body",
+        score=0.5,
+        strategy="lexical",
+    )
+    lexical_candidate = RetrievedCandidate(
+        section_id=shared_id,
+        source_id="doc.md#both",
+        filename="doc.md",
+        heading="Heading",
+        body_md="lexical body",
+        score=0.4,
+        strategy="lexical",
+    )
+    vector_candidate = RetrievedCandidate(
+        section_id=shared_id,
+        source_id="doc.md#both",
+        filename="doc.md",
+        heading="Heading",
+        body_md="VECTOR BODY",
+        score=0.9,
+        strategy="vector",
+    )
+    # lexical list: [other, lexical_candidate] → shared_id is lexical rank 2
+    # vector list:  [vector_candidate]         → shared_id is vector rank 1
+    # → vector wins as representative (strictly better rank)
+    fused = fuse_results(
+        {"lexical": [other_lexical, lexical_candidate], "vector": [vector_candidate]}
+    )
+
+    assert fused[0].body_md == "VECTOR BODY"
+
+
+def test_hybrid_search_rejected_deduplication() -> None:
+    """A section below threshold in both strategies appears only once in rejected.
+
+    A section above threshold in one strategy and below in the other appears only
+    in accepted, not in rejected.
+    """
+    shared_id = uuid4()
+    # passes lexical floor, fails vector floor
+    above_lexical = _candidate(
+        section_id=shared_id,
+        source_id="doc.md#above-lex",
+        score=0.50,
+        strategy="lexical",
+    )
+    below_vector = _candidate(
+        section_id=shared_id,
+        source_id="doc.md#above-lex",
+        score=0.05,
+        strategy="vector",
+    )
+    # fails both floors → appears in both raw strategy lists
+    below_both = _candidate(
+        source_id="doc.md#below-both",
+        score=0.05,
+        strategy="lexical",
+    )
+    below_both_v = _candidate(
+        section_id=below_both.section_id,
+        source_id="doc.md#below-both",
+        score=0.04,
+        strategy="vector",
+    )
+
+    retriever = HybridRetriever(
+        lexical_retriever=StubRetriever([above_lexical, below_both]),
+        vector_retriever=StubRetriever([below_vector, below_both_v]),
+        score_threshold=0.20,
+    )
+    result = retriever.search("query", strategy="hybrid", limit=5, debug=True)
+
+    accepted_ids = {c.section_id for c in result.candidates}
+    rejected_ids = [c.section_id for c in result.rejected_candidates]
+
+    # section that passed one floor is accepted, not rejected
+    assert shared_id in accepted_ids
+    assert shared_id not in rejected_ids
+
+    # section below both floors appears exactly once in rejected
+    assert rejected_ids.count(below_both.section_id) == 1
+
+    # diagnostics agree
+    assert result.diagnostics.rejected_count == 1
 
 
 def _candidate(
