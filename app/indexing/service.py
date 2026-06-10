@@ -233,7 +233,7 @@ class IndexingService:
         chunks_indexed = 0
         chunks_embedded = 0
         chunks_reused = 0
-        for parsed_section in parsed_sections:
+        for position, parsed_section in enumerate(parsed_sections):
             section_hash = _content_hash(parsed_section.body_md)
             section = stale_sections.pop(parsed_section.source_id, None)
             section_unchanged = section is not None and section.content_hash == section_hash
@@ -244,6 +244,7 @@ class IndexingService:
                     heading=parsed_section.heading,
                     heading_slug=parsed_section.heading_slug,
                     level=parsed_section.level,
+                    position=position,
                     body_md=parsed_section.body_md,
                     token_count=count_tokens(
                         parsed_section.body_md, encoding_name=self.token_encoding
@@ -256,6 +257,7 @@ class IndexingService:
                 section.heading = parsed_section.heading
                 section.heading_slug = parsed_section.heading_slug
                 section.level = parsed_section.level
+                section.position = position
                 section.body_md = parsed_section.body_md
                 section.token_count = count_tokens(
                     parsed_section.body_md, encoding_name=self.token_encoding

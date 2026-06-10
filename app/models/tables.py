@@ -99,6 +99,7 @@ class Section(JsonDefaultsMixin, TimestampMixin, Base):
     __table_args__ = (
         Index("ux_sections_source_id", "source_id", unique=True),
         Index("ix_sections_tsv", "tsv", postgresql_using="gin"),
+        Index("ix_sections_document_position", "document_id", "position"),
     )
     __json_defaults__ = {"metadata_json": dict}
 
@@ -113,6 +114,7 @@ class Section(JsonDefaultsMixin, TimestampMixin, Base):
     heading: Mapped[str] = mapped_column(Text, nullable=False)
     heading_slug: Mapped[str] = mapped_column(Text, nullable=False)
     level: Mapped[int] = mapped_column(Integer, nullable=False)
+    position: Mapped[int | None] = mapped_column(Integer)
     body_md: Mapped[str] = mapped_column(Text, nullable=False)
     token_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     tsv: Mapped[str | None] = mapped_column(TSVECTOR)

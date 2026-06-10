@@ -65,7 +65,7 @@ def load_section_records(session: Session) -> list[SectionRecord]:
         select(Section, Document)
         .join(Document, Document.id == Section.document_id)
         .where(active_document_filter())
-        .order_by(Document.filename.asc(), Section.created_at.asc(), Section.id.asc())
+        .order_by(Document.filename.asc(), Section.position.asc().nulls_last(), Section.id.asc())
     )
     return [
         SectionRecord(
