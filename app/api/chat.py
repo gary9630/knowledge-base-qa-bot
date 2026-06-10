@@ -193,12 +193,7 @@ def _build_chat_response(
         request=request,
         sources=assembled.sources,
     )
-    cited_source_ids = {source.source_id for source in answer_result.sources}
-    cited_source_responses = [
-        assembled_source_response(source)
-        for source in assembled.sources
-        if source.source_id in cited_source_ids
-    ]
+    cited_source_responses = _cited_assembled_responses(assembled, answer_result)
     answer_quality = _answer_quality_response(
         selected_candidates=retrieval_result.candidates,
         answer_result=answer_result,
@@ -306,14 +301,14 @@ def _assemble_context(
     return assembler.assemble(retrieval_result.candidates)
 
 
-def assembled_source_response(source: AssembledSource) -> CandidateResponse:
+def _assembled_source_response(source: AssembledSource) -> CandidateResponse:
     return CandidateResponse(
         section_id=source.section_id,
         source_id=source.source_id,
         filename=source.filename,
         heading=source.heading,
         body_md=source.body_md,
-        score=source.score or 0.0,
+        score=source.score if source.score is not None else 0.0,
         strategy="context",
         source_type="unknown",
         source_priority=0,
@@ -324,18 +319,20 @@ def assembled_source_response(source: AssembledSource) -> CandidateResponse:
     )
 
 
+def _cited_assembled_responses(
+    assembled: AssembledContext,
+    answer_result: AnswerResult,
+) -> list[CandidateResponse]:
+    cited_source_ids = {source.source_id for source in answer_result.sources}
+    return [
+        _assembled_source_response(source)
+        for source in assembled.sources
+        if source.source_id in cited_source_ids
+    ]
+
+
 def _context_assembly_response(context: AssembledContext) -> ContextAssemblyResponse:
-    diagnostics = context.diagnostics
-    return ContextAssemblyResponse(
-        neighbor_window=diagnostics.neighbor_window,
-        token_budget=diagnostics.token_budget,
-        tokens_used=diagnostics.tokens_used,
-        hit_count=diagnostics.hit_count,
-        neighbor_count=diagnostics.neighbor_count,
-        dropped_hit_count=diagnostics.dropped_hit_count,
-        dropped_neighbor_count=diagnostics.dropped_neighbor_count,
-        truncated_count=diagnostics.truncated_count,
-    )
+    return ContextAssemblyResponse(**context.diagnostics.to_payload())
 
 
 def _chat_stream_response_events(
@@ -476,12 +473,7 @@ def _stream_answer_response_events(
         raise HTTPException(status_code=502, detail="Answer provider failed.") from error
     _record_provider_call_records(request, answer_service.provider_call_records())
 
-    cited_source_ids = {source.source_id for source in answer_result.sources}
-    cited_source_responses = [
-        assembled_source_response(source)
-        for source in assembled.sources
-        if source.source_id in cited_source_ids
-    ]
+    cited_source_responses = _cited_assembled_responses(assembled, answer_result)
     answer_quality = _answer_quality_response(
         selected_candidates=retrieval_result.candidates,
         answer_result=answer_result,
@@ -552,6 +544,7 @@ def _done_event(response: ChatResponse) -> dict[str, str]:
                 "retrieval_event_id": str(response.retrieval_event_id),
                 "answer": response.answer,
                 "decision": response.decision,
+                "sources": _responses_to_json(response.sources),
                 "answer_quality": response.answer_quality.model_dump(mode="json"),
                 "context_assembly": (
                     response.context_assembly.model_dump(mode="json")
@@ -606,7 +599,6 @@ def _persist_chat_response(
     provider_calls: list[dict[str, object]],
     context_assembly: ContextAssemblyResponse | None,
 ) -> ChatResponse:
-    source_responses = cited_source_responses
     selected_source_responses = [
         candidate_response(candidate) for candidate in selected_candidates
     ]
@@ -614,7 +606,7 @@ def _persist_chat_response(
         conversation=conversation,
         role="assistant",
         content=answer,
-        sources_json=_responses_to_json(source_responses),
+        sources_json=_responses_to_json(cited_source_responses),
     )
     session.add(assistant_message)
     session.flush()
@@ -645,7 +637,7 @@ def _persist_chat_response(
         retrieval_event_id=retrieval_event.id,
         answer=answer,
         decision=decision,
-        sources=source_responses,
+        sources=cited_source_responses,
         selected_sources=selected_source_responses,
         retrieval_diagnostics=retrieval_diagnostics_response(retrieval_diagnostics),
         answer_quality=answer_quality,

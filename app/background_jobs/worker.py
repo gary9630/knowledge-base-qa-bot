@@ -208,6 +208,7 @@ class BackgroundWorker:
                     embedding_provider=self._embedding_provider(),
                     answer_provider=self._answer_provider(),
                     options=options,
+                    settings=self.settings,
                 )
             except (NoActiveEvalCasesError, EvalCasesNotFoundError) as error:
                 eval_run = record_failed_eval_run(

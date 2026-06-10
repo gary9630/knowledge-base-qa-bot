@@ -467,6 +467,7 @@
           answerNode.textContent = payload.answer;
           answerNode.classList.remove("is-streaming-status");
         }
+        mergeCitedSources(payload.sources);
         renderAnswerQuality(payload);
         renderAnswerFooter(answerNode, payload);
       }
@@ -873,6 +874,20 @@
         previewCandidate(source);
       }
     });
+  }
+
+  function mergeCitedSources(sources) {
+    const citedSources = Array.isArray(sources) ? sources : [];
+    const knownSourceIds = new Set(
+      state.selectedSources.map((source) => source.source_id),
+    );
+    const newSources = citedSources.filter(
+      (source) => source && source.source_id && !knownSourceIds.has(source.source_id),
+    );
+    if (newSources.length === 0) {
+      return;
+    }
+    setSelectedSources([...state.selectedSources, ...newSources]);
   }
 
   function citationLabelForSource(source, displayIndex) {

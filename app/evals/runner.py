@@ -6,7 +6,9 @@ from uuid import UUID
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.answer.context_assembly import ContextAssembler
 from app.answer.providers import AnswerProvider
+from app.core.config import Settings
 from app.evals.service import EvalCaseInput, EvalCaseResult, EvaluationService
 from app.models.tables import EvalCase, EvalResult, EvalRun
 from app.retrieval.embeddings import EmbeddingProvider
@@ -53,7 +55,9 @@ def run_eval_suite(
     embedding_provider: EmbeddingProvider,
     answer_provider: AnswerProvider,
     options: EvalRunOptions,
+    settings: Settings | None = None,
 ) -> tuple[EvalRun, list[EvalResult]]:
+    resolved_settings = settings or Settings()
     cases = _cases_for_run(session, list(options.case_ids) or None)
     eval_run = EvalRun(
         status="running",
@@ -79,6 +83,12 @@ def run_eval_suite(
                 embedding_provider=embedding_provider,
             ),
             answer_provider=answer_provider,
+            context_assembler=ContextAssembler(
+                session=session,
+                neighbor_sections=resolved_settings.context_neighbor_sections,
+                token_budget=resolved_settings.context_token_budget,
+                encoding_name=resolved_settings.token_encoding,
+            ),
         )
         results = [
             service.evaluate_case(

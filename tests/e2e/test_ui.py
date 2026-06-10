@@ -313,6 +313,7 @@ def test_ui_exposes_learner_chat_polish_wiring() -> None:
     assert "could not confirm" in js_response.text
     assert "previewCandidate(source)" in js_response.text
     assert "renderAnswerCitations" in js_response.text
+    assert "mergeCitedSources(payload.sources)" in js_response.text
     assert "citationLabelForSource" in js_response.text
     assert "submitAnswerFeedback" in js_response.text
     assert "feedbackExpectedSource" in js_response.text
