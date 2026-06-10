@@ -90,7 +90,7 @@ intentionally deferred until traffic or multi-replica deployment requires it.
 - Preserve the answer quality contract: every chat result should expose `answer_valid`, `citation_errors`, `selected_source_ids`, `cited_source_ids`, and `cannot_confirm_reason`.
 - Streaming chat must send retrieval diagnostics in the `sources` event and answer quality in the `done` event.
 - Persist retrieval diagnostics and answer quality in `RetrievalEvent.scores_json`; keep cited sources separate from selected sources.
-- Never expose unselected source IDs as cited sources. Invalid provider citations should downgrade to the exact cannot-confirm answer with `cannot_confirm_reason="invalid_citations"`.
+- Cited source IDs must be sections the answer provider was actually given: selected sections or their context-assembly neighbors (never arbitrary IDs). Invalid provider citations should downgrade to the exact cannot-confirm answer with `cannot_confirm_reason="invalid_citations"`.
 - Eval metrics should distinguish retrieval failure from citation failure. Keep `top1_hit`, `retrieval_recall`, `citation_recall`, `citation_precision`, `answer_valid`, and `citation_error_count` useful for dashboard/reporting.
 - The right-side UI inspector owns answer quality and retrieval score breakdowns; avoid cluttering the main learner chat transcript with admin diagnostics.
 - Store raw uploads and canonical Markdown on durable production storage before public launch.

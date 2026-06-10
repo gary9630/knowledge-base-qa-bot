@@ -44,7 +44,10 @@ Each case must satisfy all of the following:
 - `answer_quality.answer_valid` is `true`.
 - `answer_quality.cannot_confirm_reason` is `null`.
 - `answer_quality.cited_source_ids` is non-empty.
-- Every cited source ID is present in `answer_quality.selected_source_ids`.
+- Every cited source ID is a section the answer provider was given: either in
+  `answer_quality.selected_source_ids` or a neighboring section added by context
+  assembly (same document as a selected section; visible in `context_assembly`
+  diagnostics and the response `sources` list).
 - The expected file appears in both selected and cited source IDs.
 - The answer includes bracketed citations.
 - For `/chat/stream`, the stream emits `sources`, one or more `token` events, and `done`.
