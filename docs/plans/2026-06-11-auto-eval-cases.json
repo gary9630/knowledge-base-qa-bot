@@ -1,8 +1,8 @@
 [
   {
-    "seed_key": "auto.0a65281e4b",
-    "name": "時間不夠先看哪一篇",
-    "query": "如果我最近就要面試、時間很有限，這份講義建議我先看哪一篇？",
+    "seed_key": "auto.c58a0904ec",
+    "name": "時間有限時先看哪一篇",
+    "query": "如果我最近就要面試、時間不夠把前面都看完，應該先看哪個部分？看完之後如果發現不熟的概念，還要回去補哪些章節？",
     "expected_decision": "can_answer",
     "expected_source_ids": [
       "0-講義導讀.md#時間有限的話直接看面試模板"
@@ -15,9 +15,9 @@
     }
   },
   {
-    "seed_key": "auto.5f1a7c5b5a",
-    "name": "卡在系統設計題時該去哪裡查",
-    "query": "做系統設計題如果卡住了，應該回去查哪些章節來找對應的技術方案？",
+    "seed_key": "auto.7e79856e93",
+    "name": "卡在系統設計題時要查哪些參考資料",
+    "query": "做系統設計題卡住時，應該到哪兩個區塊查對應的技術方案？這兩個區塊各自包含哪些內容或主題？",
     "expected_decision": "can_answer",
     "expected_source_ids": [
       "0-講義導讀.md#常用技術-維運與可靠性當參考資料用",
@@ -31,40 +31,9 @@
     }
   },
   {
-    "seed_key": "auto.6d45dd296c",
-    "name": "閱讀順序與第一步內容",
-    "query": "這份講義建議的閱讀順序是什麼？另外，第一步的基本觀念有哪些主題？",
-    "expected_decision": "can_answer",
-    "expected_source_ids": [
-      "0-講義導讀.md#講義導讀",
-      "0-講義導讀.md#第一步基本觀念"
-    ],
-    "tags": [
-      "auto"
-    ],
-    "metadata": {
-      "kind": "generated"
-    }
-  },
-  {
-    "seed_key": "auto.4b20bed0ac",
-    "name": "第二步設計模式包含哪些主題",
-    "query": "在基本觀念之後，第二步「設計模式」整理了哪些常見場景？",
-    "expected_decision": "can_answer",
-    "expected_source_ids": [
-      "0-講義導讀.md#第二步設計模式"
-    ],
-    "tags": [
-      "auto"
-    ],
-    "metadata": {
-      "kind": "generated"
-    }
-  },
-  {
-    "seed_key": "auto.beae564479",
-    "name": "GraphQL 適合什麼情境？",
-    "query": "什麼情況下會比較適合用 GraphQL？它的優點和需要注意的地方是什麼？",
+    "seed_key": "auto.0447d40afb",
+    "name": "GraphQL 什麼情況適合使用？",
+    "query": "什麼情況下會比較適合用 GraphQL？它的好處和要注意的問題有哪些？",
     "expected_decision": "can_answer",
     "expected_source_ids": [
       "1-基本觀念-01-Networking Essentials.md#graphql"
@@ -77,9 +46,9 @@
     }
   },
   {
-    "seed_key": "auto.e134be1e11",
-    "name": "重試機制要怎麼設計？",
-    "query": "如果 API 或 webhook 暫時失敗，要怎麼設計重試機制才比較合理？",
+    "seed_key": "auto.68576dc48d",
+    "name": "Webhook 重試策略要怎麼做？",
+    "query": "如果 webhook 呼叫對方 endpoint 失敗了，應該怎麼設計重試機制？哪些錯誤適合重試？",
     "expected_decision": "can_answer",
     "expected_source_ids": [
       "1-基本觀念-01-Networking Essentials.md#retry-with-backoff-and-jitter"
@@ -92,12 +61,12 @@
     }
   },
   {
-    "seed_key": "auto.ef396a4636",
-    "name": "Circuit Breaker 的用途",
-    "query": "Circuit Breaker 的主要用途是什麼？它是在保證每個 request 一定成功，還是用來保護系統？",
+    "seed_key": "auto.9bff1a315a",
+    "name": "Client-Server 與 P2P 的差異",
+    "query": "Client-Server 架構和 Peer-to-Peer（P2P）有什麼主要差異？",
     "expected_decision": "can_answer",
     "expected_source_ids": [
-      "1-基本觀念-01-Networking Essentials.md#circuit-breaker"
+      "1-基本觀念-02-Client-Server Architecture.md#client-server-vs-peer-to-peerp2p"
     ],
     "tags": [
       "auto"
@@ -107,13 +76,13 @@
     }
   },
   {
-    "seed_key": "auto.875a36303e",
-    "name": "WebSocket 與全球延遲",
-    "query": "如果一個全球服務所有 request 都打到單一 region，會有什麼問題？另外，WebSocket 適合什麼樣的情境？",
+    "seed_key": "auto.781cf77b64",
+    "name": "什麼時候該考慮用 P2P",
+    "query": "什麼情況下應該考慮用 P2P，而不是 Client-Server？",
     "expected_decision": "can_answer",
     "expected_source_ids": [
-      "1-基本觀念-01-Networking Essentials.md#dnscdn-與全球延遲",
-      "1-基本觀念-01-Networking Essentials.md#websocket"
+      "1-基本觀念-02-Client-Server Architecture.md#client-server-vs-peer-to-peerp2p",
+      "1-基本觀念-02-Client-Server Architecture.md#q4什麼時候應該考慮-p2p-而不是-client-server"
     ],
     "tags": [
       "auto"
@@ -123,12 +92,12 @@
     }
   },
   {
-    "seed_key": "auto.7e2234b3a2",
-    "name": "L4 與 L7 的差異與適用情境",
-    "query": "L4 跟 L7 load balancer 差在哪裡？如果是做 HTTP API 或 path-based routing，通常會選哪一種？",
+    "seed_key": "auto.ad2cf1c309",
+    "name": "QR Code 更新後舊資料會怎麼取捨",
+    "query": "如果 QR code 的 destination 更新了，但舊 destination 會短暫還存在，這種情況應該偏向 AP 還是 CP？為什麼？",
     "expected_decision": "can_answer",
     "expected_source_ids": [
-      "1-基本觀念-01-Networking Essentials.md#l4-vs-l7"
+      "1-基本觀念-03-CAP Theorem.md#qr-code-generator"
     ],
     "tags": [
       "auto"
@@ -138,12 +107,12 @@
     }
   },
   {
-    "seed_key": "auto.a67114e310",
-    "name": "Dedicated load balancer 的位置與適合場景",
-    "query": "Dedicated load balancer 在架構中扮演什麼角色？它適合哪些情境使用？",
+    "seed_key": "auto.2161e348c4",
+    "name": "哪些路徑偏 CP、哪些路徑偏 AP",
+    "query": "面試時如果被問到 CAP，怎麼區分哪些 path 要偏 CP、哪些 path 可以偏 AP？請各舉幾種例子。",
     "expected_decision": "can_answer",
     "expected_source_ids": [
-      "1-基本觀念-01-Networking Essentials.md#dedicated-load-balancer"
+      "1-基本觀念-03-CAP Theorem.md#面試中怎麼說"
     ],
     "tags": [
       "auto"
@@ -153,12 +122,12 @@
     }
   },
   {
-    "seed_key": "auto.87ec7d73a0",
-    "name": "REST 適用情境",
-    "query": "如果我要設計一個對外 API，而且 resource model 很清楚，這種情況適合用哪一種風格？",
+    "seed_key": "auto.fb363755ed",
+    "name": "垂直擴展是什麼",
+    "query": "什麼是垂直擴展（Vertical Scaling）？它通常怎麼做，優點和缺點各是什麼？",
     "expected_decision": "can_answer",
     "expected_source_ids": [
-      "1-基本觀念-01-Networking Essentials.md#rest"
+      "1-基本觀念-04-Scalability.md#垂直擴展vertical-scaling"
     ],
     "tags": [
       "auto"
@@ -168,12 +137,12 @@
     }
   },
   {
-    "seed_key": "auto.43e426fca1",
-    "name": "即時更新技術的選擇依據",
-    "query": "在考慮即時系統時，文件建議先從哪些角度來判斷要用哪一種即時更新技術？",
+    "seed_key": "auto.a8e8e4229f",
+    "name": "API 設計的思考順序是什麼",
+    "query": "在做 API design 的時候，應該先決定 REST、GraphQL 還是 RPC 嗎？正確的思考順序是什麼？",
     "expected_decision": "can_answer",
     "expected_source_ids": [
-      "1-基本觀念-01-Networking Essentials.md#real-time-updatesssewebsocketwebrtc"
+      "1-基本觀念-05-API Design.md#api-design-api-design"
     ],
     "tags": [
       "auto"
@@ -183,13 +152,12 @@
     }
   },
   {
-    "seed_key": "auto.a0549ca314",
-    "name": "SSE 與 WebRTC 的使用情境差異",
-    "query": "如果我要做的是通知或 dashboard 更新，而且 client 只需要接收 server 推送、不需要雙向互動，應該用哪一種技術？另外，什麼情況下才比較適合用 WebRTC？",
+    "seed_key": "auto.aa2f126bb3",
+    "name": "排程任務外部與內部適合用什麼 API",
+    "query": "如果我要把排程任務提供給前端操作，外部介面和內部 scheduler、notification service、worker 之間各適合用什麼方式？可以簡單說明原因嗎？",
     "expected_decision": "can_answer",
     "expected_source_ids": [
-      "1-基本觀念-01-Networking Essentials.md#sse",
-      "1-基本觀念-01-Networking Essentials.md#webrtc"
+      "1-基本觀念-05-API Design.md#chatgpt-tasks"
     ],
     "tags": [
       "auto"
@@ -199,12 +167,13 @@
     }
   },
   {
-    "seed_key": "auto.8233cbba07",
-    "name": "長連線服務適合的負載平衡演算法",
-    "query": "如果後端是大量 WebSocket 長連線的 feed server，哪種 load balancing algorithm 比較適合？如果是一般 stateless REST API，又通常可以用哪兩種？",
+    "seed_key": "auto.1b3706bdee",
+    "name": "Redis cache 擴容時會發生什麼事？",
+    "query": "如果 Redis cache 用 `hash(cache_key) % N` 來做 routing，當 cache cluster 擴容時會有什麼問題？",
     "expected_decision": "can_answer",
     "expected_source_ids": [
-      "1-基本觀念-01-Networking Essentials.md#load-balancing-algorithm"
+      "1-基本觀念-06-Consistent Hashing.md#redis-cache-sharding",
+      "1-基本觀念-06-Consistent Hashing.md#q1hashkey-n-的主要問題是什麼"
     ],
     "tags": [
       "auto"
@@ -214,12 +183,13 @@
     }
   },
   {
-    "seed_key": "auto.e475db714d",
-    "name": "Circuit Breaker 的作用",
-    "query": "Circuit Breaker 主要是在解決什麼問題？",
+    "seed_key": "auto.00dfed7bd5",
+    "name": "consistent hashing 對素材快取的好處",
+    "query": "在 BuildMoat 的課程素材快取中，為什麼要用 consistent hashing 來分配 asset key？",
     "expected_decision": "can_answer",
     "expected_source_ids": [
-      "1-基本觀念-01-Networking Essentials.md#q5circuit-breaker-解決什麼問題"
+      "1-基本觀念-06-Consistent Hashing.md#buildmoat-課程素材快取",
+      "1-基本觀念-06-Consistent Hashing.md#redis-cache-sharding"
     ],
     "tags": [
       "auto"
@@ -229,13 +199,12 @@
     }
   },
   {
-    "seed_key": "auto.fd2ca2a13c",
-    "name": "QR Code Generator 產圖流程與進度更新方式",
-    "query": "在 QR Code Generator 這個案例裡，從使用者打開頁面到拿到圖片，請描述整個請求路徑，另外產圖進度更新適合用 polling、SSE 還是 WebSocket？",
+    "seed_key": "auto.e934e688d2",
+    "name": "查詢形狀與索引類型",
+    "query": "如果我的查詢是依 `token` 做等值查詢，但另一個需求是依時間範圍查詢，應該優先考慮哪種索引類型？",
     "expected_decision": "can_answer",
     "expected_source_ids": [
-      "1-基本觀念-01-Networking Essentials.md#一個課程案例qr-code-generator-的請求路徑",
-      "1-基本觀念-01-Networking Essentials.md#q2qr-code-generator-的產圖進度應該用-pollingsse還是-websocket"
+      "1-基本觀念-07-Database Indexing.md#indexing-decision-framework"
     ],
     "tags": [
       "auto"
@@ -245,12 +214,12 @@
     }
   },
   {
-    "seed_key": "auto.f2c42ca1c7",
-    "name": "L4 與 L7 Load Balancer 的差異與適用情境",
-    "query": "L4 和 L7 Load Balancer 有什麼差別？各自比較適合哪種情境？",
+    "seed_key": "auto.3f0d3a2353",
+    "name": "QR Code redirect 沒有索引的影響",
+    "query": "在 QR Code Generator 的 redirect 查詢裡，如果 `token` 沒有索引，資料庫會發生什麼情況？建立索引後又會有什麼改善？",
     "expected_decision": "can_answer",
     "expected_source_ids": [
-      "1-基本觀念-01-Networking Essentials.md#q4l4-和-l7-load-balancer-怎麼選"
+      "1-基本觀念-07-Database Indexing.md#沒有索引會發生什麼"
     ],
     "tags": [
       "auto"
@@ -260,13 +229,12 @@
     }
   },
   {
-    "seed_key": "auto.00e2ad0d8e",
-    "name": "系統設計面試常見的網路層次與 Load Balancer 位置",
-    "query": "在 system design 面試裡，網路通常要先掌握哪些層次？另外，Load Balancer 大概屬於哪一層？",
+    "seed_key": "auto.5af297978d",
+    "name": "transaction 是用來解決什麼問題",
+    "query": "什麼是 Transaction？它主要想解決哪一類資料庫問題？",
     "expected_decision": "can_answer",
     "expected_source_ids": [
-      "1-基本觀念-01-Networking Essentials.md#面試中真正要掌握的層次",
-      "1-基本觀念-01-Networking Essentials.md#q4l4-和-l7-load-balancer-怎麼選"
+      "1-基本觀念-08-Database Transactions.md#什麼是-transaction"
     ],
     "tags": [
       "auto"
@@ -276,12 +244,13 @@
     }
   },
   {
-    "seed_key": "auto.c7f1f788b9",
-    "name": "DNS 的用途與限制",
-    "query": "DNS 可以拿來做哪些事情？它有什麼限制，為什麼不適合做需要秒級精準切換的 routing decision？",
+    "seed_key": "auto.78db99abe2",
+    "name": "隔離性與隔離等級選擇",
+    "query": "隔離性是什麼？另外，為什麼在說明交易設計時不能只說「我用 transaction」，還要講清楚隔離等級和原因？",
     "expected_decision": "can_answer",
     "expected_source_ids": [
-      "1-基本觀念-01-Networking Essentials.md#dns"
+      "1-基本觀念-08-Database Transactions.md#isolation隔離性",
+      "1-基本觀念-08-Database Transactions.md#如何說明你的隔離等級選擇"
     ],
     "tags": [
       "auto"
@@ -291,12 +260,12 @@
     }
   },
   {
-    "seed_key": "auto.53c2c72687",
-    "name": "TCP 的特性與適用情境",
-    "query": "TCP 提供什麼特性？它適合哪些常見的網路應用情境？",
+    "seed_key": "auto.10655801cf",
+    "name": "Polymarket 快取適用的資料與不適合放快取的決策來源",
+    "query": "在 Polymarket 的情境下，哪些 read model 適合做 cache？另外，哪些資料/元件不應該拿 cache 來做最終決策？",
     "expected_decision": "can_answer",
     "expected_source_ids": [
-      "1-基本觀念-01-Networking Essentials.md#tcp"
+      "1-基本觀念-09-Caching.md#課程案例二polymarket"
     ],
     "tags": [
       "auto"
@@ -306,12 +275,12 @@
     }
   },
   {
-    "seed_key": "auto.5e497e1f33",
-    "name": "選擇即時通訊方案",
-    "query": "如果一個系統是「Server 單向推送通知」而且不是雙向互動，應該優先選哪種技術？",
+    "seed_key": "auto.7f9c42cbe8",
+    "name": "TTL 與淘汰策略的差異",
+    "query": "我看到快取常會提 TTL，但 TTL 跟真正的淘汰策略有什麼差別？還有 TTL 設計時要思考哪些問題？",
     "expected_decision": "can_answer",
     "expected_source_ids": [
-      "1-基本觀念-01-Networking Essentials.md#選擇表"
+      "1-基本觀念-09-Caching.md#淘汰策略和-ttl"
     ],
     "tags": [
       "auto"
@@ -321,12 +290,12 @@
     }
   },
   {
-    "seed_key": "auto.460e859bbf",
-    "name": "UDP 的特性與適用情境",
-    "query": "UDP 有哪些特性？另外它適合用在哪些情境？",
+    "seed_key": "auto.912fa5cb0c",
+    "name": "Polymarket 的分片設計",
+    "query": "在 Polymarket 的案例裡，使用者訂單列表、market order book / matching、以及 market data read model 分別適合怎麼分片？",
     "expected_decision": "can_answer",
     "expected_source_ids": [
-      "1-基本觀念-01-Networking Essentials.md#udp"
+      "1-基本觀念-10-Sharding.md#polymarket"
     ],
     "tags": [
       "auto"
@@ -336,12 +305,13 @@
     }
   },
   {
-    "seed_key": "auto.acde777315",
-    "name": "重試時如何避免重複建立",
-    "query": "如果一個 API 可能因為 timeout 之後被 retry，該怎麼避免像建立 task 這種操作被重複執行？",
+    "seed_key": "auto.c5086ce149",
+    "name": "Airbnb 的 inventory 與查詢模型分片",
+    "query": "在 Airbnb Booking Platform 裡，為什麼 inventory 不適合用 guest_id 分片？那 inventory、booking history 和 search index 各自比較適合怎麼拆？",
     "expected_decision": "can_answer",
     "expected_source_ids": [
-      "1-基本觀念-01-Networking Essentials.md#idempotency"
+      "1-基本觀念-10-Sharding.md#課程案例二airbnb-booking-platform",
+      "1-基本觀念-10-Sharding.md#airbnb-booking-platform"
     ],
     "tags": [
       "auto"
@@ -351,13 +321,13 @@
     }
   },
   {
-    "seed_key": "auto.b00ad14bc6",
-    "name": "外部呼叫的 timeout 與重試副作用",
-    "query": "為什麼每個外部呼叫都應該設定 timeout？如果這個操作又可能 retry，還要注意什麼副作用問題？",
+    "seed_key": "auto.5f9a797aa9",
+    "name": "Quorum 讀寫條件與常見設定",
+    "query": "在 leaderless replication 裡，quorum reads/writes 的條件是什麼？如果有 3 個 replica，`w` 和 `r` 通常要怎麼設？",
     "expected_decision": "can_answer",
     "expected_source_ids": [
-      "1-基本觀念-01-Networking Essentials.md#timeout",
-      "1-基本觀念-01-Networking Essentials.md#idempotency"
+      "1-基本觀念-11-Replication.md#quorum-reads-和-writes",
+      "1-基本觀念-11-Replication.md#q3leaderless-架構中quorum-的條件公式是什麼n3-時w-和-r-通常設多少"
     ],
     "tags": [
       "auto"
@@ -367,12 +337,12 @@
     }
   },
   {
-    "seed_key": "auto.2d65441efa",
-    "name": "HTTP 與 HTTPS 的差異",
-    "query": "HTTP 跟 HTTPS 有什麼差別？HTTPS 只能加密傳輸嗎，還是也代表驗證身分？",
+    "seed_key": "auto.56eafa7ea0",
+    "name": "因果順序顛倒的原因與解法",
+    "query": "為什麼在 consistent prefix reads 的情境下，觀察者可能會先看到回覆、後看到問題？這種情況可以怎麼解決？",
     "expected_decision": "can_answer",
     "expected_source_ids": [
-      "1-基本觀念-01-Networking Essentials.md#http-https"
+      "1-基本觀念-11-Replication.md#問題三consistent-prefix-reads因果一致性不一致"
     ],
     "tags": [
       "auto"
@@ -382,9 +352,40 @@
     }
   },
   {
-    "seed_key": "auto.neg.23175a044f",
-    "name": "分散式鎖實作細節",
-    "query": "請問課程中有沒有比較過 Redis 分散式鎖和 Zookeeper 分散式鎖的優缺點，哪一種比較適合高併發搶票系統？",
+    "seed_key": "auto.c46b1d78a5",
+    "name": "熱門讀取延遲變高該先想什麼",
+    "query": "如果我觀察到熱門 read path 的 P95 變高，課程裡建議先懷疑哪些問題，並且可以先採取哪些設計？",
+    "expected_decision": "can_answer",
+    "expected_source_ids": [
+      "1-基本觀念-12-Numbers to Know.md#課程版判斷表"
+    ],
+    "tags": [
+      "auto"
+    ],
+    "metadata": {
+      "kind": "generated"
+    }
+  },
+  {
+    "seed_key": "auto.88848990e9",
+    "name": "跨區延遲高時應該怎麼處理",
+    "query": "當跨 region 操作延遲太高時，課程裡說應該先懷疑什麼，並且最後才決定擴展手段時應該優先考慮哪些做法、避免哪些做法？",
+    "expected_decision": "can_answer",
+    "expected_source_ids": [
+      "1-基本觀念-12-Numbers to Know.md#課程版判斷表",
+      "1-基本觀念-12-Numbers to Know.md#最後才決定擴展手段"
+    ],
+    "tags": [
+      "auto"
+    ],
+    "metadata": {
+      "kind": "generated"
+    }
+  },
+  {
+    "seed_key": "auto.neg.892583fb2a",
+    "name": "實作細節-一致雜湊公式",
+    "query": "請問課程裡有沒有提供一致雜湊（Consistent Hashing）的完整 Python 實作範例，包含虛擬節點的數量設定公式與程式碼？",
     "expected_decision": "cannot_confirm",
     "expected_source_ids": [],
     "tags": [
@@ -396,9 +397,9 @@
     }
   },
   {
-    "seed_key": "auto.neg.69c00023fa",
-    "name": "Kafka vs RabbitMQ 選型",
-    "query": "如果要設計即時通知系統，課程建議用 Kafka 還是 RabbitMQ？兩者在吞吐量、延遲與訊息保證上怎麼取捨？",
+    "seed_key": "auto.neg.83e82086f8",
+    "name": "資料庫實務-特定引擎參數",
+    "query": "課程有沒有說明 PostgreSQL 應該把 shared_buffers、work_mem、effective_cache_size 設成多少，才算適合高流量系統？",
     "expected_decision": "cannot_confirm",
     "expected_source_ids": [],
     "tags": [
@@ -410,9 +411,9 @@
     }
   },
   {
-    "seed_key": "auto.neg.ff50502a3f",
-    "name": "資料庫隔離層級",
-    "query": "課程有沒有說明 MySQL 的 Read Committed、Repeatable Read、Serializable 三種交易隔離等級的差異，以及各自會避免哪些 anomaly？",
+    "seed_key": "auto.neg.5797b76093",
+    "name": "快取實作-Redis 資料結構選擇",
+    "query": "如果要做排行榜功能，課程是否明確建議一定要用 Redis Sorted Set，而不是其他資料結構？可以直接給出推薦原因嗎？",
     "expected_decision": "cannot_confirm",
     "expected_source_ids": [],
     "tags": [
@@ -424,9 +425,9 @@
     }
   },
   {
-    "seed_key": "auto.neg.05cad1119b",
-    "name": "監控指標實作",
-    "query": "在 Observability 章節裡，課程是否有推薦 Prometheus 的具體 metric 命名規則，並示範如何為 HTTP API 設計 dashboard 與 alert rule？",
+    "seed_key": "auto.neg.38ebfd39b7",
+    "name": "可靠性指標-SLI SLO 數值",
+    "query": "課程裡有沒有定義一個電商下單系統的可用性 SLO 標準，例如月可用率要達到 99.99% 或 99.95% 才算合格？",
     "expected_decision": "cannot_confirm",
     "expected_source_ids": [],
     "tags": [
