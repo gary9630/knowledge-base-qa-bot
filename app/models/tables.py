@@ -99,6 +99,9 @@ class Section(JsonDefaultsMixin, TimestampMixin, Base):
     __table_args__ = (
         Index("ux_sections_source_id", "source_id", unique=True),
         Index("ix_sections_tsv", "tsv", postgresql_using="gin"),
+        # intentionally non-unique — reindex renumbers positions in-place with
+        # per-row flushes, so a unique constraint would violate mid-transaction
+        # during reorders.
         Index("ix_sections_document_position", "document_id", "position"),
     )
     __json_defaults__ = {"metadata_json": dict}
