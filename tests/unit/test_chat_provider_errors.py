@@ -6,6 +6,7 @@ from uuid import uuid4
 import pytest
 from fastapi import HTTPException
 
+from app.answer.context_assembly import AssembledSource
 from app.answer.providers import AnswerSource
 from app.api.chat import (
     ChatRequest,
@@ -13,7 +14,6 @@ from app.api.chat import (
     _provider_budget_block_exception,
 )
 from app.core.config import Settings
-from app.retrieval.models import RetrievedCandidate
 
 
 class FailingAnswerProvider:
@@ -29,21 +29,23 @@ class FailingAnswerProvider:
 
 def test_answer_provider_error_maps_to_stable_http_exception() -> None:
     payload = ChatRequest(query="Where is the course site?")
-    candidate = RetrievedCandidate(
+    source = AssembledSource(
         section_id=uuid4(),
         source_id="faq.md#course-site",
         filename="faq.md",
         heading="Course Site",
         body_md="The course site is on the platform homepage.",
         score=0.8,
-        strategy="hybrid",
+        is_hit=True,
+        neighbor_distance=0,
+        truncated=False,
     )
 
     with pytest.raises(HTTPException) as exc_info:
         _answer_provider_error_response(
             provider=FailingAnswerProvider(),
             payload=payload,
-            candidates=[candidate],
+            sources=[source],
         )
 
     assert exc_info.value.status_code == 502

@@ -13,6 +13,7 @@ from app.api.chat import (
     AnswerQualityResponse,
     ChatRequest,
     ChatResponse,
+    ContextAssemblyResponse,
     _chat_decision,
     _chat_response_events,
     _retrieval_scores_payload,
@@ -60,6 +61,7 @@ def test_chat_stream_events_encode_not_indexed_response() -> None:
     assert done_payload["decision"] == "cannot_confirm"
     assert done_payload["answer"] == NOT_INDEXED_ANSWER
     assert done_payload["answer_quality"]["cannot_confirm_reason"] == "not_indexed"
+    assert done_payload["context_assembly"] is None
     assert done_payload["conversation_id"] == str(response.conversation_id)
 
 
@@ -113,7 +115,20 @@ def test_retrieval_scores_payload_includes_provider_calls() -> None:
                 "usage_complete": True,
             }
         ],
+        context_assembly=ContextAssemblyResponse(
+            neighbor_window=1,
+            token_budget=8000,
+            tokens_used=120,
+            hit_count=1,
+            neighbor_count=2,
+            dropped_hit_count=0,
+            dropped_neighbor_count=0,
+            truncated_count=0,
+        ),
     )
 
     assert payload["provider_calls"][0]["model"] == "gpt-test"
     assert payload["provider_calls"][0]["usage"]["total_tokens"] == 36
+    assert payload["context_assembly"]["token_budget"] == 8000
+    assert payload["context_assembly"]["hit_count"] == 1
+    assert payload["context_assembly"]["neighbor_count"] == 2

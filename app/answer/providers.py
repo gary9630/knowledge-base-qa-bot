@@ -94,7 +94,12 @@ class TopSourceAnswerProvider:
         if not sources:
             raise ValueError("sources are required")
 
-        source = sources[0]
+        # Sources may arrive in reading order (context assembly), so "top" means the
+        # best-scored source; unscored neighbor sections never outrank a retrieval hit.
+        source = max(
+            sources,
+            key=lambda candidate: candidate.score if candidate.score is not None else -1.0,
+        )
         excerpt = _first_content_line(source.body_md) or source.heading
         return f"{excerpt} [{source.source_id}]"
 
