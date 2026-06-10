@@ -1,0 +1,440 @@
+[
+  {
+    "seed_key": "auto.0a65281e4b",
+    "name": "時間不夠先看哪一篇",
+    "query": "如果我最近就要面試、時間很有限，這份講義建議我先看哪一篇？",
+    "expected_decision": "can_answer",
+    "expected_source_ids": [
+      "0-講義導讀.md#時間有限的話直接看面試模板"
+    ],
+    "tags": [
+      "auto"
+    ],
+    "metadata": {
+      "kind": "generated"
+    }
+  },
+  {
+    "seed_key": "auto.5f1a7c5b5a",
+    "name": "卡在系統設計題時該去哪裡查",
+    "query": "做系統設計題如果卡住了，應該回去查哪些章節來找對應的技術方案？",
+    "expected_decision": "can_answer",
+    "expected_source_ids": [
+      "0-講義導讀.md#常用技術-維運與可靠性當參考資料用",
+      "0-講義導讀.md#總結"
+    ],
+    "tags": [
+      "auto"
+    ],
+    "metadata": {
+      "kind": "generated"
+    }
+  },
+  {
+    "seed_key": "auto.6d45dd296c",
+    "name": "閱讀順序與第一步內容",
+    "query": "這份講義建議的閱讀順序是什麼？另外，第一步的基本觀念有哪些主題？",
+    "expected_decision": "can_answer",
+    "expected_source_ids": [
+      "0-講義導讀.md#講義導讀",
+      "0-講義導讀.md#第一步基本觀念"
+    ],
+    "tags": [
+      "auto"
+    ],
+    "metadata": {
+      "kind": "generated"
+    }
+  },
+  {
+    "seed_key": "auto.4b20bed0ac",
+    "name": "第二步設計模式包含哪些主題",
+    "query": "在基本觀念之後，第二步「設計模式」整理了哪些常見場景？",
+    "expected_decision": "can_answer",
+    "expected_source_ids": [
+      "0-講義導讀.md#第二步設計模式"
+    ],
+    "tags": [
+      "auto"
+    ],
+    "metadata": {
+      "kind": "generated"
+    }
+  },
+  {
+    "seed_key": "auto.beae564479",
+    "name": "GraphQL 適合什麼情境？",
+    "query": "什麼情況下會比較適合用 GraphQL？它的優點和需要注意的地方是什麼？",
+    "expected_decision": "can_answer",
+    "expected_source_ids": [
+      "1-基本觀念-01-Networking Essentials.md#graphql"
+    ],
+    "tags": [
+      "auto"
+    ],
+    "metadata": {
+      "kind": "generated"
+    }
+  },
+  {
+    "seed_key": "auto.e134be1e11",
+    "name": "重試機制要怎麼設計？",
+    "query": "如果 API 或 webhook 暫時失敗，要怎麼設計重試機制才比較合理？",
+    "expected_decision": "can_answer",
+    "expected_source_ids": [
+      "1-基本觀念-01-Networking Essentials.md#retry-with-backoff-and-jitter"
+    ],
+    "tags": [
+      "auto"
+    ],
+    "metadata": {
+      "kind": "generated"
+    }
+  },
+  {
+    "seed_key": "auto.ef396a4636",
+    "name": "Circuit Breaker 的用途",
+    "query": "Circuit Breaker 的主要用途是什麼？它是在保證每個 request 一定成功，還是用來保護系統？",
+    "expected_decision": "can_answer",
+    "expected_source_ids": [
+      "1-基本觀念-01-Networking Essentials.md#circuit-breaker"
+    ],
+    "tags": [
+      "auto"
+    ],
+    "metadata": {
+      "kind": "generated"
+    }
+  },
+  {
+    "seed_key": "auto.875a36303e",
+    "name": "WebSocket 與全球延遲",
+    "query": "如果一個全球服務所有 request 都打到單一 region，會有什麼問題？另外，WebSocket 適合什麼樣的情境？",
+    "expected_decision": "can_answer",
+    "expected_source_ids": [
+      "1-基本觀念-01-Networking Essentials.md#dnscdn-與全球延遲",
+      "1-基本觀念-01-Networking Essentials.md#websocket"
+    ],
+    "tags": [
+      "auto"
+    ],
+    "metadata": {
+      "kind": "generated"
+    }
+  },
+  {
+    "seed_key": "auto.7e2234b3a2",
+    "name": "L4 與 L7 的差異與適用情境",
+    "query": "L4 跟 L7 load balancer 差在哪裡？如果是做 HTTP API 或 path-based routing，通常會選哪一種？",
+    "expected_decision": "can_answer",
+    "expected_source_ids": [
+      "1-基本觀念-01-Networking Essentials.md#l4-vs-l7"
+    ],
+    "tags": [
+      "auto"
+    ],
+    "metadata": {
+      "kind": "generated"
+    }
+  },
+  {
+    "seed_key": "auto.a67114e310",
+    "name": "Dedicated load balancer 的位置與適合場景",
+    "query": "Dedicated load balancer 在架構中扮演什麼角色？它適合哪些情境使用？",
+    "expected_decision": "can_answer",
+    "expected_source_ids": [
+      "1-基本觀念-01-Networking Essentials.md#dedicated-load-balancer"
+    ],
+    "tags": [
+      "auto"
+    ],
+    "metadata": {
+      "kind": "generated"
+    }
+  },
+  {
+    "seed_key": "auto.87ec7d73a0",
+    "name": "REST 適用情境",
+    "query": "如果我要設計一個對外 API，而且 resource model 很清楚，這種情況適合用哪一種風格？",
+    "expected_decision": "can_answer",
+    "expected_source_ids": [
+      "1-基本觀念-01-Networking Essentials.md#rest"
+    ],
+    "tags": [
+      "auto"
+    ],
+    "metadata": {
+      "kind": "generated"
+    }
+  },
+  {
+    "seed_key": "auto.43e426fca1",
+    "name": "即時更新技術的選擇依據",
+    "query": "在考慮即時系統時，文件建議先從哪些角度來判斷要用哪一種即時更新技術？",
+    "expected_decision": "can_answer",
+    "expected_source_ids": [
+      "1-基本觀念-01-Networking Essentials.md#real-time-updatesssewebsocketwebrtc"
+    ],
+    "tags": [
+      "auto"
+    ],
+    "metadata": {
+      "kind": "generated"
+    }
+  },
+  {
+    "seed_key": "auto.a0549ca314",
+    "name": "SSE 與 WebRTC 的使用情境差異",
+    "query": "如果我要做的是通知或 dashboard 更新，而且 client 只需要接收 server 推送、不需要雙向互動，應該用哪一種技術？另外，什麼情況下才比較適合用 WebRTC？",
+    "expected_decision": "can_answer",
+    "expected_source_ids": [
+      "1-基本觀念-01-Networking Essentials.md#sse",
+      "1-基本觀念-01-Networking Essentials.md#webrtc"
+    ],
+    "tags": [
+      "auto"
+    ],
+    "metadata": {
+      "kind": "generated"
+    }
+  },
+  {
+    "seed_key": "auto.8233cbba07",
+    "name": "長連線服務適合的負載平衡演算法",
+    "query": "如果後端是大量 WebSocket 長連線的 feed server，哪種 load balancing algorithm 比較適合？如果是一般 stateless REST API，又通常可以用哪兩種？",
+    "expected_decision": "can_answer",
+    "expected_source_ids": [
+      "1-基本觀念-01-Networking Essentials.md#load-balancing-algorithm"
+    ],
+    "tags": [
+      "auto"
+    ],
+    "metadata": {
+      "kind": "generated"
+    }
+  },
+  {
+    "seed_key": "auto.e475db714d",
+    "name": "Circuit Breaker 的作用",
+    "query": "Circuit Breaker 主要是在解決什麼問題？",
+    "expected_decision": "can_answer",
+    "expected_source_ids": [
+      "1-基本觀念-01-Networking Essentials.md#q5circuit-breaker-解決什麼問題"
+    ],
+    "tags": [
+      "auto"
+    ],
+    "metadata": {
+      "kind": "generated"
+    }
+  },
+  {
+    "seed_key": "auto.fd2ca2a13c",
+    "name": "QR Code Generator 產圖流程與進度更新方式",
+    "query": "在 QR Code Generator 這個案例裡，從使用者打開頁面到拿到圖片，請描述整個請求路徑，另外產圖進度更新適合用 polling、SSE 還是 WebSocket？",
+    "expected_decision": "can_answer",
+    "expected_source_ids": [
+      "1-基本觀念-01-Networking Essentials.md#一個課程案例qr-code-generator-的請求路徑",
+      "1-基本觀念-01-Networking Essentials.md#q2qr-code-generator-的產圖進度應該用-pollingsse還是-websocket"
+    ],
+    "tags": [
+      "auto"
+    ],
+    "metadata": {
+      "kind": "generated"
+    }
+  },
+  {
+    "seed_key": "auto.f2c42ca1c7",
+    "name": "L4 與 L7 Load Balancer 的差異與適用情境",
+    "query": "L4 和 L7 Load Balancer 有什麼差別？各自比較適合哪種情境？",
+    "expected_decision": "can_answer",
+    "expected_source_ids": [
+      "1-基本觀念-01-Networking Essentials.md#q4l4-和-l7-load-balancer-怎麼選"
+    ],
+    "tags": [
+      "auto"
+    ],
+    "metadata": {
+      "kind": "generated"
+    }
+  },
+  {
+    "seed_key": "auto.00e2ad0d8e",
+    "name": "系統設計面試常見的網路層次與 Load Balancer 位置",
+    "query": "在 system design 面試裡，網路通常要先掌握哪些層次？另外，Load Balancer 大概屬於哪一層？",
+    "expected_decision": "can_answer",
+    "expected_source_ids": [
+      "1-基本觀念-01-Networking Essentials.md#面試中真正要掌握的層次",
+      "1-基本觀念-01-Networking Essentials.md#q4l4-和-l7-load-balancer-怎麼選"
+    ],
+    "tags": [
+      "auto"
+    ],
+    "metadata": {
+      "kind": "generated"
+    }
+  },
+  {
+    "seed_key": "auto.c7f1f788b9",
+    "name": "DNS 的用途與限制",
+    "query": "DNS 可以拿來做哪些事情？它有什麼限制，為什麼不適合做需要秒級精準切換的 routing decision？",
+    "expected_decision": "can_answer",
+    "expected_source_ids": [
+      "1-基本觀念-01-Networking Essentials.md#dns"
+    ],
+    "tags": [
+      "auto"
+    ],
+    "metadata": {
+      "kind": "generated"
+    }
+  },
+  {
+    "seed_key": "auto.53c2c72687",
+    "name": "TCP 的特性與適用情境",
+    "query": "TCP 提供什麼特性？它適合哪些常見的網路應用情境？",
+    "expected_decision": "can_answer",
+    "expected_source_ids": [
+      "1-基本觀念-01-Networking Essentials.md#tcp"
+    ],
+    "tags": [
+      "auto"
+    ],
+    "metadata": {
+      "kind": "generated"
+    }
+  },
+  {
+    "seed_key": "auto.5e497e1f33",
+    "name": "選擇即時通訊方案",
+    "query": "如果一個系統是「Server 單向推送通知」而且不是雙向互動，應該優先選哪種技術？",
+    "expected_decision": "can_answer",
+    "expected_source_ids": [
+      "1-基本觀念-01-Networking Essentials.md#選擇表"
+    ],
+    "tags": [
+      "auto"
+    ],
+    "metadata": {
+      "kind": "generated"
+    }
+  },
+  {
+    "seed_key": "auto.460e859bbf",
+    "name": "UDP 的特性與適用情境",
+    "query": "UDP 有哪些特性？另外它適合用在哪些情境？",
+    "expected_decision": "can_answer",
+    "expected_source_ids": [
+      "1-基本觀念-01-Networking Essentials.md#udp"
+    ],
+    "tags": [
+      "auto"
+    ],
+    "metadata": {
+      "kind": "generated"
+    }
+  },
+  {
+    "seed_key": "auto.acde777315",
+    "name": "重試時如何避免重複建立",
+    "query": "如果一個 API 可能因為 timeout 之後被 retry，該怎麼避免像建立 task 這種操作被重複執行？",
+    "expected_decision": "can_answer",
+    "expected_source_ids": [
+      "1-基本觀念-01-Networking Essentials.md#idempotency"
+    ],
+    "tags": [
+      "auto"
+    ],
+    "metadata": {
+      "kind": "generated"
+    }
+  },
+  {
+    "seed_key": "auto.b00ad14bc6",
+    "name": "外部呼叫的 timeout 與重試副作用",
+    "query": "為什麼每個外部呼叫都應該設定 timeout？如果這個操作又可能 retry，還要注意什麼副作用問題？",
+    "expected_decision": "can_answer",
+    "expected_source_ids": [
+      "1-基本觀念-01-Networking Essentials.md#timeout",
+      "1-基本觀念-01-Networking Essentials.md#idempotency"
+    ],
+    "tags": [
+      "auto"
+    ],
+    "metadata": {
+      "kind": "generated"
+    }
+  },
+  {
+    "seed_key": "auto.2d65441efa",
+    "name": "HTTP 與 HTTPS 的差異",
+    "query": "HTTP 跟 HTTPS 有什麼差別？HTTPS 只能加密傳輸嗎，還是也代表驗證身分？",
+    "expected_decision": "can_answer",
+    "expected_source_ids": [
+      "1-基本觀念-01-Networking Essentials.md#http-https"
+    ],
+    "tags": [
+      "auto"
+    ],
+    "metadata": {
+      "kind": "generated"
+    }
+  },
+  {
+    "seed_key": "auto.neg.23175a044f",
+    "name": "分散式鎖實作細節",
+    "query": "請問課程中有沒有比較過 Redis 分散式鎖和 Zookeeper 分散式鎖的優缺點，哪一種比較適合高併發搶票系統？",
+    "expected_decision": "cannot_confirm",
+    "expected_source_ids": [],
+    "tags": [
+      "auto",
+      "negative"
+    ],
+    "metadata": {
+      "kind": "generated_negative"
+    }
+  },
+  {
+    "seed_key": "auto.neg.69c00023fa",
+    "name": "Kafka vs RabbitMQ 選型",
+    "query": "如果要設計即時通知系統，課程建議用 Kafka 還是 RabbitMQ？兩者在吞吐量、延遲與訊息保證上怎麼取捨？",
+    "expected_decision": "cannot_confirm",
+    "expected_source_ids": [],
+    "tags": [
+      "auto",
+      "negative"
+    ],
+    "metadata": {
+      "kind": "generated_negative"
+    }
+  },
+  {
+    "seed_key": "auto.neg.ff50502a3f",
+    "name": "資料庫隔離層級",
+    "query": "課程有沒有說明 MySQL 的 Read Committed、Repeatable Read、Serializable 三種交易隔離等級的差異，以及各自會避免哪些 anomaly？",
+    "expected_decision": "cannot_confirm",
+    "expected_source_ids": [],
+    "tags": [
+      "auto",
+      "negative"
+    ],
+    "metadata": {
+      "kind": "generated_negative"
+    }
+  },
+  {
+    "seed_key": "auto.neg.05cad1119b",
+    "name": "監控指標實作",
+    "query": "在 Observability 章節裡，課程是否有推薦 Prometheus 的具體 metric 命名規則，並示範如何為 HTTP API 設計 dashboard 與 alert rule？",
+    "expected_decision": "cannot_confirm",
+    "expected_source_ids": [],
+    "tags": [
+      "auto",
+      "negative"
+    ],
+    "metadata": {
+      "kind": "generated_negative"
+    }
+  }
+]
