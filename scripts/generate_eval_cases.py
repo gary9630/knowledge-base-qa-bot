@@ -4,6 +4,7 @@ import argparse
 import json
 import sys
 from dataclasses import dataclass
+from hashlib import sha256
 from pathlib import Path
 from typing import Any, Protocol
 
@@ -12,6 +13,11 @@ from sqlalchemy.orm import Session
 
 from app.document_lifecycle import active_document_filter
 from app.models.tables import Document, Section
+
+
+def _seed_key(prefix: str, query: str) -> str:
+    return f"{prefix}.{sha256(query.encode('utf-8')).hexdigest()[:10]}"
+
 
 GENERATION_SYSTEM_PROMPT = (
     "You create evaluation cases for a course knowledge-base QA bot. "
@@ -214,7 +220,7 @@ def generate_eval_seed_dicts(
                 seen_queries.add(case["query"])
                 seed_dicts.append(
                     {
-                        "seed_key": f"auto.{len(seed_dicts):03d}",
+                        "seed_key": _seed_key("auto", case["query"]),
                         "name": case["name"],
                         "query": case["query"],
                         "expected_decision": "can_answer",
@@ -235,7 +241,7 @@ def generate_eval_seed_dicts(
             seen_queries.add(case["query"])
             seed_dicts.append(
                 {
-                    "seed_key": f"auto.neg.{len(seed_dicts):03d}",
+                    "seed_key": _seed_key("auto.neg", case["query"]),
                     "name": case["name"],
                     "query": case["query"],
                     "expected_decision": "cannot_confirm",

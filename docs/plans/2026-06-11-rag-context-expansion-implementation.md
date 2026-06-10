@@ -66,7 +66,7 @@ def test_group_sections_builds_consecutive_groups_per_file() -> None:
     groups = group_sections(records, group_size=3)
 
     assert all(group.filename == "doc.md" for group in groups)
-    assert [len(group.sections) for group in groups] == [3, 3]
+    assert [len(group.sections) for group in groups] == [3, 2]
     assert groups[0].sections[0].source_id == "doc.md#sec-0"
     assert groups[1].sections[0].source_id == "doc.md#sec-3"
 
@@ -1132,6 +1132,8 @@ In `app/indexing/service.py` `_index_file`, change the loop header (line 224) to
 ```
 
 In the create branch add `position=position,` to the `Section(...)` constructor; in the update branch add `section.position = position` next to the other assignments.
+
+Also update `scripts/generate_eval_cases.py::load_section_records` ordering to use document order now that positions exist: replace `Section.created_at.asc(), Section.id.asc()` with `Section.position.asc().nulls_last(), Section.id.asc()` (review finding: created_at is transaction-stable, so the old tiebreak was random UUID order, not document order).
 
 - [ ] **Step 5: Run the test to verify it passes**
 
