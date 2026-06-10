@@ -116,6 +116,14 @@ Important provider settings:
 - `KB_OPENAI_CHAT_MAX_COMPLETION_TOKENS`
 - `KB_PROVIDER_BUDGET_*`
 
+Important retrieval and context settings:
+
+- `KB_TOKEN_ENCODING=o200k_base`: tiktoken encoding used for token-aware chunking and
+  context budgeting.
+- `KB_CONTEXT_NEIGHBOR_SECTIONS=1`: neighboring sections included on each side of a
+  retrieved section when assembling answer context.
+- `KB_CONTEXT_TOKEN_BUDGET=8000`: token budget for the assembled answer context.
+
 Important runtime settings:
 
 - `KB_RATE_LIMIT_*`
@@ -197,6 +205,13 @@ Admin-only:
 state, storage paths, platform auth, and index readiness.
 
 ## Retrieval And Answer Quality
+
+Hybrid retrieval now fuses lexical, vector, and markdown candidates with Reciprocal Rank
+Fusion (RRF), applying the score threshold to per-strategy scores before fusion. Chat
+answers no longer see only the matched chunk: a context assembly step expands each hit to
+its full section plus `KB_CONTEXT_NEIGHBOR_SECTIONS` neighbors on each side, within the
+`KB_CONTEXT_TOKEN_BUDGET` token budget, and chat responses report this in a
+`context_assembly` block.
 
 Search and chat return retrieval diagnostics such as selected source IDs, rejected source
 IDs, threshold, strategy counts, top score, raw/merged/accepted/rejected counts, and score

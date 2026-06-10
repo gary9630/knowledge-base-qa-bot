@@ -122,6 +122,21 @@ make ops-check API_URL=https://your-app.example.com KB_ADMIN_API_KEY=$KB_ADMIN_A
 If running directly against a local database instead of Compose, run `make migrate` before
 starting the app process.
 
+### Context Expansion Release Note
+
+Deploying the retrieval context expansion change (tiktoken chunking, section positions,
+RRF fusion, full-section answer context) requires both:
+
+1. `make migrate` (adds `sections.position`).
+2. A full index rebuild (`python -m scripts.rebuild_index` against the production docs
+   dir, or `make real-content-package` for a fresh launch artifact). The rebuild
+   re-chunks every document with token-aware chunking and re-embeds all chunks, so expect
+   a one-time OpenAI embedding cost proportional to the full corpus.
+
+Answer calls now send full-section windows instead of single chunks, which grows answer
+input tokens roughly 4-5x. Raise `KB_PROVIDER_BUDGET_*` daily token limits accordingly
+before enabling traffic.
+
 ## Post-Deploy Smoke
 
 1. `GET /health` returns 200.

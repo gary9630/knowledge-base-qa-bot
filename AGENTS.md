@@ -13,6 +13,7 @@
 
 - Product: FastAPI knowledge-base Q&A bot for course materials.
 - Core flow: ingest PDF/Markdown/TXT/HTML, convert to canonical Markdown, index into Postgres + pgvector, answer with grounded citations.
+- Between retrieval and answering sits a context assembly layer: each retrieved chunk expands to its full section plus `KB_CONTEXT_NEIGHBOR_SECTIONS` neighbors within `KB_CONTEXT_TOKEN_BUDGET` tokens, used by chat, streaming chat, and the eval answer path.
 - MVP intentionally uses Postgres + pgvector; FAISS is not in the current path.
 - UI is a three-column workbench: left functional tabs, center chat/streaming answer, right sources/Markdown/index status.
 - Platform auth is a single configured login for learners. It is not registration or full RBAC.
