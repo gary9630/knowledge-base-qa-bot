@@ -20,7 +20,12 @@ from app.indexing.export import (
 )
 from app.indexing.frontmatter import parse_product_frontmatter
 from app.indexing.markdown_parser import ParsedSection, parse_markdown_sections
-from app.indexing.tokenization import DEFAULT_TOKEN_ENCODING, count_tokens, split_token_windows
+from app.indexing.tokenization import (
+    DEFAULT_TOKEN_ENCODING,
+    MIN_LOSSLESS_OVERLAP,
+    count_tokens,
+    split_token_windows,
+)
 from app.models.tables import Chunk, Document, IndexingJob, Section
 from app.retrieval.dimensions import PGVECTOR_EMBEDDING_DIMENSION
 from app.retrieval.embeddings import EmbeddingProvider
@@ -72,8 +77,12 @@ class IndexingService:
     ) -> None:
         if chunk_token_limit <= 0:
             raise ValueError("chunk_token_limit must be positive")
-        if chunk_overlap < 0:
-            raise ValueError("chunk_overlap must be non-negative")
+        if chunk_overlap < MIN_LOSSLESS_OVERLAP:
+            raise ValueError(
+                f"chunk_overlap must be at least {MIN_LOSSLESS_OVERLAP} tokens so a "
+                "character split at a chunk boundary always survives intact in a "
+                "neighboring chunk"
+            )
         if chunk_overlap >= chunk_token_limit:
             raise ValueError("chunk_overlap must be smaller than chunk_token_limit")
 

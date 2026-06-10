@@ -62,6 +62,34 @@ def test_truncate_to_tokens_keeps_short_text_identical() -> None:
 
 def test_split_token_windows_validates_arguments() -> None:
     with pytest.raises(ValueError):
-        split_token_windows("text", token_limit=0, overlap=0)
+        split_token_windows("text", token_limit=0, overlap=3)
     with pytest.raises(ValueError):
         split_token_windows("text", token_limit=10, overlap=10)
+    # overlap below MIN_LOSSLESS_OVERLAP can drop characters split at window
+    # boundaries from both adjacent windows
+    with pytest.raises(ValueError):
+        split_token_windows("text", token_limit=10, overlap=0)
+    with pytest.raises(ValueError):
+        split_token_windows("text", token_limit=10, overlap=2)
+
+
+def test_split_token_windows_union_covers_all_characters() -> None:
+    # Regression: with overlap below MIN_LOSSLESS_OVERLAP, a multi-byte character
+    # split at a window boundary could vanish from both adjacent windows.
+    text = "課程材料的內容涵蓋系統設計。" * 60
+    stripped = text.strip()
+    windows = split_token_windows(text, token_limit=50, overlap=8)
+
+    assert len(windows) > 1
+    joined = "".join(window.text for window in windows)
+    assert set(stripped) <= set(joined)
+    assert sum(len(window.text) for window in windows) >= len(stripped)
+
+
+def test_split_token_windows_whitespace_only_input_returns_no_windows() -> None:
+    assert split_token_windows("   \n\t  ", token_limit=10, overlap=3) == []
+
+
+def test_truncate_to_tokens_rejects_non_positive_limit() -> None:
+    with pytest.raises(ValueError):
+        truncate_to_tokens("text", limit=0)

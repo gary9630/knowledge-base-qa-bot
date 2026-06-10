@@ -35,9 +35,7 @@ def test_hybrid_retriever_finds_course_site_section_after_indexing(
         encoding="utf-8",
     )
     (docs_dir / "課程公告.md").write_text(
-        "# 課程公告\n\n"
-        "## 上課時間\n\n"
-        "每週三晚上上課。\n",
+        "# 課程公告\n\n## 上課時間\n\n每週三晚上上課。\n",
         encoding="utf-8",
     )
     embedding_provider = FakeEmbeddingProvider(dimension=768)
@@ -80,8 +78,8 @@ def test_vector_retriever_returns_best_chunk_evidence_after_indexing(
         docs_dir=docs_dir,
         kb_dir=tmp_path / ".kb",
         embedding_provider=embedding_provider,
-        chunk_token_limit=8,
-        chunk_overlap=0,
+        chunk_token_limit=12,
+        chunk_overlap=3,
     )
     service.rebuild_index()
 

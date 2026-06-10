@@ -7,6 +7,14 @@ import tiktoken
 
 DEFAULT_TOKEN_ENCODING = "o200k_base"
 
+# A UTF-8 character is at most 4 bytes and every BPE token decodes to at least 1 byte,
+# so a character that straddles a window boundary can overhang it by at most 3 tokens.
+# _safe_decode drops partial bytes on BOTH sides of a boundary, so with an overlap of
+# fewer than 3 tokens the same character can vanish from both adjacent windows. An
+# overlap of at least 3 tokens guarantees every boundary-straddling character survives
+# intact in a neighboring window (lossless coverage).
+MIN_LOSSLESS_OVERLAP = 3
+
 
 @dataclass(frozen=True)
 class TokenWindow:
@@ -51,8 +59,11 @@ def split_token_windows(
 ) -> list[TokenWindow]:
     if token_limit <= 0:
         raise ValueError("token_limit must be positive")
-    if overlap < 0:
-        raise ValueError("overlap must be non-negative")
+    if overlap < MIN_LOSSLESS_OVERLAP:
+        raise ValueError(
+            f"overlap must be at least {MIN_LOSSLESS_OVERLAP} tokens so a character "
+            "split at a window boundary always survives intact in a neighboring window"
+        )
     if overlap >= token_limit:
         raise ValueError("overlap must be smaller than token_limit")
 
@@ -83,6 +94,9 @@ def split_token_windows(
                 text=window_text,
                 start_token=start,
                 end_token=end,
+                # token_count = end - start is the raw window size, an upper bound on
+                # the stored text's re-encoded token count (text is edge-trimmed and
+                # stripped).
                 token_count=end - start,
             )
         )
