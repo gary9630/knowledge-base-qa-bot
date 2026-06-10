@@ -2254,3 +2254,77 @@ git commit -m "docs: document context expansion settings and reindex requirement
 - [ ] `make test` and `make lint` green
 - [ ] `make docker-test` green (Docker image builds with tiktoken cache baked in)
 - [ ] Reindex performed; no NULL `sections.position` remaining
+
+---
+
+## Completion Notes (2026-06-11)
+
+All 9 tasks executed and reviewed (per-task spec + quality review, plus a final
+whole-diff review). Acceptance gates from the design doc: PASSED.
+
+Case-count note: the comparison ran 31 cases = 29 committed auto-generated cases
+(`docs/plans/2026-06-11-auto-eval-cases.json`, 25 positive + 4 negative) plus the
+2 manual seed cases (1 positive + 1 negative) from `make eval-seed`.
+
+# Eval Comparison: Context Expansion (2026-06-11)
+
+- Baseline run: `fc1070a2-8542-4968-ba50-e53481152c69` (old whitespace chunking, weighted-score fusion, chunk-only answer context)
+- After run: `873f182e-c8ee-42bd-95e7-7307ab6182b7` (tiktoken chunking, RRF fusion, full-section + ±1 neighbor context, reindexed 35 docs / 819 sections / 826 chunks)
+- Shared config: strategy=hybrid, limit=5, OpenAI embeddings (text-embedding-3-small, 768-dim), FAKE answer provider, 31 cases (26 positive + 5 negative).
+- Retrieval threshold note: both runs used the eval runner, which constructs `HybridRetriever` without a threshold argument, so both used the constructor default `0.10` — NOT the API's `API_RETRIEVAL_SCORE_THRESHOLD=0.05` (`app/api/search.py:26`). The baseline file's "threshold=0.05" annotation is inaccurate, but the comparison is apples-to-apples.
+
+## Metrics (positives, n=26)
+
+| Metric | Baseline | After | Delta | Gate |
+| --- | --- | --- | --- | --- |
+| passed | 3 | 14 | +11 | — |
+| decision_ok | 24/26 | 26/26 | +2 | — |
+| avg_retrieval_recall | 0.5577 | 0.9231 | +0.3654 | PASS (≥ 0.5577) |
+| avg_citation_recall | 0.1923 | 0.6346 | +0.4423 | PASS (≥ 0.1923) |
+| avg_top1_hit | 0.2692 | 0.7692 | +0.5000 | — |
+
+## Metrics (negatives, n=5)
+
+| Metric | Baseline | After |
+| --- | --- | --- |
+| passed | 0 | 0 |
+| decision_ok | 0/5 | 0/5 |
+| avg_retrieval_recall | 1.0000 | 1.0000 |
+| avg_top1_hit | 1.0000 | 1.0000 |
+
+Negatives are unchanged: all 5 still answer `can_answer` where `cannot_confirm` is
+expected (pre-existing known gap, not introduced or worsened by this change).
+
+## Per-case flips (11 fail -> pass, 0 pass -> fail)
+
+| Case (query prefix) | recall before -> after | top1 before -> after |
+| --- | --- | --- |
+| 什麼情況下會比較適合用 GraphQL？ | 0.0 -> 1.0 | 0.0 -> 1.0 |
+| 什麼是 Transaction？ | 1.0 -> 1.0 | 0.0 -> 1.0 |
+| 在 Polymarket 的情境下，哪些 read model 適合做 cache | 1.0 -> 1.0 | 0.0 -> 1.0 |
+| 在 Polymarket 的案例裡，使用者訂單列表、market order book | 1.0 -> 1.0 | 0.0 -> 1.0 |
+| 在 QR Code Generator 的 redirect 查詢裡 | 1.0 -> 1.0 | 0.0 -> 1.0 |
+| 如果 QR code 的 destination 更新了 | 1.0 -> 1.0 | 0.0 -> 1.0 |
+| 如果我最近就要面試、時間不夠把前面都看完 | 0.0 -> 1.0 | 0.0 -> 1.0 |
+| 如果我要把排程任務提供給前端操作 | 0.0 -> 1.0 | 0.0 -> 1.0 |
+| 如果我觀察到熱門 read path 的 P95 變高 | 0.0 -> 1.0 | 0.0 -> 1.0 |
+| 我看到快取常會提 TTL，但 TTL 跟真正的淘汰策略有什麼差別 | 0.0 -> 1.0 | 0.0 -> 1.0 |
+| 為什麼在 consistent prefix reads 的情境下 | 1.0 -> 1.0 | 0.0 -> 1.0 |
+
+## Per-case metric regressions
+
+Only one case regressed on any metric:
+
+| Case | Metric | Before | After |
+| --- | --- | --- | --- |
+| 在 BuildMoat 的課程素材快取中，為什麼要用 consistent hashing | citation_recall | 0.5 | 0.0 |
+
+Its retrieval_recall stayed 1.0 in both runs; the drop is a fake-answerer citation
+ordering artifact (the deterministic fake provider cites a different subset of the
+selected sources), not a retrieval regression.
+
+## Verdict
+
+Both gates pass. Retrieval recall +65% relative, top1 hit nearly tripled, 11 positive
+cases flipped to passing with zero pass->fail flips. Negatives remain a known
+pre-existing gap (decision calibration), unaffected by this change.
