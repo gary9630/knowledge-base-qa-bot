@@ -78,6 +78,24 @@ def load_section_records(session: Session) -> list[SectionRecord]:
     ]
 
 
+def interleave_groups_by_file(groups: list[SectionGroup]) -> list[SectionGroup]:
+    by_file: dict[str, list[SectionGroup]] = {}
+    for group in groups:
+        by_file.setdefault(group.filename, []).append(group)
+
+    interleaved: list[SectionGroup] = []
+    queues = list(by_file.values())
+    index = 0
+    while any(queues):
+        for queue in queues:
+            if index < len(queue):
+                interleaved.append(queue[index])
+        index += 1
+        if all(index >= len(queue) for queue in queues):
+            break
+    return interleaved
+
+
 def group_sections(records: list[SectionRecord], *, group_size: int = 3) -> list[SectionGroup]:
     by_file: dict[str, list[SectionRecord]] = {}
     for record in records:
@@ -191,11 +209,12 @@ def generate_eval_seed_dicts(
     seed_dicts: list[dict[str, Any]] = []
     seen_queries: set[str] = set()
     cases_per_group = 2
+    ordered_groups = interleave_groups_by_file(groups)
 
     for _ in range(max_rounds):
         if len(seed_dicts) >= target_count:
             break
-        for group in groups:
+        for group in ordered_groups:
             if len(seed_dicts) >= target_count:
                 break
             allowed = {section.source_id for section in group.sections}
@@ -251,6 +270,22 @@ def generate_eval_seed_dicts(
                 }
             )
     return seed_dicts
+
+
+def deactivate_stale_auto_cases(session: Session, *, current_seed_keys: set[str]) -> int:
+    from app.models.tables import EvalCase
+
+    stale_cases = session.scalars(
+        select(EvalCase)
+        .where(EvalCase.seed_key.like("auto.%"))
+        .where(EvalCase.active.is_(True))
+    ).all()
+    deactivated = 0
+    for case in stale_cases:
+        if case.seed_key not in current_seed_keys:
+            case.active = False
+            deactivated += 1
+    return deactivated
 
 
 class OpenAIChatCaller:
@@ -319,12 +354,17 @@ def main(argv: list[str] | None = None) -> int:
                 encoding="utf-8",
             )
             if not namespace.dry_run:
+                stale = deactivate_stale_auto_cases(
+                    session,
+                    current_seed_keys={case["seed_key"] for case in seed_dicts},
+                )
                 cases = parse_seed_cases(seed_dicts)
                 summary, _ = seed_eval_cases(session, cases)
                 session.commit()
                 print(
                     f"Seeded generated eval cases: {summary.created} created, "
-                    f"{summary.updated} updated, {summary.total} total."
+                    f"{summary.updated} updated, {summary.total} total; "
+                    f"{stale} stale deactivated."
                 )
     except Exception as exc:
         print(f"Error: {exc}", file=sys.stderr)

@@ -9,6 +9,7 @@ from scripts.generate_eval_cases import (
     build_verification_prompt,
     generate_eval_seed_dicts,
     group_sections,
+    interleave_groups_by_file,
     parse_generated_cases,
     parse_negative_cases,
     verification_passed,
@@ -165,3 +166,53 @@ def test_generate_eval_seed_dicts_verifies_and_namespaces_cases() -> None:
     assert negative[0]["expected_source_ids"] == []
     seed_keys = [case["seed_key"] for case in seed_dicts]
     assert len(seed_keys) == len(set(seed_keys))
+
+
+def test_interleave_groups_by_file_round_robins_across_files() -> None:
+    records = _records(4, filename="a.md") + _records(4, filename="b.md")
+    groups = group_sections(records, group_size=2)
+
+    interleaved = interleave_groups_by_file(groups)
+
+    order = [(group.filename, group.sections[0].source_id) for group in interleaved]
+    assert order == [
+        ("a.md", "a.md#sec-0"),
+        ("b.md", "b.md#sec-0"),
+        ("a.md", "a.md#sec-2"),
+        ("b.md", "b.md#sec-2"),
+    ]
+
+
+def test_generate_eval_seed_dicts_spreads_across_files() -> None:
+    records = _records(3, filename="a.md") + _records(3, filename="b.md")
+    groups = group_sections(records, group_size=3)
+
+    def _generation_response(prefix: str) -> str:
+        return json.dumps(
+            {
+                "cases": [
+                    {
+                        "name": f"{prefix} case",
+                        "query": f"{prefix} 的問題？",
+                        "expected_source_ids": [f"{prefix}#sec-0"],
+                    }
+                ]
+            }
+        )
+
+    verification_ok = json.dumps({"answerable": True})
+    caller = FakeCaller(
+        [
+            _generation_response("a.md"),
+            verification_ok,
+            _generation_response("b.md"),
+            verification_ok,
+        ]
+    )
+
+    seed_dicts = generate_eval_seed_dicts(
+        caller, groups, target_count=2, negative_count=0, max_rounds=1
+    )
+
+    cited_files = {case["expected_source_ids"][0].split("#")[0] for case in seed_dicts}
+    assert cited_files == {"a.md", "b.md"}
