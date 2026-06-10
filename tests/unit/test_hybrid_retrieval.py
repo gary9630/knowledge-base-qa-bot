@@ -5,7 +5,7 @@ from uuid import UUID, uuid4
 
 import pytest
 
-from app.retrieval.hybrid import HybridRetriever, merge_results
+from app.retrieval.hybrid import RRF_K, HybridRetriever, fuse_results
 from app.retrieval.models import RetrievedCandidate
 
 
@@ -19,48 +19,70 @@ class StubRetriever:
         return self.candidates[:limit]
 
 
-def test_merge_results_deduplicates_by_section_and_prefers_highest_score() -> None:
-    section_id = uuid4()
-    lower_score = _candidate(section_id=section_id, score=0.24, strategy="lexical")
-    higher_score = _candidate(section_id=section_id, score=0.82, strategy="vector")
-    other_section = _candidate(score=0.53, strategy="lexical", heading="Other")
-
-    merged = merge_results([lower_score, higher_score, other_section])
-
-    assert [candidate.section_id for candidate in merged] == [
-        section_id,
-        other_section.section_id,
+def test_fuse_results_section_in_both_strategies_outranks_single_strategy() -> None:
+    shared_id = uuid4()
+    lexical = [
+        _candidate(section_id=shared_id, source_id="doc.md#both", score=0.4),
+        _candidate(source_id="doc.md#lex-only", score=0.9),
     ]
-    assert merged[0].score == pytest.approx(0.82)
-    assert merged[0].strategy == "hybrid"
-    assert merged[0].debug_scores == {
-        "lexical_score": pytest.approx(0.24),
-        "vector_score": pytest.approx(0.82),
-    }
+    vector = [_candidate(section_id=shared_id, source_id="doc.md#both", score=0.3,
+                         strategy="vector")]
+
+    fused = fuse_results({"lexical": lexical, "vector": vector})
+
+    assert fused[0].source_id == "doc.md#both"
+    assert fused[0].strategy == "hybrid"
+    # rank 1 in both strategies -> normalized RRF == 1.0
+    assert fused[0].score == 1.0
 
 
-def test_merge_results_applies_source_priority_as_small_ranking_boost() -> None:
-    transcript = _candidate(
-        score=0.60,
-        strategy="lexical",
-        heading="Transcript",
-        source_type="transcript",
-        source_priority=1,
+def test_fuse_results_single_strategy_rank_one_scores_half() -> None:
+    fused = fuse_results({"lexical": [_candidate(source_id="doc.md#only", score=0.8)]})
+
+    assert len(fused) == 1
+    assert fused[0].score == 0.5
+    assert fused[0].strategy == "lexical"
+    assert fused[0].debug_scores["lexical_rank"] == 1.0
+
+
+def test_fuse_results_applies_source_priority_boost_after_normalization() -> None:
+    plain = fuse_results({"lexical": [_candidate(source_id="doc.md#plain", score=0.8)]})
+    boosted = fuse_results(
+        {"lexical": [_candidate(source_id="doc.md#policy", score=0.8, source_priority=5)]}
     )
-    announcement = _candidate(
-        score=0.60,
+
+    assert boosted[0].score == min(1.0, plain[0].score + 0.05)
+    assert boosted[0].debug_scores["source_priority_boost"] == 0.05
+
+
+def test_fuse_results_prefers_lexical_body_on_rank_tie() -> None:
+    shared_id = uuid4()
+    lexical_candidate = RetrievedCandidate(
+        section_id=shared_id,
+        source_id="doc.md#both",
+        filename="doc.md",
+        heading="Heading",
+        body_md="FULL SECTION BODY",
+        score=0.4,
         strategy="lexical",
-        heading="Announcement",
-        source_type="announcement",
-        source_priority=4,
+    )
+    vector_candidate = RetrievedCandidate(
+        section_id=shared_id,
+        source_id="doc.md#both",
+        filename="doc.md",
+        heading="Heading",
+        body_md="chunk text only",
+        score=0.9,
+        strategy="vector",
     )
 
-    merged = merge_results([transcript, announcement])
+    fused = fuse_results({"lexical": [lexical_candidate], "vector": [vector_candidate]})
 
-    assert [candidate.heading for candidate in merged] == ["Announcement", "Transcript"]
-    assert merged[0].score == pytest.approx(0.64)
-    assert merged[0].debug_scores["source_priority"] == 4.0
-    assert merged[0].debug_scores["source_priority_boost"] == pytest.approx(0.04)
+    assert fused[0].body_md == "FULL SECTION BODY"
+
+
+def test_rrf_constant_is_sixty() -> None:
+    assert RRF_K == 60
 
 
 def test_hybrid_search_returns_cannot_confirm_below_threshold_without_debug() -> None:
@@ -111,10 +133,10 @@ def test_hybrid_search_reports_retrieval_diagnostics() -> None:
     assert result.diagnostics.requested_limit == 3
     assert result.diagnostics.score_threshold == pytest.approx(0.20)
     assert result.diagnostics.raw_candidate_count == 2
-    assert result.diagnostics.merged_candidate_count == 2
+    assert result.diagnostics.merged_candidate_count == 1  # only lexical passed pre-fusion floor
     assert result.diagnostics.accepted_count == 1
     assert result.diagnostics.rejected_count == 1
-    assert result.diagnostics.top_score == pytest.approx(0.72)
+    assert result.diagnostics.top_score == pytest.approx(0.5)  # single-strategy rank-1 RRF = 0.5
     assert result.diagnostics.selected_source_ids == (accepted_candidate.source_id,)
     assert result.diagnostics.rejected_source_ids == (rejected_candidate.source_id,)
     assert result.diagnostics.strategy_counts == {"lexical": 1, "vector": 1}
@@ -184,8 +206,9 @@ def test_hybrid_search_rejects_unknown_strategy() -> None:
 def _candidate(
     *,
     section_id: UUID | None = None,
-    score: float,
-    strategy: str,
+    source_id: str | None = None,
+    score: float = 0.5,
+    strategy: str = "lexical",
     filename: str = "faq.md",
     heading: str = "Course Site",
     body_md: str | None = None,
@@ -195,7 +218,7 @@ def _candidate(
     candidate_section_id = section_id or uuid4()
     return RetrievedCandidate(
         section_id=candidate_section_id,
-        source_id=f"faq.md#{heading.lower().replace(' ', '-')}",
+        source_id=source_id or f"faq.md#{heading.lower().replace(' ', '-')}",
         filename=filename,
         heading=heading,
         body_md=body_md or f"## {heading}\n\nBody",
