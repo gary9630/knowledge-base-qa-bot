@@ -1,6 +1,7 @@
 from pathlib import Path
 
 import pytest
+from pydantic import ValidationError
 
 from app.core.config import Settings
 from app.main import create_app
@@ -248,3 +249,25 @@ def test_app_rejects_embedding_dimension_that_does_not_match_schema() -> None:
         match="embedding_dimension must match database schema \\(768\\)",
     ):
         create_app(settings=settings)
+
+
+def test_context_expansion_defaults() -> None:
+    settings = Settings()
+    assert settings.token_encoding == "o200k_base"
+    assert settings.context_neighbor_sections == 1
+    assert settings.context_token_budget == 8000
+
+
+def test_token_encoding_rejects_unknown_encoding() -> None:
+    with pytest.raises(ValidationError):
+        Settings(token_encoding="not-a-real-encoding")
+
+
+def test_context_token_budget_enforces_floor() -> None:
+    with pytest.raises(ValidationError):
+        Settings(context_token_budget=500)
+
+
+def test_context_neighbor_sections_rejects_negative() -> None:
+    with pytest.raises(ValidationError):
+        Settings(context_neighbor_sections=-1)
