@@ -95,8 +95,8 @@ def test_ui_serves_student_landing_page_and_marks_admin_surfaces() -> None:
     assert response.status_code == 200
     assert 'id="landing-preview"' in response.text
     assert 'id="landing-trust-strip"' in response.text
-    assert "Course Assistant" in response.text
-    assert "Student sign in" in response.text
+    assert "Course Assistant" in response.text  # still present in chat panel heading
+    assert "學生登入" in response.text  # zh-TW copy (was "Student sign in")
     assert 'id="tab-chat"' in response.text
     assert 'id="tab-graph"' in response.text
     assert 'id="tab-sources"' in response.text
@@ -121,7 +121,8 @@ def test_ui_serves_student_landing_page_and_marks_admin_surfaces() -> None:
 
     assert css_response.status_code == 200
     assert "[hidden]" in css_response.text
-    assert ".landing-copy" in css_response.text
+    # centered landing-card replaced the old two-column .landing-copy layout
+    assert ".landing-card" in css_response.text
     assert ".landing-preview" in css_response.text
     assert ".landing-trust-strip" in css_response.text
 
@@ -386,6 +387,31 @@ def test_ui_exposes_scholarly_chat_styling() -> None:
     js_response = client.get("/static/app.js")
     assert "renderFeedbackRow" in js_response.text
     assert "graph-cross-link" in js_response.text
+
+
+def test_ui_exposes_scholarly_landing_and_sources() -> None:
+    client = TestClient(create_app())
+
+    page = client.get("/")
+    css_response = client.get("/static/app.css")
+
+    assert page.status_code == 200
+    # Landing card structure
+    assert 'class="landing-card"' in page.text
+    # Trust strip chips still present
+    assert 'id="landing-trust-strip"' in page.text
+    # Preview pane uses real chat classes (not drifting custom styles)
+    assert "answer-card" in page.text
+    assert "trust-badge" in page.text
+    assert "citation-pill" in page.text
+    # zh-TW copy on landing
+    assert "學生登入" in page.text
+
+    assert css_response.status_code == 200
+    # Landing card token-based style
+    assert ".landing-card" in css_response.text
+    # Sources reading-list style
+    assert ".doc-row" in css_response.text
 
 
 def test_ui_exposes_graph_tab_wiring() -> None:

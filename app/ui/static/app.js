@@ -1098,17 +1098,31 @@
   function sourceTableRow(documentItem) {
     const row = document.createElement("button");
     row.type = "button";
-    row.className = "source-table-row source-row";
+    row.className = "doc-row";
     row.addEventListener("click", () => previewDocument(documentItem));
 
-    [documentDisplayTitle(documentItem), `${documentItem.section_count} sections`, documentItem.source_type].forEach(
-      (value) => {
-        const cell = document.createElement("span");
-        cell.textContent = value || "--";
-        row.append(cell);
-      },
-    );
+    const title = document.createElement("strong");
+    title.className = "source-title";
+    title.textContent = documentDisplayTitle(documentItem);
+    const meta = document.createElement("span");
+    meta.className = "source-meta";
+    meta.textContent = documentSourceSummaryZh(documentItem);
+
+    row.append(title, meta);
     return row;
+  }
+
+  function documentSourceSummaryZh(documentItem) {
+    const sectionCount = documentItem.section_count || 0;
+    const status = documentItem.index_status === "indexed" ? "已索引"
+      : documentItem.index_status === "not_indexed" ? "未索引"
+      : documentItem.index_status || "未知";
+    const parts = [
+      `${sectionCount} 個段落`,
+      status,
+      documentItem.source_type || null,
+    ];
+    return parts.filter(Boolean).join(" · ");
   }
 
   async function refreshAdminDocuments() {

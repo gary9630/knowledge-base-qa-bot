@@ -145,43 +145,54 @@ textarea:disabled {
 }
 
 .login-shell {
-  display: grid;
-  grid-template-columns: minmax(0, 1.05fr) minmax(360px, 0.95fr);
-  gap: clamp(24px, 5vw, 72px);
+  display: flex;
   align-items: center;
+  justify-content: center;
   min-height: 100vh;
-  background: var(--surface-muted);
-  padding: clamp(24px, 6vw, 80px);
+  background: var(--bg);
+  padding: clamp(24px, 6vw, 64px) clamp(16px, 4vw, 40px);
 }
 
 .login-shell[hidden] {
   display: none;
 }
 
-.landing-copy {
+/* ── Landing card ────────────────────────────────────── */
+.landing-card {
   display: grid;
-  gap: 18px;
-  max-width: 720px;
+  gap: var(--space-6);
+  width: 100%;
+  max-width: 880px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-raised);
+  padding: var(--space-6) var(--space-7);
+}
+
+.landing-header {
+  display: grid;
+  gap: var(--space-3);
 }
 
 .landing-kicker {
   width: fit-content;
   margin: 0;
   border: 1px solid var(--border-strong);
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   background: var(--success-bg);
   color: var(--success);
   font-size: 12px;
-  font-weight: 800;
-  padding: 5px 10px;
+  font-weight: 700;
+  padding: 4px 12px;
 }
 
-.landing-copy h1 {
-  max-width: 680px;
+.landing-header h1 {
   margin: 0;
   color: var(--text);
-  font-size: 60px;
-  line-height: 0.98;
+  font-family: var(--font-display);
+  font-size: 26px;
+  line-height: 1.3;
   letter-spacing: 0;
 }
 
@@ -189,46 +200,47 @@ textarea:disabled {
   max-width: 620px;
   margin: 0;
   color: var(--muted);
-  font-size: 18px;
+  font-size: 15px;
   line-height: 1.55;
 }
 
 .landing-trust-strip {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
-  margin-top: 4px;
+  gap: var(--space-2);
+  margin-top: var(--space-1);
 }
 
 .landing-trust-strip span {
   border: 1px solid var(--border);
-  border-radius: 999px;
-  background: var(--surface);
+  border-radius: var(--radius-pill);
+  background: transparent;
   color: var(--muted);
   font-size: 12px;
-  font-weight: 800;
-  padding: 7px 10px;
+  font-weight: 600;
+  padding: 4px 12px;
 }
 
-.landing-action {
+.landing-body {
   display: grid;
-  gap: 14px;
-  align-content: center;
+  grid-template-columns: minmax(280px, 1fr) minmax(280px, 1fr);
+  gap: var(--space-5);
+  align-items: start;
 }
 
 .login-form {
   display: grid;
-  width: min(100%, 440px);
-  gap: 11px;
+  gap: var(--space-3);
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: var(--radius);
   background: var(--surface);
-  padding: 20px;
+  padding: var(--space-5);
   box-shadow: var(--shadow);
 }
 
 .login-form h2 {
   margin: 0;
+  font-family: var(--font-display);
   font-size: 20px;
   line-height: 1.2;
 }
@@ -238,74 +250,22 @@ textarea:disabled {
   color: var(--muted);
 }
 
+.login-form input {
+  font-size: 16px;
+}
+
 .landing-preview {
   display: grid;
-  width: min(100%, 440px);
-  gap: 10px;
+  gap: var(--space-3);
+  padding: var(--space-4);
   border: 1px solid var(--border);
-  border-radius: 8px;
-  background: var(--surface);
-  padding: 14px;
-  box-shadow: var(--shadow);
-}
-
-.preview-question,
-.preview-answer,
-.preview-source {
-  display: grid;
-  gap: 5px;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  background: var(--surface);
-  padding: 10px;
-}
-
-.preview-question {
-  border-color: var(--border-strong);
-  background: var(--success-bg);
-}
-
-.preview-answer {
-  background: var(--surface);
-}
-
-.preview-question span,
-.preview-answer span,
-.preview-source strong {
-  color: var(--muted);
-  font-size: 11px;
-  font-weight: 800;
-  letter-spacing: 0;
-  text-transform: uppercase;
-}
-
-.preview-question p,
-.preview-answer p {
-  margin: 0;
-}
-
-.preview-citations {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-}
-
-.preview-citations span {
-  border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: var(--radius);
   background: var(--surface-muted);
-  color: var(--accent-strong);
-  padding: 4px 7px;
-  text-transform: none;
 }
 
-.preview-source pre {
-  margin: 0;
-  overflow: auto;
-  color: var(--text);
-  font-family: var(--font-mono);
-  font-size: 12px;
-  white-space: pre-wrap;
+.landing-preview .answer-card {
+  max-width: 100%;
+  font-size: 14px;
 }
 
 .sidebar,
@@ -1322,6 +1282,59 @@ select {
   overflow-wrap: anywhere;
 }
 
+/* ── 教材總覽 reading-list row ────────────────────────── */
+.doc-row {
+  display: grid;
+  gap: var(--space-1);
+  width: 100%;
+  border: 1px solid var(--border);
+  border-left: 3px solid transparent;
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: inherit;
+  padding: var(--space-3) var(--space-4);
+  text-align: left;
+  cursor: pointer;
+  transition: box-shadow 0.2s ease-out, border-color 0.15s ease-out;
+}
+
+.doc-row:hover {
+  border-color: var(--border-strong);
+  border-left-color: var(--border-strong);
+  box-shadow: var(--shadow);
+}
+
+.doc-row.is-active {
+  border-color: var(--border-strong);
+  border-left-color: var(--accent);
+}
+
+.doc-row .source-title {
+  font-family: var(--font-display);
+  font-size: 14px;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.doc-row .source-meta {
+  font-size: 12px;
+}
+
+/* ── Admin ops grouping inside sources panel ─────────── */
+.admin-ops-section {
+  border-top: 1px solid var(--border);
+  margin-top: var(--space-5);
+  padding-top: var(--space-4);
+}
+
+.admin-ops-heading h3 {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--faint);
+}
+
 .muted {
   margin: 0;
   color: var(--muted);
@@ -1365,18 +1378,17 @@ select {
 
 @media (max-width: 760px) {
   .login-shell {
+    padding: 16px;
+    align-items: flex-start;
+  }
+
+  .landing-card {
+    padding: var(--space-5) var(--space-4);
+    gap: var(--space-4);
+  }
+
+  .landing-body {
     grid-template-columns: 1fr;
-    gap: 18px;
-    padding: 22px;
-  }
-
-  .landing-copy h1 {
-    font-size: 38px;
-    line-height: 1.05;
-  }
-
-  .landing-lede {
-    font-size: 16px;
   }
 
   .login-form,

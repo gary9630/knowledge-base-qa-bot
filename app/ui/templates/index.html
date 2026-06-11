@@ -21,52 +21,43 @@
   </head>
   <body>
     <section class="login-shell" id="platform-login" aria-labelledby="platform-login-heading" hidden>
-      <div class="landing-copy">
-        <p class="landing-kicker">Course Assistant</p>
-        <h1 id="platform-login-heading">Ask the course materials before you ask staff.</h1>
-        <p class="landing-lede">
-          Search announcements, lessons, policies, and source markdown with answers that
-          cite the exact course references used.
-        </p>
-        <div class="landing-trust-strip" id="landing-trust-strip" aria-label="Course assistant capabilities">
-          <span>Grounded answers</span>
-          <span>Source preview</span>
-          <span>Course-only login</span>
-        </div>
-      </div>
-
-      <div class="landing-action">
-        <form class="login-form" id="platform-login-form">
-          <div>
-            <h2>Student sign in</h2>
-            <p id="platform-auth-status">Sign in with the course account to continue.</p>
+      <div class="landing-card">
+        <header class="landing-header">
+          <p class="landing-kicker">課程助理</p>
+          <h1 id="platform-login-heading">在詢問助教之前，先問課程助理。</h1>
+          <p class="landing-lede">
+            搜尋課程公告、講義、政策與原始文件，回答皆附上所使用的確切引用來源。
+          </p>
+          <div class="landing-trust-strip" id="landing-trust-strip" aria-label="課程助理功能說明">
+            <span>根據來源回答</span>
+            <span>原始段落預覽</span>
+            <span>僅限課程帳號登入</span>
           </div>
-          <label for="platform-username">Username</label>
-          <input id="platform-username" name="username" type="text" autocomplete="username" />
-          <label for="platform-password">Password</label>
-          <input id="platform-password" name="password" type="password" autocomplete="current-password" />
-          <button class="primary-button" type="submit">Sign In</button>
-        </form>
+        </header>
 
-        <aside class="landing-preview" id="landing-preview" aria-label="Course assistant preview">
-          <div class="preview-question">
-            <span>You</span>
-            <p>課程網站在哪裡？</p>
-          </div>
-          <div class="preview-answer">
-            <span>Course Assistant</span>
-            <p>課程網站會從已索引的課程來源確認，並附上對應引用。</p>
-            <div class="preview-citations" aria-label="Example citations">
-              <span>[1] 常見問題 FAQ</span>
-              <span>[2] 課程公告</span>
+        <div class="landing-body">
+          <form class="login-form" id="platform-login-form">
+            <div>
+              <h2>學生登入</h2>
+              <p id="platform-auth-status">請以課程帳號登入以繼續使用。</p>
             </div>
-          </div>
-          <div class="preview-source">
-            <strong>Source Markdown Preview</strong>
-            <pre># 常見問題 FAQ
-課程網站與公告會整理在課程入口頁。</pre>
-          </div>
-        </aside>
+            <label for="platform-username">帳號</label>
+            <input id="platform-username" name="username" type="text" autocomplete="username" />
+            <label for="platform-password">密碼</label>
+            <input id="platform-password" name="password" type="password" autocomplete="current-password" />
+            <button class="primary-button" type="submit">登入</button>
+          </form>
+
+          <aside class="landing-preview" id="landing-preview" aria-label="課程助理示範">
+            <div class="message assistant">
+              <span class="message-label">課程助理</span>
+              <div class="answer-card">
+                <div class="trust-badge is-ok">✓ 依據 2 個課程段落回答</div>
+                <p>課程網站與公告會整理在課程入口頁，請見以下引用來源。<button class="citation-pill" type="button" aria-label="引用來源 1">1</button><button class="citation-pill" type="button" aria-label="引用來源 2">2</button></p>
+              </div>
+            </div>
+          </aside>
+        </div>
       </div>
     </section>
     <div class="workbench" data-app>
@@ -434,26 +425,26 @@
         <section class="workspace-panel" id="panel-sources" role="tabpanel" tabindex="0" data-panel="sources" aria-labelledby="tab-sources" hidden>
           <header class="workspace-header">
             <div>
-              <h2>Sources</h2>
+              <h2>教材總覽</h2>
             </div>
             <div class="button-row">
-              <button class="secondary-button" type="button" id="refresh-status">Refresh Status</button>
-              <button class="secondary-button" type="button" id="refresh-documents">Refresh Documents</button>
+              <button class="secondary-button" type="button" id="refresh-status">更新狀態</button>
+              <button class="secondary-button" type="button" id="refresh-documents">更新文件</button>
             </div>
           </header>
-          <form class="document-form" id="document-lifecycle-form" data-admin-only>
-            <label for="document-admin-key">Admin Key</label>
-            <input id="document-admin-key" name="document-admin-key" type="password" autocomplete="current-password" />
-          </form>
           <div class="source-table" id="source-table">
-            <p class="muted">No indexed sources found.</p>
+            <p class="muted">尚未找到已索引的來源。</p>
           </div>
-          <section class="tool-section" id="admin-documents-section" aria-labelledby="admin-documents-heading" data-admin-only>
-            <div class="section-heading">
-              <h3 id="admin-documents-heading">Document Lifecycle</h3>
+          <section class="tool-section admin-ops-section" id="admin-documents-section" aria-labelledby="admin-documents-heading" data-admin-only>
+            <div class="section-heading admin-ops-heading">
+              <h3 id="admin-documents-heading">管理操作</h3>
             </div>
+            <form class="document-form" id="document-lifecycle-form" data-admin-only>
+              <label for="document-admin-key">管理員金鑰</label>
+              <input id="document-admin-key" name="document-admin-key" type="password" autocomplete="current-password" />
+            </form>
             <div class="admin-documents" id="admin-documents" aria-live="polite">
-              <p class="muted">No admin documents loaded.</p>
+              <p class="muted">尚未載入文件管理資料。</p>
             </div>
           </section>
         </section>
