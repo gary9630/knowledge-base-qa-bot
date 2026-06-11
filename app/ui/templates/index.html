@@ -1,10 +1,18 @@
 <!doctype html>
-<html lang="en">
+<html lang="zh-Hant">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Knowledge Base Workbench</title>
     <link rel="icon" href="data:," />
+    <script>
+      (function () {
+        var saved = localStorage.getItem("kb-theme");
+        if (saved === "light" || saved === "dark") {
+          document.documentElement.setAttribute("data-theme", saved);
+        }
+      })();
+    </script>
     <link rel="stylesheet" href="{{ url_for('static', path='app.css') }}" />
     <script src="{{ url_for('static', path='vendor/cytoscape.min.js') }}" defer></script>
     <script src="{{ url_for('static', path='vendor/dagre.min.js') }}" defer></script>
@@ -69,6 +77,8 @@
             <h1>Knowledge Workbench</h1>
             <p id="index-status-pill">Index status unavailable</p>
           </div>
+          <button class="theme-toggle" id="theme-toggle" type="button"
+                  aria-label="切換深淺色主題" title="主題：自動">☀︎</button>
           <button class="text-button" type="button" id="platform-logout" hidden>Logout</button>
         </div>
 

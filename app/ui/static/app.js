@@ -131,6 +131,7 @@
     platformPassword: $("#platform-password"),
     platformAuthStatus: $("#platform-auth-status"),
     platformLogout: $("#platform-logout"),
+    themeToggle: $("#theme-toggle"),
     workbench: $("[data-app]"),
     adminOnlySurfaces: $$("[data-admin-only]"),
   };
@@ -144,7 +145,39 @@
     bindGraph();
     bindAdmin();
     bindEvals();
+    bindThemeToggle();
     refreshAuthSession();
+  }
+
+  const THEME_SEQUENCE = ["auto", "light", "dark"];
+  const THEME_LABEL = { auto: "自動", light: "淺色", dark: "深色" };
+  const THEME_ICON = { auto: "☀︎", light: "☀", dark: "☾" };
+
+  function currentTheme() {
+    const saved = localStorage.getItem("kb-theme");
+    return saved === "light" || saved === "dark" ? saved : "auto";
+  }
+
+  function applyTheme(theme) {
+    if (theme === "auto") {
+      localStorage.removeItem("kb-theme");
+      document.documentElement.removeAttribute("data-theme");
+    } else {
+      localStorage.setItem("kb-theme", theme);
+      document.documentElement.setAttribute("data-theme", theme);
+    }
+    elements.themeToggle.textContent = THEME_ICON[theme];
+    elements.themeToggle.title = `主題：${THEME_LABEL[theme]}`;
+    document.dispatchEvent(new CustomEvent("kb-theme-changed"));
+  }
+
+  function bindThemeToggle() {
+    elements.themeToggle.addEventListener("click", () => {
+      const next =
+        THEME_SEQUENCE[(THEME_SEQUENCE.indexOf(currentTheme()) + 1) % THEME_SEQUENCE.length];
+      applyTheme(next);
+    });
+    applyTheme(currentTheme());
   }
 
   function bindAuth() {

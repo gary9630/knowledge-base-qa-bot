@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from fastapi.testclient import TestClient
 
 from app.main import create_app
@@ -356,6 +358,22 @@ def test_ui_separates_answer_sources_from_previewed_source() -> None:
     assert css_response.status_code == 200
     assert ".preview-source-meta" in css_response.text
     assert ".source-title" in css_response.text
+
+
+def test_ui_exposes_dual_theme_wiring(client: TestClient | None = None) -> None:
+    _client = client or TestClient(create_app())
+    page = _client.get("/")
+    assert 'lang="zh-Hant"' in page.text
+    assert "kb-theme" in page.text  # head boot script reads localStorage("kb-theme")
+    assert 'id="theme-toggle"' in page.text
+
+    js_response = _client.get("/static/app.js")
+    assert "bindThemeToggle" in js_response.text
+    assert "kb-theme-changed" in js_response.text
+
+    css_response = _client.get("/static/app.css")
+    assert '[data-theme="dark"]' in css_response.text
+    assert "--font-display" in css_response.text
 
 
 def test_ui_exposes_graph_tab_wiring() -> None:
