@@ -28,6 +28,12 @@ materials are uploaded continuously, so whatever replaces it must update increme
    two alternative view modes the learner can toggle: radial (cluster-membership
    emphasis) and layered tech-tree (prerequisite emphasis). All three views render
    the same `/graph` data with different layouts — no backend difference.
+5. Initial rollout: the first full graph over the existing 35 documents is NOT
+   produced by the LLM API pipeline. It is curated offline (extracted by the
+   assistant during development, citing exact section source_ids), committed as a
+   JSON dataset, and loaded by a seed script. The pipeline is still built exactly as
+   designed and is validated against a small sample of documents with real API
+   calls; it owns all future incremental updates.
 
 ## Design
 
@@ -87,6 +93,21 @@ extraction usage.
 Cost envelope: initial run over 35 documents ≈ 40–50 gpt-5.4-mini calls; each
 subsequent upload pays 1 call per changed document + merge + (sometimes) cluster and
 cluster-edge calls.
+
+### 2b. Initial graph seeding (curated dataset, no API cost)
+
+- A committed JSON dataset (`docs/plans/2026-06-11-concept-graph-seed.json`)
+  containing the full curated graph for the current 35 documents: clusters,
+  concepts (name/slug/summary/aliases/cluster/source_section_source_ids), and edges
+  (source_slug/target_slug/kind). Every `source_id` must exist in the live sections
+  table; the seeding script validates and rejects unknown references.
+- `scripts/seed_concept_graph.py` (+ Make target `graph-seed`): loads the JSON,
+  upserts clusters/concepts/edges/concept_sources idempotently (slug-keyed), and —
+  critically — writes `concept_extraction_state` rows with each seeded document's
+  CURRENT `content_hash`, so the incremental pipeline treats seeded documents as
+  already extracted and only processes new/changed uploads.
+- Pipeline validation with real API calls happens on a small sample (2–3 documents
+  forced through extraction), not the full corpus.
 
 ### 3. API
 
