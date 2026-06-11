@@ -512,3 +512,10 @@ def test_ui_exposes_graph_tab_wiring() -> None:
     ):
         vendor_response = client.get(vendor_path)
         assert vendor_response.status_code == 200
+
+
+def test_ui_motion_and_a11y_rules() -> None:
+    client = TestClient(create_app())
+    css_response = client.get("/static/app.css")
+    assert "prefers-reduced-motion" in css_response.text
+    assert ":focus-visible" in css_response.text

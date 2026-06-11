@@ -1056,14 +1056,14 @@
     const note = document.createElement("textarea");
     note.rows = 2;
     note.placeholder = reason === "answer_missing"
-      ? "What answer did you expect?"
-      : "What should be improved?";
+      ? "您期望得到什麼答案？"
+      : "哪裡需要改善？";
 
     const sourceSelect = document.createElement("select");
-    sourceSelect.setAttribute("aria-label", "Expected source");
+    sourceSelect.setAttribute("aria-label", "預期來源");
     const emptyOption = document.createElement("option");
     emptyOption.value = "";
-    emptyOption.textContent = "Expected source";
+    emptyOption.textContent = "預期來源";
     sourceSelect.append(emptyOption);
     (Array.isArray(sources) ? sources : []).forEach((source, index) => {
       if (!source.source_id) {
@@ -1075,7 +1075,7 @@
       sourceSelect.append(option);
     });
 
-    const submit = feedbackActionButton("Send feedback", () =>
+    const submit = feedbackActionButton("送出意見", () =>
       submitAnswerFeedback(panel, payload, {
         rating: -1,
         reason,
@@ -1100,7 +1100,7 @@
       control.disabled = true;
     });
     if (status) {
-      status.textContent = "Saving feedback...";
+      status.textContent = "儲存中...";
     }
 
     try {
