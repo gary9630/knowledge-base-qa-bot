@@ -1371,7 +1371,7 @@
   }
 
   // Re-render (or mark stale) when the user toggles the theme. Registered once
-  // after bindGraph so state.graphLoaded/graphView are available.
+  // at module scope; the handler only reads state at event time.
   document.addEventListener("kb-theme-changed", () => {
     if (!state.graphLoaded) return;
     if (activeTabName() === "graph") {
@@ -1438,8 +1438,8 @@
         label: cluster.name,
         baseLabel: cluster.name,
         isCluster: true,
-        // Explicit neutral data fields so node style rules using data() mappings
-        // (color, size) do not log warnings for compound parent nodes.
+        // Defensive only: the node[?isCluster] selector uses no data() mappings,
+        // so these fields are inert — kept in case a generic node rule returns.
         color: "transparent",
         size: 40,
       },
@@ -1453,7 +1453,8 @@
         // Newline-joined lowercase aliases so the search filter can match
         // them without a query ever spanning two adjacent aliases.
         aliases: (node.aliases || []).join("\n").toLowerCase(),
-        color: clusterColor.get(node.cluster_id) || theme.clusterColors[0],
+        // Unclustered concepts get a theme-aware neutral, never a cluster's color.
+        color: clusterColor.get(node.cluster_id) || theme.edgeArrow,
         size: 18 + Math.min(22, node.source_count * 4),
         // clusterIndex used by radial layout for concentric ring assignment.
         clusterIndex: idx,
