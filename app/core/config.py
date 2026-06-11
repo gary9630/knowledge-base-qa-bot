@@ -61,6 +61,9 @@ class Settings(BaseSettings):
     token_encoding: str = "o200k_base"
     context_neighbor_sections: int = Field(default=1, ge=0)
     context_token_budget: int = Field(default=8000, ge=1000)
+    graph_extraction_enabled: bool = True
+    graph_max_concepts_per_doc: int = Field(default=30, ge=1)
+    graph_extraction_token_budget: int = Field(default=12000, ge=1000)
 
     @field_validator("token_encoding")
     @classmethod
