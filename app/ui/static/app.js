@@ -506,6 +506,8 @@
       let heartbeat = "尚無 worker 心跳";
       if ((payload.active_workers || 0) > 0) {
         heartbeat = "Worker 心跳 ✓";
+      } else if (workers.some((worker) => worker && worker.status === "stopped")) {
+        heartbeat = "Worker 已停止";
       } else if (workers.length > 0) {
         heartbeat = "Worker 心跳過期";
       }
@@ -531,7 +533,7 @@
       setStatCard(
         elements.statTokens,
         formatCount(totalTokens),
-        `${formatCount(calls)} 次 provider 呼叫 · 未提供預算上限`,
+        `${formatCount(calls)} 次 provider 呼叫 · 自服務啟動累計`,
       );
     } catch (error) {
       statCardUnavailable(elements.statTokens, `Token 用量無法取得：${errorMessage(error)}`);
