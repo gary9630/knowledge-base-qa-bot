@@ -244,6 +244,9 @@ def _parse_edges(
             continue
         if source_slug not in known_slugs or target_slug not in known_slugs:
             continue
+        # part_of arrives directionally from the prompt ("source is a component of
+        # target") but is stored undirected by design (spec renders it arrowless);
+        # the original order is intentionally discarded.
         if kind != "prerequisite" and source_slug > target_slug:
             source_slug, target_slug = target_slug, source_slug  # normalize undirected
         key = (source_slug, target_slug, kind)
@@ -254,7 +257,13 @@ def _parse_edges(
     return edges
 
 
+_FENCE_RE = re.compile(r"^\s*```(?:json)?\s*(.*?)\s*```\s*$", re.DOTALL)
+
+
 def _json_object(raw: str) -> dict[str, Any]:
+    match = _FENCE_RE.match(raw)
+    if match:
+        raw = match.group(1)
     try:
         payload = json.loads(raw)
     except json.JSONDecodeError:

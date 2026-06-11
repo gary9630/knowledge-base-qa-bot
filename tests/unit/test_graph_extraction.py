@@ -9,6 +9,7 @@ from app.graph.extraction import (
     build_merge_prompt,
     parse_cluster_response,
     parse_document_response,
+    parse_edges_response,
     parse_merge_response,
     slugify_concept,
 )
@@ -125,3 +126,73 @@ def test_prompts_contain_payloads() -> None:
 
 def test_edge_kinds_constant() -> None:
     assert EDGE_KINDS == ("prerequisite", "part_of", "related")
+
+
+def test_parse_document_response_keeps_and_canonicalizes_edges() -> None:
+    allowed = {"doc.md#a", "doc.md#b"}
+    raw = json.dumps(
+        {
+            "concepts": [
+                {"name": "Beta", "summary": "b", "source_ids": ["doc.md#b"]},
+                {"name": "Alpha", "summary": "a", "source_ids": ["doc.md#a"]},
+            ],
+            "edges": [
+                {"source": "Beta", "target": "Alpha", "kind": "related"},
+                {"source": "Alpha", "target": "Beta", "kind": "related"},
+                {"source": "Beta", "target": "Alpha", "kind": "prerequisite"},
+            ],
+        }
+    )
+
+    extraction = parse_document_response(raw, allowed_source_ids=allowed, max_concepts=30)
+
+    related = [edge for edge in extraction.edges if edge.kind == "related"]
+    assert len(related) == 1  # swapped duplicate deduped after canonicalization
+    assert (related[0].source_slug, related[0].target_slug) == ("alpha", "beta")
+    prerequisite = [edge for edge in extraction.edges if edge.kind == "prerequisite"]
+    assert len(prerequisite) == 1
+    assert (prerequisite[0].source_slug, prerequisite[0].target_slug) == ("beta", "alpha")
+
+
+def test_parse_edges_response_canonicalizes_consistently() -> None:
+    raw = json.dumps({"edges": [{"source": "Beta", "target": "Alpha", "kind": "part_of"}]})
+
+    edges = parse_edges_response(raw, known_slugs={"alpha", "beta"}, max_edges=10)
+
+    assert len(edges) == 1
+    assert edges[0].source_slug == "alpha"
+    assert edges[0].target_slug == "beta"
+    assert edges[0].kind == "part_of"
+
+
+def test_parse_edges_response_caps_edges() -> None:
+    raw = json.dumps(
+        {
+            "edges": [
+                {"source": f"c{i}", "target": f"c{i+1}", "kind": "prerequisite"}
+                for i in range(50)
+            ]
+        }
+    )
+
+    edges = parse_edges_response(
+        raw, known_slugs={f"c{i}" for i in range(51)}, max_edges=10
+    )
+
+    assert len(edges) == 10
+
+
+def test_parse_document_response_handles_fenced_json() -> None:
+    allowed = {"doc.md#a"}
+    inner = json.dumps(
+        {
+            "concepts": [{"name": "Alpha", "summary": "a", "source_ids": ["doc.md#a"]}],
+            "edges": [],
+        }
+    )
+    raw = f"```json\n{inner}\n```"
+
+    extraction = parse_document_response(raw, allowed_source_ids=allowed, max_concepts=30)
+
+    assert len(extraction.concepts) == 1
+    assert extraction.concepts[0].slug == "alpha"
