@@ -55,14 +55,15 @@ def test_admin_document_lifecycle_disable_delete_and_reindex(
         "/search",
         json={"query": "course website", "strategy": "markdown"},
     )
-    hidden_mindmap = client.get("/mindmap")
+    hidden_graph = client.get("/graph")
 
     assert disable_response.status_code == 200
     assert disable_response.json()["lifecycle_status"] == "disabled"
     assert disable_response.json()["lifecycle_reason"] == "outdated"
     assert hidden_sources.json()["documents"] == []
     assert hidden_search.json()["decision"] == "cannot_confirm"
-    assert hidden_mindmap.json()["stats"] == {"documents": 0, "sections": 0}
+    assert hidden_graph.status_code == 200
+    assert hidden_graph.json()["nodes"] == []
 
     enable_response = client.patch(
         f"/admin/documents/{document_id}/lifecycle",
