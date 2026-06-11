@@ -17,10 +17,17 @@ COPY --from=uv /uv /uvx /usr/local/bin/
 COPY pyproject.toml uv.lock ./
 RUN uv sync --frozen --no-cache --no-dev --no-install-project
 
+# Pre-download the BPE file so source-code changes don't re-trigger the download.
+# must match token_encoding default in app/core/config.py
+ENV TIKTOKEN_CACHE_DIR=/opt/tiktoken-cache
+RUN mkdir -p /opt/tiktoken-cache \
+    && /app/.venv/bin/python -c "import tiktoken; tiktoken.get_encoding('o200k_base')"
+
 COPY . .
+
 RUN useradd --create-home --shell /usr/sbin/nologin appuser \
-    && mkdir -p /app/docs /app/raw /app/.kb /tmp/uv-cache \
-    && chown -R appuser:appuser /app /tmp/uv-cache
+    && mkdir -p /app/docs /app/raw /app/.kb /opt/tiktoken-cache /tmp/uv-cache \
+    && chown -R appuser:appuser /app /opt/tiktoken-cache /tmp/uv-cache
 
 USER appuser
 

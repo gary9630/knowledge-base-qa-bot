@@ -10,10 +10,10 @@ def test_ui_serves_three_column_workbench() -> None:
 
     assert response.status_code == 200
     assert "Chat" in response.text
-    assert "Mindmap" in response.text
+    assert "知識圖譜" in response.text
     assert "Admin Uploads" in response.text
     assert "Feedback / Evals" in response.text
-    assert "answer sources" in response.text.lower()
+    assert "引用來源" in response.text
     assert 'role="tabpanel"' in response.text
     assert 'aria-controls="panel-chat"' in response.text
 
@@ -46,7 +46,7 @@ def test_ui_exposes_eval_workbench_wiring() -> None:
     js_response = client.get("/static/app.js")
 
     assert response.status_code == 200
-    assert 'id="tab-evals"' in response.text
+    assert 'data-console-panel="evals"' in response.text  # evals moved into the admin console
     assert 'id="panel-evals"' in response.text
     assert 'id="eval-form"' in response.text
     assert 'id="eval-status"' in response.text
@@ -78,8 +78,7 @@ def test_ui_exposes_platform_login_wiring() -> None:
     assert 'id="platform-username"' in response.text
     assert 'id="platform-password"' in response.text
     assert 'id="platform-logout"' in response.text
-    assert 'id="admin-key"' in response.text
-    assert 'id="eval-admin-key"' in response.text
+    assert 'id="console-admin-key"' in response.text  # single shared admin key field
     assert "getJsonWithHeaders(\"/auth/session\"" in js_response.text
     assert "fetch(\"/auth/login\"" in js_response.text
     assert "fetch(\"/auth/logout\"" in js_response.text
@@ -95,33 +94,31 @@ def test_ui_serves_student_landing_page_and_marks_admin_surfaces() -> None:
     assert response.status_code == 200
     assert 'id="landing-preview"' in response.text
     assert 'id="landing-trust-strip"' in response.text
-    assert "Course Assistant" in response.text
-    assert "Student sign in" in response.text
+    assert "Course Assistant" in response.text  # still present in chat panel heading
+    assert "學生登入" in response.text  # zh-TW copy (was "Student sign in")
     assert 'id="tab-chat"' in response.text
-    assert 'id="tab-mindmap"' in response.text
+    assert 'id="tab-graph"' in response.text
     assert 'id="tab-sources"' in response.text
+    # admin tabs no longer exist in the learner tab row; the console entry is admin-only
     for tab_id in ("tab-uploads", "tab-ops", "tab-audit", "tab-evals"):
-        tab_markup = response.text.split(f'id="{tab_id}"', 1)[1].split(">", 1)[0]
-        assert "data-admin-only" in tab_markup
+        assert f'id="{tab_id}"' not in response.text
+    console_entry_markup = response.text.split('id="console-entry"', 1)[1].split(">", 1)[0]
+    assert "data-admin-only" in console_entry_markup
 
     for panel_id in ("panel-uploads", "panel-ops", "panel-audit", "panel-evals"):
         panel_markup = response.text.split(f'id="{panel_id}"', 1)[1].split(">", 1)[0]
         assert "data-admin-only" in panel_markup
 
-    document_form_markup = response.text.split('id="document-lifecycle-form"', 1)[1].split(
-        ">",
-        1,
-    )[0]
     document_section_markup = response.text.split('id="admin-documents-section"', 1)[1].split(
         ">",
         1,
     )[0]
-    assert "data-admin-only" in document_form_markup
     assert "data-admin-only" in document_section_markup
 
     assert css_response.status_code == 200
     assert "[hidden]" in css_response.text
-    assert ".landing-copy" in css_response.text
+    # centered landing-card replaced the old two-column .landing-copy layout
+    assert ".landing-card" in css_response.text
     assert ".landing-preview" in css_response.text
     assert ".landing-trust-strip" in css_response.text
 
@@ -149,9 +146,9 @@ def test_ui_exposes_audit_log_wiring() -> None:
     js_response = client.get("/static/app.js")
 
     assert response.status_code == 200
-    assert 'id="tab-audit"' in response.text
+    assert 'data-console-panel="audit"' in response.text  # audit moved into the admin console
     assert 'id="panel-audit"' in response.text
-    assert 'id="audit-admin-key"' in response.text
+    assert 'id="audit-admin-key"' not in response.text  # replaced by shared console key
     assert 'id="audit-event-type"' in response.text
     assert 'id="audit-outcome"' in response.text
     assert 'id="audit-actor-type"' in response.text
@@ -160,7 +157,7 @@ def test_ui_exposes_audit_log_wiring() -> None:
     assert 'id="audit-events"' in response.text
     assert "fetch(`/admin/audit-events?${params}`" in js_response.text
     assert "renderAuditEvents" in js_response.text
-    assert "elements.auditAdminKey" in js_response.text
+    assert "sharedAdminKey()" in js_response.text
 
 
 def test_ui_exposes_document_lifecycle_wiring() -> None:
@@ -170,7 +167,8 @@ def test_ui_exposes_document_lifecycle_wiring() -> None:
     js_response = client.get("/static/app.js")
 
     assert response.status_code == 200
-    assert 'id="document-admin-key"' in response.text
+    assert 'id="document-admin-key"' not in response.text  # replaced by shared console key
+    assert 'data-console-panel-body="documents"' in response.text  # lifecycle lives in console
     assert 'id="refresh-documents"' in response.text
     assert 'id="admin-documents"' in response.text
     assert "fetch(\"/admin/documents\"" in js_response.text
@@ -178,7 +176,7 @@ def test_ui_exposes_document_lifecycle_wiring() -> None:
     assert "fetch(`/admin/documents/${documentId}`" in js_response.text
     assert "fetch(`/admin/documents/${documentId}/reindex`" in js_response.text
     assert "renderAdminDocuments" in js_response.text
-    assert "elements.documentAdminKey" in js_response.text
+    assert "sharedAdminKey" in js_response.text
 
 
 def test_ui_exposes_background_jobs_wiring() -> None:
@@ -223,9 +221,9 @@ def test_ui_exposes_provider_observability_wiring() -> None:
     js_response = client.get("/static/app.js")
 
     assert response.status_code == 200
-    assert 'id="tab-ops"' in response.text
+    assert 'data-console-panel="ops"' in response.text  # ops moved into the admin console
     assert 'id="panel-ops"' in response.text
-    assert 'id="ops-admin-key"' in response.text
+    assert 'id="ops-admin-key"' not in response.text  # replaced by shared console key
     assert 'id="refresh-provider-observability"' in response.text
     assert 'id="provider-summary"' in response.text
     assert 'id="provider-budget"' in response.text
@@ -309,10 +307,11 @@ def test_ui_exposes_learner_chat_polish_wiring() -> None:
     assert "updateLearnerChatStatus" in js_response.text
     assert "scrollIntoView" in js_response.text
     assert "Looking through course sources" in js_response.text
-    assert "Answered from" in js_response.text
-    assert "could not confirm" in js_response.text
+    assert "個課程段落回答" in js_response.text
+    assert "知識庫無法確認這個問題" in js_response.text
     assert "previewCandidate(source)" in js_response.text
     assert "renderAnswerCitations" in js_response.text
+    assert "mergeCitedSources(payload.sources)" in js_response.text
     assert "citationLabelForSource" in js_response.text
     assert "submitAnswerFeedback" in js_response.text
     assert "feedbackExpectedSource" in js_response.text
@@ -323,8 +322,8 @@ def test_ui_exposes_learner_chat_polish_wiring() -> None:
     assert ".sample-prompt-grid" in css_response.text
     assert ".answer-footer" in css_response.text
     assert ".source-chip" in css_response.text
-    assert ".answer-trust" in css_response.text
-    assert ".inline-citation" in css_response.text
+    assert ".trust-badge" in css_response.text
+    assert ".citation-pill" in css_response.text
     assert ".answer-feedback" in css_response.text
 
 
@@ -336,11 +335,11 @@ def test_ui_separates_answer_sources_from_previewed_source() -> None:
     css_response = client.get("/static/app.css")
 
     assert response.status_code == 200
-    assert "Answer Sources" in response.text
+    assert "引用來源" in response.text
     assert 'id="answer-sources"' in response.text
     assert 'id="preview-source-meta"' in response.text
     assert "Previewed Source" in response.text
-    assert "No answer sources for the latest response." in response.text
+    assert "這次回答沒有引用來源。" in response.text
 
     assert js_response.status_code == 200
     assert "documentDisplayTitle" in js_response.text
@@ -357,16 +356,166 @@ def test_ui_separates_answer_sources_from_previewed_source() -> None:
     assert ".source-title" in css_response.text
 
 
-def test_ui_exposes_mindmap_on_demand_wiring() -> None:
+def test_ui_exposes_dual_theme_wiring() -> None:
+    _client = TestClient(create_app())
+    page = _client.get("/")
+    assert 'lang="zh-Hant"' in page.text
+    assert "kb-theme" in page.text  # head boot script reads localStorage("kb-theme")
+    assert 'id="theme-toggle"' in page.text
+
+    js_response = _client.get("/static/app.js")
+    assert "bindThemeToggle" in js_response.text
+    assert "kb-theme-changed" in js_response.text
+
+    css_response = _client.get("/static/app.css")
+    assert '[data-theme="dark"]' in css_response.text
+    assert "--font-display" in css_response.text
+
+
+def test_ui_exposes_scholarly_chat_styling() -> None:
+    client = TestClient(create_app())
+
+    css_response = client.get("/static/app.css")
+    assert ".answer-card" in css_response.text
+    assert ".trust-badge" in css_response.text
+    assert ".citation-pill" in css_response.text
+    assert ".source-row" in css_response.text
+
+    js_response = client.get("/static/app.js")
+    assert "renderFeedbackRow" in js_response.text
+    assert "graph-cross-link" in js_response.text
+
+
+def test_ui_exposes_scholarly_landing_and_sources() -> None:
+    client = TestClient(create_app())
+
+    page = client.get("/")
+    css_response = client.get("/static/app.css")
+
+    assert page.status_code == 200
+    # Landing card structure
+    assert 'class="landing-card"' in page.text
+    # Trust strip chips still present
+    assert 'id="landing-trust-strip"' in page.text
+    # Preview pane uses real chat classes (not drifting custom styles)
+    assert "answer-card" in page.text
+    assert "trust-badge" in page.text
+    assert "citation-pill" in page.text
+    # zh-TW copy on landing
+    assert "學生登入" in page.text
+
+    assert css_response.status_code == 200
+    # Landing card token-based style
+    assert ".landing-card" in css_response.text
+    # Sources reading-list style
+    assert ".doc-row" in css_response.text
+
+
+def test_ui_admin_console_structure() -> None:
+    client = TestClient(create_app())
+
+    page = client.get("/")
+    assert page.status_code == 200
+    # learner sidebar: exactly the three learner tabs remain as tabs
+    assert 'id="tab-uploads"' not in page.text  # admin tabs no longer in learner tab row
+    assert 'id="tab-ops"' not in page.text
+    assert 'id="tab-audit"' not in page.text
+    assert 'id="tab-evals"' not in page.text
+    assert 'id="console-nav"' in page.text
+    assert 'id="console-entry"' in page.text
+    assert 'data-console-panel="uploads"' in page.text
+    assert 'id="console-admin-key"' in page.text
+
+    # every console nav entry has a matching panel body
+    for panel in (
+        "overview",
+        "uploads",
+        "documents",
+        "graph-extract",
+        "evals",
+        "jobs",
+        "ops",
+        "audit",
+    ):
+        assert f'data-console-panel="{panel}"' in page.text
+        assert f'data-console-panel-body="{panel}"' in page.text
+
+    # the per-panel admin key inputs are replaced by the single console key
+    for key_id in (
+        "admin-key",
+        "ops-admin-key",
+        "audit-admin-key",
+        "eval-admin-key",
+        "document-admin-key",
+    ):
+        assert f'id="{key_id}"' not in page.text
+
+    js_response = client.get("/static/app.js")
+    assert "bindConsole" in js_response.text
+    assert "sharedAdminKey" in js_response.text
+
+
+def test_ui_console_dashboard_wiring() -> None:
+    client = TestClient(create_app())
+
+    page = client.get("/")
+    assert page.status_code == 200
+    assert 'data-console-panel-body="overview"' in page.text
+    assert 'id="stat-index"' in page.text and 'id="stat-graph"' in page.text
+    assert 'id="stat-jobs"' in page.text and 'id="stat-tokens"' in page.text
+    assert 'id="recent-activity"' in page.text
+    assert 'id="trigger-graph-extract"' in page.text
+
+    js_response = client.get("/static/app.js")
+    assert "loadConsoleOverview" in js_response.text
+    assert "/admin/jobs/runtime" in js_response.text
+
+
+def test_ui_graph_uses_theme_tokens() -> None:
+    client = TestClient(create_app())
+    js_response = client.get("/static/app.js")
+    assert "resolveGraphTheme" in js_response.text
+    assert 'addEventListener("kb-theme-changed"' in js_response.text
+
+
+def test_ui_exposes_graph_tab_wiring() -> None:
     client = TestClient(create_app())
 
     response = client.get("/")
     js_response = client.get("/static/app.js")
 
     assert response.status_code == 200
-    assert 'id="load-mindmap"' in response.text
-    assert "getJson(\"/mindmap\"" in js_response.text
-    assert "loadMindmap" in js_response.text
-    assert "refreshMindmapAfterContentChange" in js_response.text
+    assert 'id="tab-graph"' in response.text
+    assert 'id="panel-graph"' in response.text
+    assert 'id="graph-canvas"' in response.text
+    assert 'id="graph-empty"' in response.text
+    assert 'id="graph-search"' in response.text
+    assert 'id="load-graph"' in response.text
+    assert "vendor/cytoscape.min.js" in response.text
+    assert "vendor/dagre.min.js" in response.text
+    assert "vendor/cytoscape-dagre.js" in response.text
+
+    assert "getJson(\"/graph\")" in js_response.text
+    assert "renderGraphView" in js_response.text
+    assert "graph-view-cluster" in js_response.text
+    assert "graph-view-radial" in js_response.text
+    assert "graph-view-order" in js_response.text
+    assert "askAboutConcept" in js_response.text
+    assert "refreshGraphAfterContentChange" in js_response.text
     init_body = js_response.text.split("function init() {", 1)[1].split("}", 1)[0]
-    assert "loadMindmap" not in init_body
+    assert "loadGraph" not in init_body
+
+    for vendor_path in (
+        "/static/vendor/cytoscape.min.js",
+        "/static/vendor/dagre.min.js",
+        "/static/vendor/cytoscape-dagre.js",
+    ):
+        vendor_response = client.get(vendor_path)
+        assert vendor_response.status_code == 200
+
+
+def test_ui_motion_and_a11y_rules() -> None:
+    client = TestClient(create_app())
+    css_response = client.get("/static/app.css")
+    assert "prefers-reduced-motion" in css_response.text
+    assert ":focus-visible" in css_response.text

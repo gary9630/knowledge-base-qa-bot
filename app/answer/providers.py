@@ -8,7 +8,13 @@ from typing import Any, Protocol, runtime_checkable
 
 from app.answer.citations import CANNOT_CONFIRM_ANSWER
 from app.core.config import Settings
-from app.provider_telemetry import ProviderCallContext, ProviderCallRecord, ProviderUsage
+from app.provider_telemetry import (
+    ProviderCallContext,
+    ProviderCallRecord,
+    ProviderUsage,
+    completion_usage,
+    response_request_id,
+)
 
 DEFAULT_OPENAI_CHAT_MODEL = "gpt-5.4-mini"
 
@@ -94,7 +100,12 @@ class TopSourceAnswerProvider:
         if not sources:
             raise ValueError("sources are required")
 
-        source = sources[0]
+        # Sources may arrive in reading order (context assembly), so "top" means the
+        # best-scored source; unscored neighbor sections never outrank a retrieval hit.
+        source = max(
+            sources,
+            key=lambda candidate: candidate.score if candidate.score is not None else -1.0,
+        )
         excerpt = _first_content_line(source.body_md) or source.heading
         return f"{excerpt} [{source.source_id}]"
 
@@ -183,14 +194,14 @@ class OpenAIAnswerProvider:
             )
             raise
 
-        usage = _completion_usage(response)
+        usage = completion_usage(response)
         _record_provider_call(
             context,
             operation=operation,
             model=self.model,
             status="succeeded",
             client_request_id=client_request_id,
-            provider_request_id=_response_request_id(response),
+            provider_request_id=response_request_id(response),
             usage=usage,
             usage_complete=usage is not None,
             started_at=started_at,
@@ -238,8 +249,8 @@ class OpenAIAnswerProvider:
                 )
             )
             for chunk in response:
-                provider_request_id = provider_request_id or _response_request_id(chunk)
-                chunk_usage = _completion_usage(chunk)
+                provider_request_id = provider_request_id or response_request_id(chunk)
+                chunk_usage = completion_usage(chunk)
                 if chunk_usage is not None:
                     usage = chunk_usage
                 content = _chat_completion_chunk_content(chunk)
@@ -394,44 +405,6 @@ def _object_value(value: object, key: str) -> object:
     if isinstance(value, dict):
         return value.get(key)
     return getattr(value, key, None)
-
-
-def _completion_usage(response: object) -> ProviderUsage | None:
-    usage = _object_value(response, "usage")
-    if usage is None:
-        return None
-
-    prompt_tokens = _int_value(_object_value(usage, "prompt_tokens"))
-    completion_tokens = _int_value(_object_value(usage, "completion_tokens"))
-    total_tokens = _int_value(_object_value(usage, "total_tokens"))
-    prompt_details = _object_value(usage, "prompt_tokens_details")
-    completion_details = _object_value(usage, "completion_tokens_details")
-    return ProviderUsage(
-        prompt_tokens=prompt_tokens,
-        completion_tokens=completion_tokens,
-        total_tokens=total_tokens,
-        cached_tokens=_int_value(_object_value(prompt_details, "cached_tokens")),
-        reasoning_tokens=_int_value(
-            _object_value(completion_details, "reasoning_tokens")
-        ),
-    )
-
-
-def _int_value(value: object) -> int:
-    if isinstance(value, bool):
-        return 0
-    if isinstance(value, int):
-        return value
-    return 0
-
-
-def _response_request_id(response: object) -> str | None:
-    request_id = _object_value(response, "_request_id")
-    if isinstance(request_id, str) and request_id:
-        return request_id
-
-    response_id = _object_value(response, "id")
-    return response_id if isinstance(response_id, str) and response_id else None
 
 
 def _next_client_request_id(context: ProviderCallContext | None) -> str | None:

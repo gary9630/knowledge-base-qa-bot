@@ -1,6 +1,7 @@
 from pathlib import Path
 
 import pytest
+from pydantic import ValidationError
 
 from app.core.config import Settings
 from app.main import create_app
@@ -35,6 +36,12 @@ _SETTINGS_ENV_KEYS = (
     "KB_BACKGROUND_JOB_RETRY_BASE_DELAY_SECONDS",
     "KB_BACKGROUND_JOB_RETRY_MAX_DELAY_SECONDS",
     "KB_EMBEDDING_DIMENSION",
+    "KB_TOKEN_ENCODING",
+    "KB_CONTEXT_NEIGHBOR_SECTIONS",
+    "KB_CONTEXT_TOKEN_BUDGET",
+    "KB_GRAPH_EXTRACTION_ENABLED",
+    "KB_GRAPH_MAX_CONCEPTS_PER_DOC",
+    "KB_GRAPH_EXTRACTION_TOKEN_BUDGET",
 )
 
 
@@ -248,3 +255,39 @@ def test_app_rejects_embedding_dimension_that_does_not_match_schema() -> None:
         match="embedding_dimension must match database schema \\(768\\)",
     ):
         create_app(settings=settings)
+
+
+def test_context_expansion_defaults() -> None:
+    settings = Settings()
+    assert settings.token_encoding == "o200k_base"
+    assert settings.context_neighbor_sections == 1
+    assert settings.context_token_budget == 8000
+
+
+def test_token_encoding_rejects_unknown_encoding() -> None:
+    with pytest.raises(ValidationError, match="token_encoding"):
+        Settings(token_encoding="not-a-real-encoding")
+
+
+def test_context_token_budget_enforces_floor() -> None:
+    with pytest.raises(ValidationError, match="context_token_budget"):
+        Settings(context_token_budget=500)
+
+
+def test_context_neighbor_sections_rejects_negative() -> None:
+    with pytest.raises(ValidationError, match="context_neighbor_sections"):
+        Settings(context_neighbor_sections=-1)
+
+
+def test_graph_extraction_defaults() -> None:
+    settings = Settings()
+    assert settings.graph_extraction_enabled is True
+    assert settings.graph_max_concepts_per_doc == 30
+    assert settings.graph_extraction_token_budget == 12000
+
+
+def test_graph_settings_validation() -> None:
+    with pytest.raises(ValidationError, match="graph_max_concepts_per_doc"):
+        Settings(graph_max_concepts_per_doc=0)
+    with pytest.raises(ValidationError, match="graph_extraction_token_budget"):
+        Settings(graph_extraction_token_budget=500)

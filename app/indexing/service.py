@@ -20,6 +20,12 @@ from app.indexing.export import (
 )
 from app.indexing.frontmatter import parse_product_frontmatter
 from app.indexing.markdown_parser import ParsedSection, parse_markdown_sections
+from app.indexing.tokenization import (
+    DEFAULT_TOKEN_ENCODING,
+    MIN_LOSSLESS_OVERLAP,
+    count_tokens,
+    split_token_windows,
+)
 from app.models.tables import Chunk, Document, IndexingJob, Section
 from app.retrieval.dimensions import PGVECTOR_EMBEDDING_DIMENSION
 from app.retrieval.embeddings import EmbeddingProvider
@@ -67,11 +73,16 @@ class IndexingService:
         embedding_provider: EmbeddingProvider,
         chunk_token_limit: int = DEFAULT_CHUNK_TOKEN_LIMIT,
         chunk_overlap: int = DEFAULT_CHUNK_OVERLAP,
+        token_encoding: str = DEFAULT_TOKEN_ENCODING,
     ) -> None:
         if chunk_token_limit <= 0:
             raise ValueError("chunk_token_limit must be positive")
-        if chunk_overlap < 0:
-            raise ValueError("chunk_overlap must be non-negative")
+        if chunk_overlap < MIN_LOSSLESS_OVERLAP:
+            raise ValueError(
+                f"chunk_overlap must be at least {MIN_LOSSLESS_OVERLAP} tokens so a "
+                "character split at a chunk boundary always survives intact in a "
+                "neighboring chunk"
+            )
         if chunk_overlap >= chunk_token_limit:
             raise ValueError("chunk_overlap must be smaller than chunk_token_limit")
 
@@ -81,6 +92,7 @@ class IndexingService:
         self.embedding_provider = embedding_provider
         self.chunk_token_limit = chunk_token_limit
         self.chunk_overlap = chunk_overlap
+        self.token_encoding = token_encoding
 
     def rebuild_index(self) -> IndexingResult:
         if self.session.in_transaction():
@@ -221,7 +233,7 @@ class IndexingService:
         chunks_indexed = 0
         chunks_embedded = 0
         chunks_reused = 0
-        for parsed_section in parsed_sections:
+        for position, parsed_section in enumerate(parsed_sections):
             section_hash = _content_hash(parsed_section.body_md)
             section = stale_sections.pop(parsed_section.source_id, None)
             section_unchanged = section is not None and section.content_hash == section_hash
@@ -232,8 +244,11 @@ class IndexingService:
                     heading=parsed_section.heading,
                     heading_slug=parsed_section.heading_slug,
                     level=parsed_section.level,
+                    position=position,
                     body_md=parsed_section.body_md,
-                    token_count=_token_count(parsed_section.body_md),
+                    token_count=count_tokens(
+                        parsed_section.body_md, encoding_name=self.token_encoding
+                    ),
                     content_hash=section_hash,
                 )
                 self.session.add(section)
@@ -242,8 +257,11 @@ class IndexingService:
                 section.heading = parsed_section.heading
                 section.heading_slug = parsed_section.heading_slug
                 section.level = parsed_section.level
+                section.position = position
                 section.body_md = parsed_section.body_md
-                section.token_count = _token_count(parsed_section.body_md)
+                section.token_count = count_tokens(
+                    parsed_section.body_md, encoding_name=self.token_encoding
+                )
                 section.content_hash = section_hash
 
             self.session.flush()
@@ -358,6 +376,7 @@ class IndexingService:
             body_md,
             token_limit=self.chunk_token_limit,
             overlap=self.chunk_overlap,
+            encoding_name=self.token_encoding,
         )
         chunks_embedded = 0
         chunks_reused = 0
@@ -384,6 +403,7 @@ class IndexingService:
                     "end_token": chunk_text.end_token,
                     "chunk_token_limit": self.chunk_token_limit,
                     "chunk_overlap": self.chunk_overlap,
+                    "token_encoding": self.token_encoding,
                 },
             )
             self.session.add(chunk)
@@ -430,6 +450,7 @@ class IndexingService:
         return all(
             metadata.get("chunk_token_limit") == self.chunk_token_limit
             and metadata.get("chunk_overlap") == self.chunk_overlap
+            and metadata.get("token_encoding") == self.token_encoding
             for metadata in metadata_rows
         )
 
@@ -571,64 +592,25 @@ def split_section_chunks(
     *,
     token_limit: int = DEFAULT_CHUNK_TOKEN_LIMIT,
     overlap: int = DEFAULT_CHUNK_OVERLAP,
+    encoding_name: str = DEFAULT_TOKEN_ENCODING,
 ) -> list[_ChunkText]:
-    if token_limit <= 0:
-        raise ValueError("token_limit must be positive")
-    if overlap < 0:
-        raise ValueError("overlap must be non-negative")
-    if overlap >= token_limit:
-        raise ValueError("overlap must be smaller than token_limit")
-
-    stripped_body = body_md.strip()
-    if not stripped_body:
-        return []
-
-    tokens = body_md.split()
-    if len(tokens) <= token_limit:
-        return [
-            _chunk_text(
-                chunk_index=0,
-                body_text=stripped_body,
-                start_token=0,
-                end_token=len(tokens),
-            )
-        ]
-
-    chunks: list[_ChunkText] = []
-    step = token_limit - overlap
-    start_token = 0
-    while start_token < len(tokens):
-        end_token = min(len(tokens), start_token + token_limit)
-        chunks.append(
-            _chunk_text(
-                chunk_index=len(chunks),
-                body_text=" ".join(tokens[start_token:end_token]),
-                start_token=start_token,
-                end_token=end_token,
-            )
-        )
-        if end_token == len(tokens):
-            break
-        start_token += step
-
-    return chunks
-
-
-def _chunk_text(
-    *,
-    chunk_index: int,
-    body_text: str,
-    start_token: int,
-    end_token: int,
-) -> _ChunkText:
-    return _ChunkText(
-        chunk_index=chunk_index,
-        body_text=body_text,
-        token_count=_token_count(body_text),
-        content_hash=_content_hash(body_text),
-        start_token=start_token,
-        end_token=end_token,
+    windows = split_token_windows(
+        body_md,
+        token_limit=token_limit,
+        overlap=overlap,
+        encoding_name=encoding_name,
     )
+    return [
+        _ChunkText(
+            chunk_index=index,
+            body_text=window.text,
+            token_count=window.token_count,
+            content_hash=_content_hash(window.text),
+            start_token=window.start_token,
+            end_token=window.end_token,
+        )
+        for index, window in enumerate(windows)
+    ]
 
 
 def _validate_embedding_dimension(embedding: list[float]) -> None:
@@ -637,10 +619,6 @@ def _validate_embedding_dimension(embedding: list[float]) -> None:
             f"embedding provider returned {len(embedding)} dimensions; "
             f"expected {PGVECTOR_EMBEDDING_DIMENSION} dimensions"
         )
-
-
-def _token_count(body: str) -> int:
-    return len(body.split())
 
 
 def _initial_stats() -> dict[str, Any]:

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from collections.abc import Iterator
+from collections.abc import Iterator, Sequence
 from time import perf_counter
 from typing import Annotated, Any
 from uuid import UUID
@@ -12,6 +12,11 @@ from sqlalchemy.orm import Session
 from sse_starlette.sse import EventSourceResponse
 
 from app.answer.citations import CANNOT_CONFIRM_ANSWER
+from app.answer.context_assembly import (
+    AssembledContext,
+    AssembledSource,
+    ContextAssembler,
+)
 from app.answer.providers import AnswerProvider
 from app.answer.service import AnswerResult, AnswerService
 from app.api.dependencies import (
@@ -66,6 +71,17 @@ class AnswerQualityResponse(BaseModel):
     cannot_confirm_reason: str | None = None
 
 
+class ContextAssemblyResponse(BaseModel):
+    neighbor_window: int
+    token_budget: int
+    tokens_used: int
+    hit_count: int
+    neighbor_count: int
+    dropped_hit_count: int
+    dropped_neighbor_count: int
+    truncated_count: int
+
+
 class ChatResponse(BaseModel):
     conversation_id: UUID
     user_message_id: UUID
@@ -77,6 +93,7 @@ class ChatResponse(BaseModel):
     selected_sources: list[CandidateResponse]
     retrieval_diagnostics: RetrievalDiagnosticsResponse
     answer_quality: AnswerQualityResponse
+    context_assembly: ContextAssemblyResponse | None = None
 
 
 @router.post("/chat", response_model=ChatResponse)
@@ -145,11 +162,12 @@ def _build_chat_response(
             answer=NOT_INDEXED_ANSWER,
             decision="cannot_confirm",
             selected_candidates=[],
-            cited_candidates=[],
+            cited_source_responses=[],
             retrieval_diagnostics=retrieval_diagnostics,
             answer_quality=answer_quality,
             latency_ms=_elapsed_ms(started_at),
             provider_calls=[],
+            context_assembly=None,
         )
 
     retriever = HybridRetriever(
@@ -164,18 +182,18 @@ def _build_chat_response(
         limit=payload.limit,
     )
     _raise_if_provider_budget_blocked(request)
+    assembled = _assemble_context(
+        request=request,
+        session=session,
+        retrieval_result=retrieval_result,
+    )
     answer_result = _answer_provider_error_response(
         provider=get_answer_provider(request),
         payload=payload,
         request=request,
-        candidates=retrieval_result.candidates,
+        sources=assembled.sources,
     )
-    cited_source_ids = {source.source_id for source in answer_result.sources}
-    cited_candidates = [
-        candidate
-        for candidate in retrieval_result.candidates
-        if candidate.source_id in cited_source_ids
-    ]
+    cited_source_responses = _cited_assembled_responses(assembled, answer_result)
     answer_quality = _answer_quality_response(
         selected_candidates=retrieval_result.candidates,
         answer_result=answer_result,
@@ -190,11 +208,12 @@ def _build_chat_response(
         answer=answer_result.answer,
         decision=_chat_decision(retrieval_result.decision, answer_result),
         selected_candidates=retrieval_result.candidates,
-        cited_candidates=cited_candidates,
+        cited_source_responses=cited_source_responses,
         retrieval_diagnostics=retrieval_result.diagnostics,
         answer_quality=answer_quality,
         latency_ms=_elapsed_ms(started_at),
         provider_calls=answer_result.provider_calls,
+        context_assembly=_context_assembly_response(assembled),
     )
 
 
@@ -202,7 +221,7 @@ def _answer_provider_error_response(
     *,
     provider: AnswerProvider,
     payload: ChatRequest,
-    candidates: list[RetrievedCandidate],
+    sources: Sequence[AssembledSource],
     request: Request | None = None,
 ) -> AnswerResult:
     answer_service = AnswerService(
@@ -210,7 +229,7 @@ def _answer_provider_error_response(
         client_request_id=_request_id_from_request(request),
     )
     try:
-        answer_result = answer_service.answer(payload.query, candidates)
+        answer_result = answer_service.answer(payload.query, sources)
     except Exception as error:
         _record_provider_call_records(request, answer_service.provider_call_records())
         raise HTTPException(status_code=502, detail="Answer provider failed.") from error
@@ -264,6 +283,56 @@ def _answer_quality_response(
         cannot_confirm_reason=answer_result.cannot_confirm_reason
         or cannot_confirm_reason,
     )
+
+
+def _assemble_context(
+    *,
+    request: Request,
+    session: Session,
+    retrieval_result: RetrievalResult,
+) -> AssembledContext:
+    settings = get_app_settings(request)
+    assembler = ContextAssembler(
+        session=session,
+        neighbor_sections=settings.context_neighbor_sections,
+        token_budget=settings.context_token_budget,
+        encoding_name=settings.token_encoding,
+    )
+    return assembler.assemble(retrieval_result.candidates)
+
+
+def _assembled_source_response(source: AssembledSource) -> CandidateResponse:
+    return CandidateResponse(
+        section_id=source.section_id,
+        source_id=source.source_id,
+        filename=source.filename,
+        heading=source.heading,
+        body_md=source.body_md,
+        score=source.score if source.score is not None else 0.0,
+        strategy="context",
+        source_type="unknown",
+        source_priority=0,
+        debug_scores={
+            "is_hit": 1.0 if source.is_hit else 0.0,
+            "neighbor_distance": float(source.neighbor_distance),
+        },
+    )
+
+
+def _cited_assembled_responses(
+    assembled: AssembledContext,
+    answer_result: AnswerResult,
+) -> list[CandidateResponse]:
+    cited_source_ids = {source.source_id for source in answer_result.sources}
+    return [
+        _assembled_source_response(source)
+        for source in assembled.sources
+        if source.source_id in cited_source_ids
+    ]
+
+
+def _context_assembly_response(context: AssembledContext) -> ContextAssemblyResponse:
+    return ContextAssemblyResponse(**context.diagnostics.to_payload())
 
 
 def _chat_stream_response_events(
@@ -323,11 +392,12 @@ def _unsafe_chat_stream_response_events(
             answer=NOT_INDEXED_ANSWER,
             decision="cannot_confirm",
             selected_candidates=[],
-            cited_candidates=[],
+            cited_source_responses=[],
             retrieval_diagnostics=retrieval_diagnostics,
             answer_quality=answer_quality,
             latency_ms=_elapsed_ms(started_at),
             provider_calls=[],
+            context_assembly=None,
         )
         yield from _chat_response_events(response)
         return
@@ -353,6 +423,11 @@ def _unsafe_chat_stream_response_events(
     )
 
     _raise_if_provider_budget_blocked(request)
+    assembled = _assemble_context(
+        request=request,
+        session=session,
+        retrieval_result=retrieval_result,
+    )
     yield from _stream_answer_response_events(
         provider=get_answer_provider(request),
         payload=payload,
@@ -361,6 +436,7 @@ def _unsafe_chat_stream_response_events(
         conversation=conversation,
         user_message=user_message,
         retrieval_result=retrieval_result,
+        assembled=assembled,
         started_at=started_at,
     )
 
@@ -374,6 +450,7 @@ def _stream_answer_response_events(
     conversation: Conversation,
     user_message: Message,
     retrieval_result: RetrievalResult,
+    assembled: AssembledContext,
     started_at: float,
 ) -> Iterator[dict[str, str]]:
     answer_service = AnswerService(
@@ -383,25 +460,20 @@ def _stream_answer_response_events(
     answer_parts: list[str] = []
 
     try:
-        for token in answer_service.stream_answer(payload.query, retrieval_result.candidates):
+        for token in answer_service.stream_answer(payload.query, assembled.sources):
             answer_parts.append(token)
             yield {"event": "token", "data": token}
         generated_answer = "".join(answer_parts).strip() or CANNOT_CONFIRM_ANSWER
         answer_result = answer_service.validate_generated_answer(
             generated_answer,
-            retrieval_result.candidates,
+            assembled.sources,
         )
     except Exception as error:
         _record_provider_call_records(request, answer_service.provider_call_records())
         raise HTTPException(status_code=502, detail="Answer provider failed.") from error
     _record_provider_call_records(request, answer_service.provider_call_records())
 
-    cited_source_ids = {source.source_id for source in answer_result.sources}
-    cited_candidates = [
-        candidate
-        for candidate in retrieval_result.candidates
-        if candidate.source_id in cited_source_ids
-    ]
+    cited_source_responses = _cited_assembled_responses(assembled, answer_result)
     answer_quality = _answer_quality_response(
         selected_candidates=retrieval_result.candidates,
         answer_result=answer_result,
@@ -415,11 +487,12 @@ def _stream_answer_response_events(
         answer=answer_result.answer,
         decision=_chat_decision(retrieval_result.decision, answer_result),
         selected_candidates=retrieval_result.candidates,
-        cited_candidates=cited_candidates,
+        cited_source_responses=cited_source_responses,
         retrieval_diagnostics=retrieval_result.diagnostics,
         answer_quality=answer_quality,
         latency_ms=_elapsed_ms(started_at),
         provider_calls=answer_result.provider_calls,
+        context_assembly=_context_assembly_response(assembled),
     )
     yield _done_event(response)
 
@@ -471,7 +544,13 @@ def _done_event(response: ChatResponse) -> dict[str, str]:
                 "retrieval_event_id": str(response.retrieval_event_id),
                 "answer": response.answer,
                 "decision": response.decision,
+                "sources": _responses_to_json(response.sources),
                 "answer_quality": response.answer_quality.model_dump(mode="json"),
+                "context_assembly": (
+                    response.context_assembly.model_dump(mode="json")
+                    if response.context_assembly
+                    else None
+                ),
             }
         ),
     }
@@ -513,13 +592,13 @@ def _persist_chat_response(
     answer: str,
     decision: RetrievalDecision,
     selected_candidates: list[RetrievedCandidate],
-    cited_candidates: list[RetrievedCandidate],
+    cited_source_responses: list[CandidateResponse],
     retrieval_diagnostics: RetrievalDiagnostics,
     answer_quality: AnswerQualityResponse,
     latency_ms: int,
     provider_calls: list[dict[str, object]],
+    context_assembly: ContextAssemblyResponse | None,
 ) -> ChatResponse:
-    source_responses = [candidate_response(candidate) for candidate in cited_candidates]
     selected_source_responses = [
         candidate_response(candidate) for candidate in selected_candidates
     ]
@@ -527,7 +606,7 @@ def _persist_chat_response(
         conversation=conversation,
         role="assistant",
         content=answer,
-        sources_json=_responses_to_json(source_responses),
+        sources_json=_responses_to_json(cited_source_responses),
     )
     session.add(assistant_message)
     session.flush()
@@ -543,6 +622,7 @@ def _persist_chat_response(
             retrieval_diagnostics=retrieval_diagnostics,
             answer_quality=answer_quality,
             provider_calls=provider_calls,
+            context_assembly=context_assembly,
         ),
         decision=decision,
         latency_ms=latency_ms,
@@ -557,10 +637,11 @@ def _persist_chat_response(
         retrieval_event_id=retrieval_event.id,
         answer=answer,
         decision=decision,
-        sources=source_responses,
+        sources=cited_source_responses,
         selected_sources=selected_source_responses,
         retrieval_diagnostics=retrieval_diagnostics_response(retrieval_diagnostics),
         answer_quality=answer_quality,
+        context_assembly=context_assembly,
     )
 
 
@@ -574,6 +655,7 @@ def _retrieval_scores_payload(
     retrieval_diagnostics: RetrievalDiagnostics,
     answer_quality: AnswerQualityResponse,
     provider_calls: list[dict[str, object]],
+    context_assembly: ContextAssemblyResponse | None,
 ) -> dict[str, Any]:
     return {
         "scores_by_source_id": {
@@ -584,6 +666,9 @@ def _retrieval_scores_payload(
         ).model_dump(mode="json"),
         "answer_quality": answer_quality.model_dump(mode="json"),
         "provider_calls": provider_calls,
+        "context_assembly": (
+            context_assembly.model_dump(mode="json") if context_assembly else None
+        ),
     }
 
 

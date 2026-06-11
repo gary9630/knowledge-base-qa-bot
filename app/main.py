@@ -10,11 +10,11 @@ from app.api.chat import router as chat_router
 from app.api.documents import router as documents_router
 from app.api.evals import router as evals_router
 from app.api.feedback import router as feedback_router
+from app.api.graph import router as graph_router
 from app.api.health import router as health_router
 from app.api.imports import router as imports_router
 from app.api.indexing import router as indexing_router
 from app.api.jobs import router as jobs_router
-from app.api.mindmap import router as mindmap_router
 from app.api.provider_observability import router as provider_observability_router
 from app.api.search import router as search_router
 from app.api.sources import router as sources_router
@@ -66,7 +66,7 @@ def create_app(
     app.include_router(indexing_router)
     app.include_router(imports_router)
     app.include_router(search_router)
-    app.include_router(mindmap_router)
+    app.include_router(graph_router)
     app.include_router(chat_router)
     app.include_router(sources_router)
     app.include_router(feedback_router)

@@ -229,3 +229,8 @@ __marimo__/
 # Local data artifacts
 course-materials-md/
 course-materials-raw/
+
+# local working artifacts
+tmp/
+.DS_Store
+.superpowers/

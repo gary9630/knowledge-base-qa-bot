@@ -27,7 +27,7 @@ REAL_CONTENT_COMPOSE_PROJECT ?= kb-real-content
 REAL_CONTENT_COMPOSE ?= $(COMPOSE) -p $(REAL_CONTENT_COMPOSE_PROJECT)
 REAL_CONTENT_COMPOSE_ENV := KB_EMBEDDING_PROVIDER=$(REAL_CONTENT_EMBEDDING_PROVIDER) KB_OPENAI_EMBEDDING_MODEL=$(REAL_CONTENT_EMBEDDING_MODEL) KB_EMBEDDING_DIMENSION=$(REAL_CONTENT_EMBEDDING_DIMENSION) KB_ANSWER_PROVIDER=$(REAL_CONTENT_ANSWER_PROVIDER)
 
-.PHONY: backup backup-db backup-files deploy-check deploy-check-ci dev test test-unit test-integration test-e2e lint format migrate index worker worker-once worker-status eval-seed eval-run ops-check docker-build docker-up docker-down docker-logs docker-test docker-smoke restore-db restore-files real-content-env-check real-content-prepare real-content-index real-content-acceptance real-content-package
+.PHONY: backup backup-db backup-files deploy-check deploy-check-ci dev test test-unit test-integration test-e2e lint format migrate index worker worker-once worker-status eval-seed eval-run eval-generate ops-check docker-build docker-up docker-down docker-logs docker-test docker-smoke restore-db restore-files real-content-env-check real-content-prepare real-content-index real-content-acceptance real-content-package graph-seed
 
 backup: backup-db backup-files
 
@@ -132,11 +132,17 @@ worker:
 worker-status:
 	curl -fsS -H "X-KB-Admin-Key: $(KB_ADMIN_API_KEY)" "$(API_URL)/admin/jobs/runtime"
 
+graph-seed:
+	$(UV) python -m scripts.seed_concept_graph --file docs/plans/2026-06-11-concept-graph-seed.json
+
 eval-seed:
 	$(UV) python -m scripts.seed_eval_cases
 
 eval-run:
 	$(UV) python -m scripts.run_evals --trigger scheduled
+
+eval-generate:
+	$(UV) python -m scripts.generate_eval_cases
 
 ops-check:
 	@echo "health:"

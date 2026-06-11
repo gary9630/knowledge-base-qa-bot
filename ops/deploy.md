@@ -122,6 +122,49 @@ make ops-check API_URL=https://your-app.example.com KB_ADMIN_API_KEY=$KB_ADMIN_A
 If running directly against a local database instead of Compose, run `make migrate` before
 starting the app process.
 
+### Knowledge Graph Release Note
+
+Deploying the knowledge graph change requires:
+
+1. `make migrate` (adds migrations 0012 and 0013 for the five concept-graph tables).
+2. `make graph-seed` once per environment to load the curated seed dataset
+   (`docs/plans/2026-06-11-concept-graph-seed.json`). This populates 115 concepts across
+   16 clusters with `origin='seed'` protection and marks all currently active documents as
+   extracted so future uploads do not re-extract seed concepts.
+
+After seeding, future document uploads auto-extract concepts via the background worker when
+`KB_ANSWER_PROVIDER=openai`. When the answer provider is `fake`, the extraction step is
+skipped without error. Provider token usage for each extraction run is recorded in the job's
+`result` field and is visible through the admin jobs API.
+
+To restore the curated graph after accidental deletion or a full re-seed (the
+`graph-seed` make target does not accept flags, so invoke the script directly with
+`KB_DATABASE_URL` pointing at the target database, as for the other commands above):
+
+```bash
+uv run --python 3.12 python -m scripts.seed_concept_graph \
+  --file docs/plans/2026-06-11-concept-graph-seed.json --replace
+```
+
+The `--replace` flag wipes ALL concept-graph rows (clusters, concepts, edges, sources,
+and extraction state — including extracted, non-seed concepts) and then re-applies the
+seed, re-marking all active documents as extracted.
+
+### Context Expansion Release Note
+
+Deploying the retrieval context expansion change (tiktoken chunking, section positions,
+RRF fusion, full-section answer context) requires both:
+
+1. `make migrate` (adds `sections.position`).
+2. A full index rebuild (`python -m scripts.rebuild_index` against the production docs
+   dir, or `make real-content-package` for a fresh launch artifact). The rebuild
+   re-chunks every document with token-aware chunking and re-embeds all chunks, so expect
+   a one-time OpenAI embedding cost proportional to the full corpus.
+
+Answer calls now send full-section windows instead of single chunks, which grows answer
+input tokens roughly 4-5x. Raise `KB_PROVIDER_BUDGET_*` daily token limits accordingly
+before enabling traffic.
+
 ## Post-Deploy Smoke
 
 1. `GET /health` returns 200.

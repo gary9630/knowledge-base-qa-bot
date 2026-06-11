@@ -6,7 +6,11 @@ from uuid import UUID, uuid4
 
 from sqlalchemy.orm import Session
 
-from app.answer.providers import AnswerProvider, create_answer_provider
+from app.answer.providers import (
+    DEFAULT_OPENAI_CHAT_MODEL,
+    AnswerProvider,
+    create_answer_provider,
+)
 from app.core.config import Settings
 from app.core.database import SessionLocal
 from app.evals.runner import (
@@ -18,6 +22,8 @@ from app.evals.runner import (
     record_failed_eval_run,
     run_eval_suite,
 )
+from app.graph.extraction import ChatCaller
+from app.graph.pipeline import GraphExtractionPipeline, OpenAIGraphCaller
 from app.indexing.service import IndexingResult, IndexingService
 from app.ingestion.pipeline import IngestionPipeline, SqlAlchemyIngestionJobStore
 from app.models.tables import BackgroundJob
@@ -25,6 +31,7 @@ from app.retrieval.embeddings import EmbeddingProvider, create_embedding_provide
 from app.retrieval.models import RetrievalStrategy
 
 from .service import (
+    TASK_CONCEPT_EXTRACTION,
     TASK_DOCUMENT_REINDEX,
     TASK_EVAL_RUN,
     TASK_INDEX_REBUILD,
@@ -43,12 +50,14 @@ class BackgroundWorker:
         settings: Settings | None = None,
         embedding_provider: EmbeddingProvider | None = None,
         answer_provider: AnswerProvider | None = None,
+        graph_caller: ChatCaller | None = None,
         worker_id: str | None = None,
     ) -> None:
         self.session_factory = session_factory
         self.settings = settings or Settings()
         self.embedding_provider = embedding_provider
         self.answer_provider = answer_provider
+        self._graph_caller_override = graph_caller
         self.worker_id = worker_id or self.settings.worker_id or f"worker-{uuid4()}"
 
     def run_once(self) -> BackgroundJob | None:
@@ -127,6 +136,8 @@ class BackgroundWorker:
             return self._run_document_reindex(payload)
         if task_type == TASK_EVAL_RUN:
             return self._run_eval(payload)
+        if task_type == TASK_CONCEPT_EXTRACTION:
+            return self._run_concept_extraction()
         raise ValueError(f"unsupported background job task: {task_type}")
 
     def _run_index_rebuild(self) -> dict[str, object]:
@@ -136,7 +147,14 @@ class BackgroundWorker:
                 docs_dir=Path(self.settings.docs_dir),
                 kb_dir=Path(self.settings.kb_dir),
                 embedding_provider=self._embedding_provider(),
+                token_encoding=self.settings.token_encoding,
             ).rebuild_index()
+            if self.settings.graph_extraction_enabled:
+                BackgroundJobService(session).enqueue(
+                    task_type=TASK_CONCEPT_EXTRACTION,
+                    payload={"reason": TASK_INDEX_REBUILD},
+                )
+                session.commit()
         return _indexing_result_payload(result)
 
     def _run_document_reindex(self, payload: dict[str, object]) -> dict[str, object]:
@@ -147,6 +165,7 @@ class BackgroundWorker:
                 docs_dir=Path(self.settings.docs_dir),
                 kb_dir=Path(self.settings.kb_dir),
                 embedding_provider=self._embedding_provider(),
+                token_encoding=self.settings.token_encoding,
             ).reindex_document(document_id)
         return {
             "document_id": str(document_id),
@@ -206,6 +225,7 @@ class BackgroundWorker:
                     embedding_provider=self._embedding_provider(),
                     answer_provider=self._answer_provider(),
                     options=options,
+                    settings=self.settings,
                 )
             except (NoActiveEvalCasesError, EvalCasesNotFoundError) as error:
                 eval_run = record_failed_eval_run(
@@ -232,6 +252,33 @@ class BackgroundWorker:
                 "error": execution.error,
             }
 
+    def _run_concept_extraction(self) -> dict[str, object]:
+        caller = self._graph_caller()
+        if caller is None:
+            # No real LLM caller available: skip without touching the database.
+            # Running the pipeline with a stub that returns empty extractions
+            # would wipe concept_sources and seal ConceptExtractionState at the
+            # current hash, silently masking the pending work.
+            return {
+                "skipped": True,
+                "reason": "graph extraction requires answer_provider=openai",
+            }
+        with self.session_factory() as session:
+            pipeline = GraphExtractionPipeline(
+                session=session,
+                caller=caller,
+                max_concepts_per_doc=self.settings.graph_max_concepts_per_doc,
+                token_budget=self.settings.graph_extraction_token_budget,
+                encoding_name=self.settings.token_encoding,
+            )
+            stats = pipeline.run()
+            session.commit()
+        result = dict(stats)
+        provider_stats = _provider_call_stats(caller)
+        if provider_stats is not None:
+            result.update(provider_stats)
+        return result
+
     def _embedding_provider(self) -> EmbeddingProvider:
         if self.embedding_provider is None:
             self.embedding_provider = create_embedding_provider(self.settings)
@@ -241,6 +288,49 @@ class BackgroundWorker:
         if self.answer_provider is None:
             self.answer_provider = create_answer_provider(self.settings)
         return self.answer_provider
+
+    def _graph_caller(self) -> ChatCaller | None:
+        """Resolve the LLM caller for concept extraction, or None to skip.
+
+        Non-OpenAI environments (fake provider) get None so the job skips
+        cleanly instead of running the pipeline with empty extractions.
+        """
+        if self._graph_caller_override is not None:
+            return self._graph_caller_override
+        if self.settings.answer_provider != "openai":
+            return None
+        api_key = self.settings.openai_api_key
+        if not api_key:
+            raise ValueError(
+                "OPENAI_API_KEY is required for concept extraction with answer_provider=openai"
+            )
+        model = self.settings.openai_chat_model or DEFAULT_OPENAI_CHAT_MODEL
+        return OpenAIGraphCaller(
+            api_key=api_key,
+            model=model,
+            timeout_seconds=self.settings.openai_request_timeout_seconds,
+            max_retries=self.settings.openai_max_retries,
+        )
+
+
+def _provider_call_stats(caller: ChatCaller) -> dict[str, int] | None:
+    """Aggregate provider telemetry from callers exposing ``call_records``."""
+    records = getattr(caller, "call_records", None)
+    if records is None:
+        return None
+    tokens = 0
+    failures = 0
+    for record in records:
+        usage = getattr(record, "usage", None)
+        if usage is not None:
+            tokens += int(getattr(usage, "total_tokens", 0) or 0)
+        if getattr(record, "status", None) == "failed":
+            failures += 1
+    return {
+        "provider_calls": len(records),
+        "provider_tokens": tokens,
+        "provider_failures": failures,
+    }
 
 
 def _indexing_result_payload(result: IndexingResult) -> dict[str, object]:

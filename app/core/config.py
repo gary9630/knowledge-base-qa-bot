@@ -1,4 +1,4 @@
-from pydantic import AliasChoices, Field
+from pydantic import AliasChoices, Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from app.retrieval.dimensions import PGVECTOR_EMBEDDING_DIMENSION
@@ -57,3 +57,18 @@ class Settings(BaseSettings):
     provider_budget_warning_ratio: float = Field(default=0.8, ge=0.0, le=1.0)
     provider_budget_block_on_exceeded: bool = False
     embedding_dimension: int = PGVECTOR_EMBEDDING_DIMENSION
+    # baked into Docker image — keep in sync with Dockerfile tiktoken pre-download
+    token_encoding: str = "o200k_base"
+    context_neighbor_sections: int = Field(default=1, ge=0)
+    context_token_budget: int = Field(default=8000, ge=1000)
+    graph_extraction_enabled: bool = True
+    graph_max_concepts_per_doc: int = Field(default=30, ge=1)
+    graph_extraction_token_budget: int = Field(default=12000, ge=1000)
+
+    @field_validator("token_encoding")
+    @classmethod
+    def _validate_token_encoding(cls, value: str) -> str:
+        import tiktoken
+
+        tiktoken.get_encoding(value)  # raises for unknown encodings (fail fast at startup)
+        return value

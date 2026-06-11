@@ -1,0 +1,441 @@
+[
+  {
+    "seed_key": "auto.c58a0904ec",
+    "name": "時間有限時先看哪一篇",
+    "query": "如果我最近就要面試、時間不夠把前面都看完，應該先看哪個部分？看完之後如果發現不熟的概念，還要回去補哪些章節？",
+    "expected_decision": "can_answer",
+    "expected_source_ids": [
+      "0-講義導讀.md#時間有限的話直接看面試模板"
+    ],
+    "tags": [
+      "auto"
+    ],
+    "metadata": {
+      "kind": "generated"
+    }
+  },
+  {
+    "seed_key": "auto.7e79856e93",
+    "name": "卡在系統設計題時要查哪些參考資料",
+    "query": "做系統設計題卡住時，應該到哪兩個區塊查對應的技術方案？這兩個區塊各自包含哪些內容或主題？",
+    "expected_decision": "can_answer",
+    "expected_source_ids": [
+      "0-講義導讀.md#常用技術-維運與可靠性當參考資料用",
+      "0-講義導讀.md#總結"
+    ],
+    "tags": [
+      "auto"
+    ],
+    "metadata": {
+      "kind": "generated"
+    }
+  },
+  {
+    "seed_key": "auto.0447d40afb",
+    "name": "GraphQL 什麼情況適合使用？",
+    "query": "什麼情況下會比較適合用 GraphQL？它的好處和要注意的問題有哪些？",
+    "expected_decision": "can_answer",
+    "expected_source_ids": [
+      "1-基本觀念-01-Networking Essentials.md#graphql"
+    ],
+    "tags": [
+      "auto"
+    ],
+    "metadata": {
+      "kind": "generated"
+    }
+  },
+  {
+    "seed_key": "auto.68576dc48d",
+    "name": "Webhook 重試策略要怎麼做？",
+    "query": "如果 webhook 呼叫對方 endpoint 失敗了，應該怎麼設計重試機制？哪些錯誤適合重試？",
+    "expected_decision": "can_answer",
+    "expected_source_ids": [
+      "1-基本觀念-01-Networking Essentials.md#retry-with-backoff-and-jitter"
+    ],
+    "tags": [
+      "auto"
+    ],
+    "metadata": {
+      "kind": "generated"
+    }
+  },
+  {
+    "seed_key": "auto.9bff1a315a",
+    "name": "Client-Server 與 P2P 的差異",
+    "query": "Client-Server 架構和 Peer-to-Peer（P2P）有什麼主要差異？",
+    "expected_decision": "can_answer",
+    "expected_source_ids": [
+      "1-基本觀念-02-Client-Server Architecture.md#client-server-vs-peer-to-peerp2p"
+    ],
+    "tags": [
+      "auto"
+    ],
+    "metadata": {
+      "kind": "generated"
+    }
+  },
+  {
+    "seed_key": "auto.781cf77b64",
+    "name": "什麼時候該考慮用 P2P",
+    "query": "什麼情況下應該考慮用 P2P，而不是 Client-Server？",
+    "expected_decision": "can_answer",
+    "expected_source_ids": [
+      "1-基本觀念-02-Client-Server Architecture.md#client-server-vs-peer-to-peerp2p",
+      "1-基本觀念-02-Client-Server Architecture.md#q4什麼時候應該考慮-p2p-而不是-client-server"
+    ],
+    "tags": [
+      "auto"
+    ],
+    "metadata": {
+      "kind": "generated"
+    }
+  },
+  {
+    "seed_key": "auto.ad2cf1c309",
+    "name": "QR Code 更新後舊資料會怎麼取捨",
+    "query": "如果 QR code 的 destination 更新了，但舊 destination 會短暫還存在，這種情況應該偏向 AP 還是 CP？為什麼？",
+    "expected_decision": "can_answer",
+    "expected_source_ids": [
+      "1-基本觀念-03-CAP Theorem.md#qr-code-generator"
+    ],
+    "tags": [
+      "auto"
+    ],
+    "metadata": {
+      "kind": "generated"
+    }
+  },
+  {
+    "seed_key": "auto.2161e348c4",
+    "name": "哪些路徑偏 CP、哪些路徑偏 AP",
+    "query": "面試時如果被問到 CAP，怎麼區分哪些 path 要偏 CP、哪些 path 可以偏 AP？請各舉幾種例子。",
+    "expected_decision": "can_answer",
+    "expected_source_ids": [
+      "1-基本觀念-03-CAP Theorem.md#面試中怎麼說"
+    ],
+    "tags": [
+      "auto"
+    ],
+    "metadata": {
+      "kind": "generated"
+    }
+  },
+  {
+    "seed_key": "auto.fb363755ed",
+    "name": "垂直擴展是什麼",
+    "query": "什麼是垂直擴展（Vertical Scaling）？它通常怎麼做，優點和缺點各是什麼？",
+    "expected_decision": "can_answer",
+    "expected_source_ids": [
+      "1-基本觀念-04-Scalability.md#垂直擴展vertical-scaling"
+    ],
+    "tags": [
+      "auto"
+    ],
+    "metadata": {
+      "kind": "generated"
+    }
+  },
+  {
+    "seed_key": "auto.a8e8e4229f",
+    "name": "API 設計的思考順序是什麼",
+    "query": "在做 API design 的時候，應該先決定 REST、GraphQL 還是 RPC 嗎？正確的思考順序是什麼？",
+    "expected_decision": "can_answer",
+    "expected_source_ids": [
+      "1-基本觀念-05-API Design.md#api-design-api-design"
+    ],
+    "tags": [
+      "auto"
+    ],
+    "metadata": {
+      "kind": "generated"
+    }
+  },
+  {
+    "seed_key": "auto.aa2f126bb3",
+    "name": "排程任務外部與內部適合用什麼 API",
+    "query": "如果我要把排程任務提供給前端操作，外部介面和內部 scheduler、notification service、worker 之間各適合用什麼方式？可以簡單說明原因嗎？",
+    "expected_decision": "can_answer",
+    "expected_source_ids": [
+      "1-基本觀念-05-API Design.md#chatgpt-tasks"
+    ],
+    "tags": [
+      "auto"
+    ],
+    "metadata": {
+      "kind": "generated"
+    }
+  },
+  {
+    "seed_key": "auto.1b3706bdee",
+    "name": "Redis cache 擴容時會發生什麼事？",
+    "query": "如果 Redis cache 用 `hash(cache_key) % N` 來做 routing，當 cache cluster 擴容時會有什麼問題？",
+    "expected_decision": "can_answer",
+    "expected_source_ids": [
+      "1-基本觀念-06-Consistent Hashing.md#redis-cache-sharding",
+      "1-基本觀念-06-Consistent Hashing.md#q1hashkey-n-的主要問題是什麼"
+    ],
+    "tags": [
+      "auto"
+    ],
+    "metadata": {
+      "kind": "generated"
+    }
+  },
+  {
+    "seed_key": "auto.00dfed7bd5",
+    "name": "consistent hashing 對素材快取的好處",
+    "query": "在 BuildMoat 的課程素材快取中，為什麼要用 consistent hashing 來分配 asset key？",
+    "expected_decision": "can_answer",
+    "expected_source_ids": [
+      "1-基本觀念-06-Consistent Hashing.md#buildmoat-課程素材快取",
+      "1-基本觀念-06-Consistent Hashing.md#redis-cache-sharding"
+    ],
+    "tags": [
+      "auto"
+    ],
+    "metadata": {
+      "kind": "generated"
+    }
+  },
+  {
+    "seed_key": "auto.e934e688d2",
+    "name": "查詢形狀與索引類型",
+    "query": "如果我的查詢是依 `token` 做等值查詢，但另一個需求是依時間範圍查詢，應該優先考慮哪種索引類型？",
+    "expected_decision": "can_answer",
+    "expected_source_ids": [
+      "1-基本觀念-07-Database Indexing.md#indexing-decision-framework"
+    ],
+    "tags": [
+      "auto"
+    ],
+    "metadata": {
+      "kind": "generated"
+    }
+  },
+  {
+    "seed_key": "auto.3f0d3a2353",
+    "name": "QR Code redirect 沒有索引的影響",
+    "query": "在 QR Code Generator 的 redirect 查詢裡，如果 `token` 沒有索引，資料庫會發生什麼情況？建立索引後又會有什麼改善？",
+    "expected_decision": "can_answer",
+    "expected_source_ids": [
+      "1-基本觀念-07-Database Indexing.md#沒有索引會發生什麼"
+    ],
+    "tags": [
+      "auto"
+    ],
+    "metadata": {
+      "kind": "generated"
+    }
+  },
+  {
+    "seed_key": "auto.5af297978d",
+    "name": "transaction 是用來解決什麼問題",
+    "query": "什麼是 Transaction？它主要想解決哪一類資料庫問題？",
+    "expected_decision": "can_answer",
+    "expected_source_ids": [
+      "1-基本觀念-08-Database Transactions.md#什麼是-transaction"
+    ],
+    "tags": [
+      "auto"
+    ],
+    "metadata": {
+      "kind": "generated"
+    }
+  },
+  {
+    "seed_key": "auto.78db99abe2",
+    "name": "隔離性與隔離等級選擇",
+    "query": "隔離性是什麼？另外，為什麼在說明交易設計時不能只說「我用 transaction」，還要講清楚隔離等級和原因？",
+    "expected_decision": "can_answer",
+    "expected_source_ids": [
+      "1-基本觀念-08-Database Transactions.md#isolation隔離性",
+      "1-基本觀念-08-Database Transactions.md#如何說明你的隔離等級選擇"
+    ],
+    "tags": [
+      "auto"
+    ],
+    "metadata": {
+      "kind": "generated"
+    }
+  },
+  {
+    "seed_key": "auto.10655801cf",
+    "name": "Polymarket 快取適用的資料與不適合放快取的決策來源",
+    "query": "在 Polymarket 的情境下，哪些 read model 適合做 cache？另外，哪些資料/元件不應該拿 cache 來做最終決策？",
+    "expected_decision": "can_answer",
+    "expected_source_ids": [
+      "1-基本觀念-09-Caching.md#課程案例二polymarket"
+    ],
+    "tags": [
+      "auto"
+    ],
+    "metadata": {
+      "kind": "generated"
+    }
+  },
+  {
+    "seed_key": "auto.7f9c42cbe8",
+    "name": "TTL 與淘汰策略的差異",
+    "query": "我看到快取常會提 TTL，但 TTL 跟真正的淘汰策略有什麼差別？還有 TTL 設計時要思考哪些問題？",
+    "expected_decision": "can_answer",
+    "expected_source_ids": [
+      "1-基本觀念-09-Caching.md#淘汰策略和-ttl"
+    ],
+    "tags": [
+      "auto"
+    ],
+    "metadata": {
+      "kind": "generated"
+    }
+  },
+  {
+    "seed_key": "auto.912fa5cb0c",
+    "name": "Polymarket 的分片設計",
+    "query": "在 Polymarket 的案例裡，使用者訂單列表、market order book / matching、以及 market data read model 分別適合怎麼分片？",
+    "expected_decision": "can_answer",
+    "expected_source_ids": [
+      "1-基本觀念-10-Sharding.md#polymarket"
+    ],
+    "tags": [
+      "auto"
+    ],
+    "metadata": {
+      "kind": "generated"
+    }
+  },
+  {
+    "seed_key": "auto.c5086ce149",
+    "name": "Airbnb 的 inventory 與查詢模型分片",
+    "query": "在 Airbnb Booking Platform 裡，為什麼 inventory 不適合用 guest_id 分片？那 inventory、booking history 和 search index 各自比較適合怎麼拆？",
+    "expected_decision": "can_answer",
+    "expected_source_ids": [
+      "1-基本觀念-10-Sharding.md#課程案例二airbnb-booking-platform",
+      "1-基本觀念-10-Sharding.md#airbnb-booking-platform"
+    ],
+    "tags": [
+      "auto"
+    ],
+    "metadata": {
+      "kind": "generated"
+    }
+  },
+  {
+    "seed_key": "auto.5f9a797aa9",
+    "name": "Quorum 讀寫條件與常見設定",
+    "query": "在 leaderless replication 裡，quorum reads/writes 的條件是什麼？如果有 3 個 replica，`w` 和 `r` 通常要怎麼設？",
+    "expected_decision": "can_answer",
+    "expected_source_ids": [
+      "1-基本觀念-11-Replication.md#quorum-reads-和-writes",
+      "1-基本觀念-11-Replication.md#q3leaderless-架構中quorum-的條件公式是什麼n3-時w-和-r-通常設多少"
+    ],
+    "tags": [
+      "auto"
+    ],
+    "metadata": {
+      "kind": "generated"
+    }
+  },
+  {
+    "seed_key": "auto.56eafa7ea0",
+    "name": "因果順序顛倒的原因與解法",
+    "query": "為什麼在 consistent prefix reads 的情境下，觀察者可能會先看到回覆、後看到問題？這種情況可以怎麼解決？",
+    "expected_decision": "can_answer",
+    "expected_source_ids": [
+      "1-基本觀念-11-Replication.md#問題三consistent-prefix-reads因果一致性不一致"
+    ],
+    "tags": [
+      "auto"
+    ],
+    "metadata": {
+      "kind": "generated"
+    }
+  },
+  {
+    "seed_key": "auto.c46b1d78a5",
+    "name": "熱門讀取延遲變高該先想什麼",
+    "query": "如果我觀察到熱門 read path 的 P95 變高，課程裡建議先懷疑哪些問題，並且可以先採取哪些設計？",
+    "expected_decision": "can_answer",
+    "expected_source_ids": [
+      "1-基本觀念-12-Numbers to Know.md#課程版判斷表"
+    ],
+    "tags": [
+      "auto"
+    ],
+    "metadata": {
+      "kind": "generated"
+    }
+  },
+  {
+    "seed_key": "auto.88848990e9",
+    "name": "跨區延遲高時應該怎麼處理",
+    "query": "當跨 region 操作延遲太高時，課程裡說應該先懷疑什麼，並且最後才決定擴展手段時應該優先考慮哪些做法、避免哪些做法？",
+    "expected_decision": "can_answer",
+    "expected_source_ids": [
+      "1-基本觀念-12-Numbers to Know.md#課程版判斷表",
+      "1-基本觀念-12-Numbers to Know.md#最後才決定擴展手段"
+    ],
+    "tags": [
+      "auto"
+    ],
+    "metadata": {
+      "kind": "generated"
+    }
+  },
+  {
+    "seed_key": "auto.neg.892583fb2a",
+    "name": "實作細節-一致雜湊公式",
+    "query": "請問課程裡有沒有提供一致雜湊（Consistent Hashing）的完整 Python 實作範例，包含虛擬節點的數量設定公式與程式碼？",
+    "expected_decision": "cannot_confirm",
+    "expected_source_ids": [],
+    "tags": [
+      "auto",
+      "negative"
+    ],
+    "metadata": {
+      "kind": "generated_negative"
+    }
+  },
+  {
+    "seed_key": "auto.neg.83e82086f8",
+    "name": "資料庫實務-特定引擎參數",
+    "query": "課程有沒有說明 PostgreSQL 應該把 shared_buffers、work_mem、effective_cache_size 設成多少，才算適合高流量系統？",
+    "expected_decision": "cannot_confirm",
+    "expected_source_ids": [],
+    "tags": [
+      "auto",
+      "negative"
+    ],
+    "metadata": {
+      "kind": "generated_negative"
+    }
+  },
+  {
+    "seed_key": "auto.neg.5797b76093",
+    "name": "快取實作-Redis 資料結構選擇",
+    "query": "如果要做排行榜功能，課程是否明確建議一定要用 Redis Sorted Set，而不是其他資料結構？可以直接給出推薦原因嗎？",
+    "expected_decision": "cannot_confirm",
+    "expected_source_ids": [],
+    "tags": [
+      "auto",
+      "negative"
+    ],
+    "metadata": {
+      "kind": "generated_negative"
+    }
+  },
+  {
+    "seed_key": "auto.neg.38ebfd39b7",
+    "name": "可靠性指標-SLI SLO 數值",
+    "query": "課程裡有沒有定義一個電商下單系統的可用性 SLO 標準，例如月可用率要達到 99.99% 或 99.95% 才算合格？",
+    "expected_decision": "cannot_confirm",
+    "expected_source_ids": [],
+    "tags": [
+      "auto",
+      "negative"
+    ],
+    "metadata": {
+      "kind": "generated_negative"
+    }
+  }
+]

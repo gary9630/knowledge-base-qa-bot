@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -11,13 +12,24 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.background_jobs.service import (
+    TASK_CONCEPT_EXTRACTION,
     TASK_INDEX_REBUILD,
     BackgroundJobService,
 )
 from app.background_jobs.worker import BackgroundWorker
 from app.core.config import Settings
+from app.graph.extraction import ChatCaller
 from app.main import create_app
-from app.models.tables import AuditEvent, BackgroundJob, Document
+from app.models.tables import (
+    AuditEvent,
+    BackgroundJob,
+    Concept,
+    ConceptExtractionState,
+    ConceptSource,
+    Document,
+    Section,
+)
+from app.provider_telemetry import ProviderCallRecord, ProviderUsage
 from app.retrieval.embeddings import FakeEmbeddingProvider
 
 
@@ -355,6 +367,204 @@ def test_admin_jobs_api_requires_admin_key(
     assert authenticated.json() == {"jobs": []}
 
 
+def test_index_rebuild_chains_concept_extraction_when_enabled(
+    db_session: Session,
+    tmp_path: Path,
+) -> None:
+    app = _jobs_app(db_session, tmp_path, graph_extraction_enabled=True)
+    service = BackgroundJobService(db_session)
+    job = service.enqueue(task_type=TASK_INDEX_REBUILD, payload={"reason": "manual"})
+    db_session.commit()
+    worker = _worker(app, db_session)
+
+    processed = worker.run_once()
+    db_session.expire_all()
+
+    assert processed is not None
+    assert processed.id == job.id
+    assert processed.status == "succeeded"
+
+    concept_extraction_jobs = db_session.scalars(
+        select(BackgroundJob).where(BackgroundJob.task_type == TASK_CONCEPT_EXTRACTION)
+    ).all()
+    assert len(concept_extraction_jobs) == 1
+    assert concept_extraction_jobs[0].status == "queued"
+    assert concept_extraction_jobs[0].payload_json["reason"] == TASK_INDEX_REBUILD
+
+
+def test_index_rebuild_does_not_chain_concept_extraction_when_disabled(
+    db_session: Session,
+    tmp_path: Path,
+) -> None:
+    app = _jobs_app(db_session, tmp_path, graph_extraction_enabled=False)
+    service = BackgroundJobService(db_session)
+    service.enqueue(task_type=TASK_INDEX_REBUILD, payload={"reason": "manual"})
+    db_session.commit()
+    worker = _worker(app, db_session)
+
+    processed = worker.run_once()
+    db_session.expire_all()
+
+    assert processed is not None
+    assert processed.status == "succeeded"
+
+    concept_extraction_jobs = db_session.scalars(
+        select(BackgroundJob).where(BackgroundJob.task_type == TASK_CONCEPT_EXTRACTION)
+    ).all()
+    assert concept_extraction_jobs == []
+
+
+def test_concept_extraction_without_openai_caller_skips_and_leaves_graph_untouched(
+    db_session: Session,
+    tmp_path: Path,
+) -> None:
+    # Default providers (answer_provider="fake") must NOT run the extraction
+    # pipeline: an empty extraction would wipe concept_sources and seal the
+    # extraction state at the current hash, hiding the pending document from
+    # a later real extraction.
+    app = _jobs_app(db_session, tmp_path)
+    document = _seed_graph_document(db_session, filename="pending.md", content_hash="hash-v2")
+    section = db_session.scalars(
+        select(Section).where(Section.document_id == document.id)
+    ).one()
+    concept = Concept(name="Caching", slug="caching", summary="既有概念。")
+    db_session.add(concept)
+    db_session.flush()
+    db_session.add(ConceptSource(concept_id=concept.id, section_id=section.id))
+    db_session.add(ConceptExtractionState(document_id=document.id, content_hash="hash-v1"))
+    service = BackgroundJobService(db_session)
+    job = service.enqueue(task_type=TASK_CONCEPT_EXTRACTION, payload={"reason": "manual"})
+    db_session.commit()
+
+    processed = _worker(app, db_session).run_once()
+    db_session.expire_all()
+
+    assert processed is not None
+    assert processed.id == job.id
+    assert processed.status == "succeeded"
+    final_state = db_session.get(BackgroundJob, job.id)
+    assert final_state is not None
+    assert final_state.result_json == {
+        "skipped": True,
+        "reason": "graph extraction requires answer_provider=openai",
+    }
+
+    sources = db_session.scalars(select(ConceptSource)).all()
+    assert len(sources) == 1
+    assert sources[0].concept_id == concept.id
+    assert sources[0].section_id == section.id
+    extraction_state = db_session.scalar(select(ConceptExtractionState))
+    assert extraction_state is not None
+    assert extraction_state.content_hash == "hash-v1"  # still pending, not sealed
+    assert db_session.scalar(select(Concept).where(Concept.slug == "caching")) is not None
+
+
+def test_concept_extraction_job_runs_pipeline_with_injected_caller(
+    db_session: Session,
+    tmp_path: Path,
+) -> None:
+    app = _jobs_app(db_session, tmp_path)
+    document = _seed_graph_document(db_session, filename="pending.md", content_hash="hash-v1")
+    service = BackgroundJobService(db_session)
+    job = service.enqueue(task_type=TASK_CONCEPT_EXTRACTION, payload={"reason": "manual"})
+    db_session.commit()
+    caller = _RecordingGraphCaller(
+        {
+            # no merge response: with no pre-existing concepts the merge call is skipped
+            "extract a concept graph": json.dumps(
+                {
+                    "concepts": [
+                        {
+                            "name": "Caching",
+                            "summary": "快取摘要。",
+                            "source_ids": [f"{document.filename}#s1"],
+                        }
+                    ],
+                    "edges": [],
+                }
+            ),
+            "assign the given course concepts": json.dumps(
+                {"clusters": [{"name": "快取", "concepts": ["Caching"]}]}
+            ),
+            "Propose edges": json.dumps({"edges": []}),
+        }
+    )
+
+    processed = _worker(app, db_session, graph_caller=caller).run_once()
+    db_session.expire_all()
+
+    assert processed is not None
+    assert processed.id == job.id
+    assert processed.status == "succeeded"
+
+    concepts = db_session.scalars(select(Concept)).all()
+    assert [concept.name for concept in concepts] == ["Caching"]
+
+    final_state = db_session.get(BackgroundJob, job.id)
+    assert final_state is not None
+    result = final_state.result_json
+    assert result["documents_extracted"] == 1
+    # extract -> cluster -> cluster-edges, telemetry surfaced from call_records
+    assert result["provider_calls"] == 3
+    assert result["provider_tokens"] == 30
+    assert result["provider_failures"] == 0
+
+
+class _RecordingGraphCaller:
+    """Scripted ChatCaller keyed by system-prompt marker, exposing call_records."""
+
+    def __init__(self, responses: dict[str, str]) -> None:
+        self._responses = responses
+        self.call_records: list[ProviderCallRecord] = []
+
+    def complete(self, *, system: str, user: str) -> str:  # noqa: ARG002
+        self.call_records.append(
+            ProviderCallRecord(
+                provider="stub",
+                operation="graph_extraction",
+                model="stub-model",
+                status="succeeded",
+                usage=ProviderUsage(total_tokens=10),
+                usage_complete=True,
+            )
+        )
+        for marker, response in self._responses.items():
+            if marker in system:
+                return response
+        raise AssertionError(f"unexpected graph extraction call: {system[:80]!r}")
+
+
+def _seed_graph_document(
+    db_session: Session,
+    *,
+    filename: str,
+    content_hash: str,
+) -> Document:
+    document = Document(
+        filename=filename,
+        canonical_path=f"/docs/{filename}",
+        source_type="markdown",
+        content_hash=content_hash,
+    )
+    db_session.add(document)
+    db_session.flush()
+    db_session.add(
+        Section(
+            document_id=document.id,
+            source_id=f"{filename}#s1",
+            heading="s1",
+            heading_slug="s1",
+            level=2,
+            body_md="s1 的內容。",
+            token_count=8,
+            content_hash=f"{filename}-s1",
+            position=0,
+        )
+    )
+    db_session.flush()
+    return document
+
+
 def _jobs_app(
     db_session: Session,
     tmp_path: Path,
@@ -362,6 +572,7 @@ def _jobs_app(
     retry_base_delay_seconds: int = 0,
     stale_after_seconds: int = 3600,
     worker_heartbeat_stale_after_seconds: int = 120,
+    graph_extraction_enabled: bool = True,
 ) -> FastAPI:
     docs_dir = tmp_path / "docs"
     raw_dir = tmp_path / "raw"
@@ -381,16 +592,23 @@ def _jobs_app(
         background_job_retry_base_delay_seconds=retry_base_delay_seconds,
         background_job_stale_after_seconds=stale_after_seconds,
         worker_heartbeat_stale_after_seconds=worker_heartbeat_stale_after_seconds,
+        graph_extraction_enabled=graph_extraction_enabled,
     )
     return create_app(settings=settings, session_factory=_session_factory(db_session))
 
 
-def _worker(app: FastAPI, db_session: Session) -> BackgroundWorker:
+def _worker(
+    app: FastAPI,
+    db_session: Session,
+    *,
+    graph_caller: ChatCaller | None = None,
+) -> BackgroundWorker:
     return BackgroundWorker(
         session_factory=_session_factory(db_session),
         settings=app.state.settings,
         embedding_provider=FakeEmbeddingProvider(),
         answer_provider=app.state.answer_provider,
+        graph_caller=graph_caller,
         worker_id="test-worker",
     )
 

@@ -170,6 +170,7 @@ def reindex_document(
                 docs_dir=Path(settings.docs_dir),
                 kb_dir=Path(settings.kb_dir),
                 embedding_provider=get_embedding_provider(request),
+                token_encoding=settings.token_encoding,
             ).reindex_document(document_id)
         except DocumentNotFoundError as error:
             raise HTTPException(status_code=404, detail=str(error)) from error

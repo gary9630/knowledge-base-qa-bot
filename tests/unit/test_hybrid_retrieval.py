@@ -5,7 +5,7 @@ from uuid import UUID, uuid4
 
 import pytest
 
-from app.retrieval.hybrid import HybridRetriever, merge_results
+from app.retrieval.hybrid import RRF_K, HybridRetriever, fuse_results
 from app.retrieval.models import RetrievedCandidate
 
 
@@ -19,48 +19,73 @@ class StubRetriever:
         return self.candidates[:limit]
 
 
-def test_merge_results_deduplicates_by_section_and_prefers_highest_score() -> None:
-    section_id = uuid4()
-    lower_score = _candidate(section_id=section_id, score=0.24, strategy="lexical")
-    higher_score = _candidate(section_id=section_id, score=0.82, strategy="vector")
-    other_section = _candidate(score=0.53, strategy="lexical", heading="Other")
-
-    merged = merge_results([lower_score, higher_score, other_section])
-
-    assert [candidate.section_id for candidate in merged] == [
-        section_id,
-        other_section.section_id,
+def test_fuse_results_section_in_both_strategies_outranks_single_strategy() -> None:
+    shared_id = uuid4()
+    lexical = [
+        _candidate(section_id=shared_id, source_id="doc.md#both", score=0.4),
+        _candidate(source_id="doc.md#lex-only", score=0.9),
     ]
-    assert merged[0].score == pytest.approx(0.82)
-    assert merged[0].strategy == "hybrid"
-    assert merged[0].debug_scores == {
-        "lexical_score": pytest.approx(0.24),
-        "vector_score": pytest.approx(0.82),
-    }
+    vector = [_candidate(section_id=shared_id, source_id="doc.md#both", score=0.3,
+                         strategy="vector")]
+
+    fused = fuse_results({"lexical": lexical, "vector": vector})
+
+    assert fused[0].source_id == "doc.md#both"
+    assert fused[0].strategy == "hybrid"
+    # rank 1 in both strategies -> normalized RRF == 1.0
+    assert fused[0].score == 1.0
+    # lexical-only rank-2 candidate: (1/62) / (2/61) normalized
+    assert fused[1].source_id == "doc.md#lex-only"
+    assert fused[1].score == pytest.approx((1 / 62) / (2 / 61))
 
 
-def test_merge_results_applies_source_priority_as_small_ranking_boost() -> None:
-    transcript = _candidate(
-        score=0.60,
-        strategy="lexical",
-        heading="Transcript",
-        source_type="transcript",
-        source_priority=1,
+def test_fuse_results_single_strategy_rank_one_scores_half() -> None:
+    fused = fuse_results({"lexical": [_candidate(source_id="doc.md#only", score=0.8)]})
+
+    assert len(fused) == 1
+    assert fused[0].score == 0.5
+    assert fused[0].strategy == "lexical"
+    assert fused[0].debug_scores["lexical_fusion_rank"] == 1.0
+
+
+def test_fuse_results_applies_source_priority_boost_after_normalization() -> None:
+    plain = fuse_results({"lexical": [_candidate(source_id="doc.md#plain", score=0.8)]})
+    boosted = fuse_results(
+        {"lexical": [_candidate(source_id="doc.md#policy", score=0.8, source_priority=5)]}
     )
-    announcement = _candidate(
-        score=0.60,
+
+    assert boosted[0].score == min(1.0, plain[0].score + 0.05)
+    assert boosted[0].debug_scores["source_priority_boost"] == 0.05
+
+
+def test_fuse_results_prefers_lexical_body_on_rank_tie() -> None:
+    shared_id = uuid4()
+    lexical_candidate = RetrievedCandidate(
+        section_id=shared_id,
+        source_id="doc.md#both",
+        filename="doc.md",
+        heading="Heading",
+        body_md="FULL SECTION BODY",
+        score=0.4,
         strategy="lexical",
-        heading="Announcement",
-        source_type="announcement",
-        source_priority=4,
+    )
+    vector_candidate = RetrievedCandidate(
+        section_id=shared_id,
+        source_id="doc.md#both",
+        filename="doc.md",
+        heading="Heading",
+        body_md="chunk text only",
+        score=0.9,
+        strategy="vector",
     )
 
-    merged = merge_results([transcript, announcement])
+    fused = fuse_results({"lexical": [lexical_candidate], "vector": [vector_candidate]})
 
-    assert [candidate.heading for candidate in merged] == ["Announcement", "Transcript"]
-    assert merged[0].score == pytest.approx(0.64)
-    assert merged[0].debug_scores["source_priority"] == 4.0
-    assert merged[0].debug_scores["source_priority_boost"] == pytest.approx(0.04)
+    assert fused[0].body_md == "FULL SECTION BODY"
+
+
+def test_rrf_constant_is_sixty() -> None:
+    assert RRF_K == 60
 
 
 def test_hybrid_search_returns_cannot_confirm_below_threshold_without_debug() -> None:
@@ -111,10 +136,10 @@ def test_hybrid_search_reports_retrieval_diagnostics() -> None:
     assert result.diagnostics.requested_limit == 3
     assert result.diagnostics.score_threshold == pytest.approx(0.20)
     assert result.diagnostics.raw_candidate_count == 2
-    assert result.diagnostics.merged_candidate_count == 2
+    assert result.diagnostics.merged_candidate_count == 1  # only lexical passed pre-fusion floor
     assert result.diagnostics.accepted_count == 1
     assert result.diagnostics.rejected_count == 1
-    assert result.diagnostics.top_score == pytest.approx(0.72)
+    assert result.diagnostics.top_score == pytest.approx(0.5)  # single-strategy rank-1 RRF = 0.5
     assert result.diagnostics.selected_source_ids == (accepted_candidate.source_id,)
     assert result.diagnostics.rejected_source_ids == (rejected_candidate.source_id,)
     assert result.diagnostics.strategy_counts == {"lexical": 1, "vector": 1}
@@ -181,11 +206,106 @@ def test_hybrid_search_rejects_unknown_strategy() -> None:
         retriever.search("query", strategy=cast(Any, "semantic"))
 
 
+def test_fuse_results_vector_representative_when_vector_has_better_rank() -> None:
+    """When vector has the strictly better (lower) rank, the vector candidate is chosen."""
+    shared_id = uuid4()
+    other_lexical = RetrievedCandidate(
+        section_id=uuid4(),
+        source_id="doc.md#other",
+        filename="doc.md",
+        heading="Other",
+        body_md="other lexical body",
+        score=0.5,
+        strategy="lexical",
+    )
+    lexical_candidate = RetrievedCandidate(
+        section_id=shared_id,
+        source_id="doc.md#both",
+        filename="doc.md",
+        heading="Heading",
+        body_md="lexical body",
+        score=0.4,
+        strategy="lexical",
+    )
+    vector_candidate = RetrievedCandidate(
+        section_id=shared_id,
+        source_id="doc.md#both",
+        filename="doc.md",
+        heading="Heading",
+        body_md="VECTOR BODY",
+        score=0.9,
+        strategy="vector",
+    )
+    # lexical list: [other, lexical_candidate] → shared_id is lexical rank 2
+    # vector list:  [vector_candidate]         → shared_id is vector rank 1
+    # → vector wins as representative (strictly better rank)
+    fused = fuse_results(
+        {"lexical": [other_lexical, lexical_candidate], "vector": [vector_candidate]}
+    )
+
+    assert fused[0].body_md == "VECTOR BODY"
+
+
+def test_hybrid_search_rejected_deduplication() -> None:
+    """A section below threshold in both strategies appears only once in rejected.
+
+    A section above threshold in one strategy and below in the other appears only
+    in accepted, not in rejected.
+    """
+    shared_id = uuid4()
+    # passes lexical floor, fails vector floor
+    above_lexical = _candidate(
+        section_id=shared_id,
+        source_id="doc.md#above-lex",
+        score=0.50,
+        strategy="lexical",
+    )
+    below_vector = _candidate(
+        section_id=shared_id,
+        source_id="doc.md#above-lex",
+        score=0.05,
+        strategy="vector",
+    )
+    # fails both floors → appears in both raw strategy lists
+    below_both = _candidate(
+        source_id="doc.md#below-both",
+        score=0.05,
+        strategy="lexical",
+    )
+    below_both_v = _candidate(
+        section_id=below_both.section_id,
+        source_id="doc.md#below-both",
+        score=0.04,
+        strategy="vector",
+    )
+
+    retriever = HybridRetriever(
+        lexical_retriever=StubRetriever([above_lexical, below_both]),
+        vector_retriever=StubRetriever([below_vector, below_both_v]),
+        score_threshold=0.20,
+    )
+    result = retriever.search("query", strategy="hybrid", limit=5, debug=True)
+
+    accepted_ids = {c.section_id for c in result.candidates}
+    rejected_ids = [c.section_id for c in result.rejected_candidates]
+
+    # section that passed one floor is accepted, not rejected
+    assert shared_id in accepted_ids
+    assert shared_id not in rejected_ids
+
+    # section below both floors appears exactly once in rejected
+    assert rejected_ids.count(below_both.section_id) == 1
+
+    # diagnostics agree
+    assert result.diagnostics.rejected_count == 1
+
+
 def _candidate(
     *,
     section_id: UUID | None = None,
-    score: float,
-    strategy: str,
+    source_id: str | None = None,
+    score: float = 0.5,
+    strategy: str = "lexical",
     filename: str = "faq.md",
     heading: str = "Course Site",
     body_md: str | None = None,
@@ -195,7 +315,7 @@ def _candidate(
     candidate_section_id = section_id or uuid4()
     return RetrievedCandidate(
         section_id=candidate_section_id,
-        source_id=f"faq.md#{heading.lower().replace(' ', '-')}",
+        source_id=source_id or f"faq.md#{heading.lower().replace(' ', '-')}",
         filename=filename,
         heading=heading,
         body_md=body_md or f"## {heading}\n\nBody",

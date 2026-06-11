@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Iterable, Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import replace
 from typing import Protocol
 
@@ -17,6 +17,9 @@ from app.retrieval.models import (
     expand_query_terms,
 )
 from app.retrieval.vector import VectorRetriever
+
+RRF_K = 60
+_RRF_MAX = 2.0 / (RRF_K + 1)  # best case: rank 1 in both of the 2 fused strategies
 
 
 class Retriever(Protocol):
@@ -70,17 +73,42 @@ class HybridRetriever:
             )
 
         normalized_strategy: RetrievalStrategy = "lexical" if strategy == "markdown" else strategy
-        candidates: list[RetrievedCandidate] = []
+        strategy_candidates: dict[str, list[RetrievedCandidate]] = {}
         if normalized_strategy in ("lexical", "hybrid"):
-            candidates.extend(self.lexical_retriever.search(query, limit))
+            strategy_candidates["lexical"] = self.lexical_retriever.search(query, limit)
         if normalized_strategy in ("vector", "hybrid"):
-            candidates.extend(self.vector_retriever.search(query, limit))
+            strategy_candidates["vector"] = self.vector_retriever.search(query, limit)
 
-        merged = rerank_results_for_query(query, merge_results(candidates))
-        accepted = [candidate for candidate in merged if candidate.score >= self.score_threshold][
-            :limit
+        raw_candidates = [
+            candidate
+            for results in strategy_candidates.values()
+            for candidate in results
         ]
-        rejected = [candidate for candidate in merged if candidate.score < self.score_threshold]
+        floored = {
+            strategy_name: [c for c in results if c.score >= self.score_threshold]
+            for strategy_name, results in strategy_candidates.items()
+        }
+        _rejected_pre = [
+            candidate
+            for results in strategy_candidates.values()
+            for candidate in results
+            if candidate.score < self.score_threshold
+        ]
+        merged = rerank_results_for_query(query, fuse_results(floored))
+        accepted = merged[:limit]
+        # Dedupe rejected by section_id (keep highest score) and remove any
+        # section that passed the floor in another strategy (present in accepted).
+        # Note: rejected entries carry raw per-strategy scores (pre-fusion scale),
+        # unlike accepted candidates whose scores are normalized RRF values.
+        _accepted_ids = {c.section_id for c in accepted}
+        _rejected_by_id: dict[object, RetrievedCandidate] = {}
+        for c in _rejected_pre:
+            if c.section_id in _accepted_ids:
+                continue
+            existing = _rejected_by_id.get(c.section_id)
+            if existing is None or c.score > existing.score:
+                _rejected_by_id[c.section_id] = c
+        rejected = list(_rejected_by_id.values())
         if strategy == "markdown":
             accepted = [replace(candidate, strategy="markdown") for candidate in accepted]
             rejected = [replace(candidate, strategy="markdown") for candidate in rejected]
@@ -89,7 +117,7 @@ class HybridRetriever:
             strategy=strategy,
             requested_limit=limit,
             score_threshold=self.score_threshold,
-            raw_candidates=candidates,
+            raw_candidates=raw_candidates,
             merged_candidates=merged,
             accepted_candidates=accepted,
             rejected_candidates=rejected,
@@ -103,26 +131,46 @@ class HybridRetriever:
         )
 
 
-def merge_results(candidates: Iterable[RetrievedCandidate]) -> list[RetrievedCandidate]:
-    grouped: dict[str, list[RetrievedCandidate]] = {}
-    for candidate in candidates:
-        grouped.setdefault(str(candidate.section_id), []).append(candidate)
+def fuse_results(
+    strategy_results: Mapping[str, Sequence[RetrievedCandidate]],
+) -> list[RetrievedCandidate]:
+    """Reciprocal Rank Fusion across per-strategy ranked lists, normalized to [0, 1].
 
-    merged: list[RetrievedCandidate] = []
-    for group in grouped.values():
-        best = max(group, key=lambda candidate: candidate.score)
-        strategy_scores = _strategy_scores(group)
-        debug_scores = _merged_debug_scores(group, strategy_scores)
-        strategy = "hybrid" if len(strategy_scores) > 1 else best.strategy
-        base_score = max(strategy_scores.values(), default=best.score)
+    Each value in *strategy_results* must be ordered best-first; ranks are derived
+    from list position (index 0 → rank 1).
+    """
+    rrf_scores: dict[str, float] = {}
+    ranks: dict[str, dict[str, int]] = {}
+    candidates_by_strategy: dict[str, dict[str, RetrievedCandidate]] = {}
+
+    for strategy, results in strategy_results.items():
+        for rank, candidate in enumerate(results, start=1):
+            key = str(candidate.section_id)
+            rrf_scores[key] = rrf_scores.get(key, 0.0) + 1.0 / (RRF_K + rank)
+            ranks.setdefault(key, {})[strategy] = rank
+            candidates_by_strategy.setdefault(key, {})[strategy] = candidate
+
+    fused: list[RetrievedCandidate] = []
+    for key, rrf_score in rrf_scores.items():
+        section_ranks = ranks[key]
+        section_candidates = candidates_by_strategy[key]
+        representative = _representative_candidate(section_ranks, section_candidates)
+        normalized = min(1.0, rrf_score / _RRF_MAX)
+        debug_scores = dict(representative.debug_scores)
+        for strat, candidate in section_candidates.items():
+            debug_scores[f"{strat}_score"] = candidate.score
+            debug_scores[f"{strat}_fusion_rank"] = float(section_ranks[strat])
+        debug_scores["rrf_score"] = rrf_score
         score, priority_debug_scores = _score_with_source_priority(
-            base_score,
-            best.source_priority,
+            normalized,
+            representative.source_priority,
         )
         debug_scores.update(priority_debug_scores)
-        merged.append(
+        debug_scores.setdefault("base_score", normalized)
+        strategy = "hybrid" if len(section_candidates) > 1 else representative.strategy
+        fused.append(
             replace(
-                best,
+                representative,
                 score=score,
                 strategy=strategy,
                 debug_scores=debug_scores,
@@ -130,9 +178,21 @@ def merge_results(candidates: Iterable[RetrievedCandidate]) -> list[RetrievedCan
         )
 
     return sorted(
-        merged,
+        fused,
         key=lambda candidate: (-candidate.score, candidate.filename, candidate.source_id),
     )
+
+
+def _representative_candidate(
+    section_ranks: dict[str, int],
+    section_candidates: dict[str, RetrievedCandidate],
+) -> RetrievedCandidate:
+    # Best (lowest) rank wins; on ties prefer lexical, whose body_md is the full section.
+    def sort_key(strat: str) -> tuple[int, int]:
+        return (section_ranks[strat], 0 if strat == "lexical" else 1)
+
+    best_strategy = min(section_candidates, key=sort_key)
+    return section_candidates[best_strategy]
 
 
 def rerank_results_for_query(
@@ -199,25 +259,6 @@ def _normalized_candidate_text(candidate: RetrievedCandidate) -> str:
 
 def _normalize_text(value: str) -> str:
     return value.casefold()
-
-
-def _strategy_scores(candidates: list[RetrievedCandidate]) -> dict[str, float]:
-    scores: dict[str, float] = {}
-    for candidate in candidates:
-        key = f"{candidate.strategy}_score"
-        scores[key] = max(scores.get(key, 0.0), candidate.score)
-    return scores
-
-
-def _merged_debug_scores(
-    candidates: list[RetrievedCandidate],
-    strategy_scores: dict[str, float],
-) -> dict[str, float]:
-    debug_scores = dict(strategy_scores)
-    for candidate in candidates:
-        for key, value in candidate.debug_scores.items():
-            debug_scores[key] = max(debug_scores.get(key, value), value)
-    return debug_scores
 
 
 def _score_with_source_priority(

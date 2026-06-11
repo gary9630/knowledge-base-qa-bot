@@ -1,61 +1,63 @@
 <!doctype html>
-<html lang="en">
+<html lang="zh-Hant">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Knowledge Base Workbench</title>
     <link rel="icon" href="data:," />
+    <script>
+      (function () {
+        var saved = localStorage.getItem("kb-theme");
+        if (saved === "light" || saved === "dark") {
+          document.documentElement.setAttribute("data-theme", saved);
+        }
+      })();
+    </script>
     <link rel="stylesheet" href="{{ url_for('static', path='app.css') }}" />
+    <script src="{{ url_for('static', path='vendor/cytoscape.min.js') }}" defer></script>
+    <script src="{{ url_for('static', path='vendor/dagre.min.js') }}" defer></script>
+    <script src="{{ url_for('static', path='vendor/cytoscape-dagre.js') }}" defer></script>
     <script src="{{ url_for('static', path='app.js') }}" defer></script>
   </head>
   <body>
     <section class="login-shell" id="platform-login" aria-labelledby="platform-login-heading" hidden>
-      <div class="landing-copy">
-        <p class="landing-kicker">Course Assistant</p>
-        <h1 id="platform-login-heading">Ask the course materials before you ask staff.</h1>
-        <p class="landing-lede">
-          Search announcements, lessons, policies, and source markdown with answers that
-          cite the exact course references used.
-        </p>
-        <div class="landing-trust-strip" id="landing-trust-strip" aria-label="Course assistant capabilities">
-          <span>Grounded answers</span>
-          <span>Source preview</span>
-          <span>Course-only login</span>
-        </div>
-      </div>
-
-      <div class="landing-action">
-        <form class="login-form" id="platform-login-form">
-          <div>
-            <h2>Student sign in</h2>
-            <p id="platform-auth-status">Sign in with the course account to continue.</p>
+      <div class="landing-card">
+        <header class="landing-header">
+          <p class="landing-kicker">課程助理</p>
+          <h1 id="platform-login-heading">在詢問助教之前，先問課程助理。</h1>
+          <p class="landing-lede">
+            搜尋課程公告、講義、政策與原始文件，回答皆附上所使用的確切引用來源。
+          </p>
+          <div class="landing-trust-strip" id="landing-trust-strip" aria-label="課程助理功能說明">
+            <span>根據來源回答</span>
+            <span>原始段落預覽</span>
+            <span>僅限課程帳號登入</span>
           </div>
-          <label for="platform-username">Username</label>
-          <input id="platform-username" name="username" type="text" autocomplete="username" />
-          <label for="platform-password">Password</label>
-          <input id="platform-password" name="password" type="password" autocomplete="current-password" />
-          <button class="primary-button" type="submit">Sign In</button>
-        </form>
+        </header>
 
-        <aside class="landing-preview" id="landing-preview" aria-label="Course assistant preview">
-          <div class="preview-question">
-            <span>You</span>
-            <p>課程網站在哪裡？</p>
-          </div>
-          <div class="preview-answer">
-            <span>Course Assistant</span>
-            <p>課程網站會從已索引的課程來源確認，並附上對應引用。</p>
-            <div class="preview-citations" aria-label="Example citations">
-              <span>[1] 常見問題 FAQ</span>
-              <span>[2] 課程公告</span>
+        <div class="landing-body">
+          <form class="login-form" id="platform-login-form">
+            <div>
+              <h2>學生登入</h2>
+              <p id="platform-auth-status">請以課程帳號登入以繼續使用。</p>
             </div>
-          </div>
-          <div class="preview-source">
-            <strong>Source Markdown Preview</strong>
-            <pre># 常見問題 FAQ
-課程網站與公告會整理在課程入口頁。</pre>
-          </div>
-        </aside>
+            <label for="platform-username">帳號</label>
+            <input id="platform-username" name="username" type="text" autocomplete="username" />
+            <label for="platform-password">密碼</label>
+            <input id="platform-password" name="password" type="password" autocomplete="current-password" />
+            <button class="primary-button" type="submit">登入</button>
+          </form>
+
+          <aside class="landing-preview" id="landing-preview" aria-label="課程助理示範">
+            <div class="message assistant">
+              <span class="message-label">課程助理</span>
+              <div class="answer-card">
+                <div class="trust-badge is-ok">✓ 依據 2 個課程段落回答</div>
+                <p>課程網站與公告會整理在課程入口頁，請見以下引用來源。<button class="citation-pill" type="button" aria-label="引用來源 1">1</button><button class="citation-pill" type="button" aria-label="引用來源 2">2</button></p>
+              </div>
+            </div>
+          </aside>
+        </div>
       </div>
     </section>
     <div class="workbench" data-app>
@@ -66,6 +68,8 @@
             <h1>Knowledge Workbench</h1>
             <p id="index-status-pill">Index status unavailable</p>
           </div>
+          <button class="theme-toggle" id="theme-toggle" type="button"
+                  aria-label="切換深淺色主題" title="主題：自動">☀︎</button>
           <button class="text-button" type="button" id="platform-logout" hidden>Logout</button>
         </div>
 
@@ -76,41 +80,17 @@
             </svg>
             Chat
           </button>
-          <button class="tab" id="tab-mindmap" type="button" role="tab" aria-selected="false" aria-controls="panel-mindmap" tabindex="-1" data-tab="mindmap">
+          <button class="tab" id="tab-graph" type="button" role="tab" aria-selected="false" aria-controls="panel-graph" tabindex="-1" data-tab="graph">
             <svg aria-hidden="true" viewBox="0 0 24 24">
               <path d="M12 5v4m0 0H8m4 0h4m-4 0v5m-6 5a3 3 0 1 0 0-6 3 3 0 0 0 0 6Zm12 0a3 3 0 1 0 0-6 3 3 0 0 0 0 6ZM12 19a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z" />
             </svg>
-            Mindmap
-          </button>
-          <button class="tab" id="tab-uploads" type="button" role="tab" aria-selected="false" aria-controls="panel-uploads" tabindex="-1" data-tab="uploads" data-admin-only>
-            <svg aria-hidden="true" viewBox="0 0 24 24">
-              <path d="M12 15V4m0 0 4 4m-4-4-4 4M5 15v3a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-3" />
-            </svg>
-            Admin Uploads
-          </button>
-          <button class="tab" id="tab-ops" type="button" role="tab" aria-selected="false" aria-controls="panel-ops" tabindex="-1" data-tab="ops" data-admin-only>
-            <svg aria-hidden="true" viewBox="0 0 24 24">
-              <path d="M4 19V5m0 14h16M8 16v-5m4 5V8m4 8v-3m3-7-5 5-3-3-4 4" />
-            </svg>
-            Provider Ops
-          </button>
-          <button class="tab" id="tab-audit" type="button" role="tab" aria-selected="false" aria-controls="panel-audit" tabindex="-1" data-tab="audit" data-admin-only>
-            <svg aria-hidden="true" viewBox="0 0 24 24">
-              <path d="M6 3h12l1 4v13H5V7zm0 4h12M9 11h6M9 15h4" />
-            </svg>
-            Audit Log
+            知識圖譜
           </button>
           <button class="tab" id="tab-sources" type="button" role="tab" aria-selected="false" aria-controls="panel-sources" tabindex="-1" data-tab="sources">
             <svg aria-hidden="true" viewBox="0 0 24 24">
               <path d="M6 5h12M6 12h12M6 19h12" />
             </svg>
             Sources
-          </button>
-          <button class="tab" id="tab-evals" type="button" role="tab" aria-selected="false" aria-controls="panel-evals" tabindex="-1" data-tab="evals" data-admin-only>
-            <svg aria-hidden="true" viewBox="0 0 24 24">
-              <path d="M5 12h4l2 6 4-12 2 6h2M4 4h16v16H4z" />
-            </svg>
-            Feedback / Evals
           </button>
         </nav>
 
@@ -123,6 +103,8 @@
             <p class="muted">No sources loaded</p>
           </div>
         </section>
+
+        <button class="console-entry" id="console-entry" type="button" data-admin-only>⚙ 管理主控台</button>
       </aside>
 
       <main class="workspace" aria-live="polite">
@@ -142,7 +124,9 @@
             <div class="chat-empty-state" id="chat-empty-state">
               <div class="message assistant">
                 <span class="message-label">Course Assistant</span>
-                <p>Ask a question about the course materials. Answers cite the indexed sources used.</p>
+                <div class="answer-card">
+                  <p>Ask a question about the course materials. Answers cite the indexed sources used.</p>
+                </div>
               </div>
               <div class="sample-prompt-grid" aria-label="Sample course questions">
                 <button type="button" data-sample-prompt="課程網站在哪裡？">課程網站在哪裡？</button>
@@ -168,19 +152,175 @@
           </form>
         </section>
 
-        <section class="workspace-panel" id="panel-mindmap" role="tabpanel" tabindex="0" data-panel="mindmap" aria-labelledby="tab-mindmap" hidden>
+        <section class="workspace-panel" id="panel-graph" role="tabpanel" tabindex="0" data-panel="graph" aria-labelledby="tab-graph" hidden>
           <header class="workspace-header">
             <div>
-              <h2>Mindmap</h2>
+              <h2>知識圖譜</h2>
             </div>
-            <button class="secondary-button" type="button" id="load-mindmap">Load Graph</button>
+            <div class="graph-toolbar">
+              <label class="sr-only" for="graph-search">搜尋概念</label>
+              <input class="graph-search" id="graph-search" type="search" placeholder="搜尋概念…" />
+              <div class="graph-view-toggle" role="group" aria-label="圖譜視角">
+                <button class="graph-view-button is-active" type="button" id="graph-view-cluster" aria-pressed="true">叢集</button>
+                <button class="graph-view-button" type="button" id="graph-view-radial" aria-pressed="false">放射</button>
+                <button class="graph-view-button" type="button" id="graph-view-order" aria-pressed="false">學習順序</button>
+              </div>
+              <button class="secondary-button" type="button" id="load-graph">載入圖譜</button>
+            </div>
           </header>
-          <div class="mindmap" id="mindmap">
-            <p class="muted">Load the graph to inspect indexed documents and sections.</p>
+          <div class="graph-canvas" id="graph-canvas"></div>
+          <p class="graph-empty" id="graph-empty">尚未建立知識圖譜。請先建立索引並執行概念抽取。</p>
+        </section>
+
+        <section class="workspace-panel" id="panel-sources" role="tabpanel" tabindex="0" data-panel="sources" aria-labelledby="tab-sources" hidden>
+          <header class="workspace-header">
+            <div>
+              <h2>教材總覽</h2>
+            </div>
+            <div class="button-row">
+              <button class="secondary-button" type="button" id="refresh-status">更新狀態</button>
+            </div>
+          </header>
+          <div class="source-table" id="source-table">
+            <p class="muted">尚未找到已索引的來源。</p>
+          </div>
+        </section>
+      </main>
+
+      <aside class="inspector" aria-label="Context inspector">
+        <section class="inspector-section">
+          <div class="section-heading">
+            <h2>引用來源</h2>
+            <span class="count-pill" id="selected-source-count">0</span>
+          </div>
+          <div class="selected-sources" id="answer-sources">
+            <p class="muted">這次回答沒有引用來源。</p>
           </div>
         </section>
 
-        <section class="workspace-panel" id="panel-uploads" role="tabpanel" tabindex="0" data-panel="uploads" aria-labelledby="tab-uploads" data-admin-only hidden>
+        <section class="inspector-section">
+          <h2>Answer Quality</h2>
+          <dl class="status-grid" id="answer-quality">
+            <div>
+              <dt>Decision</dt>
+              <dd>Unknown</dd>
+            </div>
+            <div>
+              <dt>Grounding</dt>
+              <dd>--</dd>
+            </div>
+            <div>
+              <dt>Retrieval</dt>
+              <dd>--</dd>
+            </div>
+          </dl>
+        </section>
+
+        <section class="inspector-section">
+          <h2>Previewed Source</h2>
+          <div class="preview-source-meta" id="preview-source-meta">
+            <p class="muted">No preview selected.</p>
+          </div>
+          <pre class="markdown-preview" id="markdown-preview" tabindex="0">Select a source to preview markdown.</pre>
+        </section>
+
+        <section class="inspector-section">
+          <h2>Index Status</h2>
+          <dl class="status-grid" id="index-status">
+            <div>
+              <dt>Status</dt>
+              <dd>Unknown</dd>
+            </div>
+            <div>
+              <dt>Chunks</dt>
+              <dd>--</dd>
+            </div>
+            <div>
+              <dt>Updated</dt>
+              <dd>--</dd>
+            </div>
+          </dl>
+        </section>
+
+        <section class="inspector-section">
+          <h2>Eval Summary</h2>
+          <dl class="status-grid" id="eval-summary">
+            <div>
+              <dt>Status</dt>
+              <dd>Unknown</dd>
+            </div>
+            <div>
+              <dt>Pass Rate</dt>
+              <dd>--</dd>
+            </div>
+            <div>
+              <dt>Cases</dt>
+              <dd>--</dd>
+            </div>
+          </dl>
+        </section>
+      </aside>
+    </div>
+
+    <div class="console" id="console" hidden>
+      <nav class="console-nav" id="console-nav" aria-label="管理主控台導覽">
+        <div class="console-brand">管理主控台</div>
+        <input class="console-key" id="console-admin-key" type="password" placeholder="Admin Key" autocomplete="off" />
+        <button class="console-nav-item is-active" type="button" data-console-panel="overview" aria-current="true">📊 總覽</button>
+        <div class="console-section">內容</div>
+        <button class="console-nav-item" type="button" data-console-panel="uploads">📥 上傳與索引</button>
+        <button class="console-nav-item" type="button" data-console-panel="documents">📄 文件生命週期</button>
+        <button class="console-nav-item" type="button" data-console-panel="graph-extract">🗺 圖譜抽取</button>
+        <div class="console-section">品質</div>
+        <button class="console-nav-item" type="button" data-console-panel="evals">🧪 評估與回饋</button>
+        <div class="console-section">維運</div>
+        <button class="console-nav-item" type="button" data-console-panel="jobs">⚙️ 背景任務</button>
+        <button class="console-nav-item" type="button" data-console-panel="ops">📡 Provider 用量</button>
+        <button class="console-nav-item" type="button" data-console-panel="audit">🔒 審計日誌</button>
+        <button class="console-back" id="console-back" type="button">← 回到課程</button>
+      </nav>
+
+      <main class="console-main" id="console-main">
+        <section class="console-panel" id="panel-console-overview" data-console-panel-body="overview" data-admin-only>
+          <header class="workspace-header">
+            <div>
+              <h2>總覽</h2>
+            </div>
+            <button class="secondary-button" type="button" id="refresh-overview">重新整理</button>
+          </header>
+          <div class="stat-grid">
+            <article class="stat-card" id="stat-index">
+              <h3 class="stat-label">索引文件</h3>
+              <p class="stat-number">—</p>
+              <p class="stat-note muted">尚未載入。</p>
+            </article>
+            <article class="stat-card" id="stat-graph">
+              <h3 class="stat-label">知識圖譜</h3>
+              <p class="stat-number">—</p>
+              <p class="stat-note muted">尚未載入。</p>
+            </article>
+            <article class="stat-card" id="stat-jobs">
+              <h3 class="stat-label">背景任務</h3>
+              <p class="stat-number">—</p>
+              <p class="stat-note muted">尚未載入。</p>
+            </article>
+            <article class="stat-card" id="stat-tokens">
+              <h3 class="stat-label">Token 用量</h3>
+              <p class="stat-number">—</p>
+              <p class="stat-note muted">尚未載入。</p>
+            </article>
+          </div>
+          <section class="tool-section activity-card" aria-labelledby="recent-activity-heading">
+            <div class="section-heading">
+              <h3 id="recent-activity-heading">最近活動</h3>
+            </div>
+            <ol class="activity-list" id="recent-activity" aria-live="polite">
+              <li class="muted">尚未載入背景任務。</li>
+            </ol>
+          </section>
+        </section>
+
+        <section class="console-panel" id="panel-uploads" data-console-panel-body="uploads" data-admin-only hidden>
           <header class="workspace-header">
             <div>
               <h2>Admin Uploads</h2>
@@ -189,8 +329,6 @@
           </header>
 
           <form class="upload-form" id="upload-form">
-            <label for="admin-key">Admin Key</label>
-            <input id="admin-key" name="admin-key" type="password" autocomplete="current-password" />
             <label for="upload-file">Document</label>
             <input id="upload-file" name="file" type="file" accept=".md,.txt,.html,.pdf,text/*,application/pdf" />
             <button class="primary-button" type="submit">Upload</button>
@@ -227,215 +365,44 @@
               <p class="muted">No import jobs loaded.</p>
             </div>
           </section>
-
-          <section class="tool-section" aria-labelledby="background-jobs-heading">
-            <div class="section-heading">
-              <h3 id="background-jobs-heading">Background Jobs</h3>
-              <div class="button-row">
-                <button class="text-button" type="button" id="queue-index-job">Queue Index</button>
-                <button class="text-button" type="button" id="recover-stale-jobs">Recover Stale</button>
-                <button class="text-button" type="button" id="refresh-background-jobs">Refresh</button>
-              </div>
-            </div>
-            <div class="ops-summary" id="background-job-summary" aria-live="polite">
-              <div class="ops-summary-card">
-                <span>Total</span>
-                <strong>0</strong>
-              </div>
-              <div class="ops-summary-card">
-                <span>Queued</span>
-                <strong>0</strong>
-              </div>
-              <div class="ops-summary-card">
-                <span>Running</span>
-                <strong>0</strong>
-              </div>
-              <div class="ops-summary-card">
-                <span>Needs Action</span>
-                <strong>0</strong>
-              </div>
-            </div>
-            <div class="job-controls" aria-label="Background job filters">
-              <label class="inline-control" for="background-job-status-filter">
-                Status
-                <select id="background-job-status-filter" name="background-job-status-filter">
-                  <option value="">All</option>
-                  <option value="queued">Queued</option>
-                  <option value="running">Running</option>
-                  <option value="succeeded">Succeeded</option>
-                  <option value="failed">Failed</option>
-                  <option value="canceled">Canceled</option>
-                </select>
-              </label>
-              <label class="inline-control" for="background-job-limit">
-                Limit
-                <select id="background-job-limit" name="background-job-limit">
-                  <option value="10">10</option>
-                  <option value="25">25</option>
-                  <option value="50" selected>50</option>
-                  <option value="100">100</option>
-                </select>
-              </label>
-            </div>
-            <div class="worker-runtime" id="worker-runtime" aria-live="polite">
-              <p class="muted">No worker runtime status loaded.</p>
-            </div>
-            <div class="background-jobs" id="background-jobs" aria-live="polite">
-              <p class="muted">No background jobs loaded.</p>
-            </div>
-          </section>
-
-          <pre class="operation-log" id="operation-log" aria-live="polite">No admin operations yet.</pre>
         </section>
 
-        <section class="workspace-panel" id="panel-ops" role="tabpanel" tabindex="0" data-panel="ops" aria-labelledby="tab-ops" data-admin-only hidden>
+        <section class="console-panel" id="panel-documents" data-console-panel-body="documents" data-admin-only hidden>
           <header class="workspace-header">
             <div>
-              <h2>Provider Ops</h2>
-              <p class="workspace-subtitle">OpenAI/provider reliability, usage, and answer trace health.</p>
+              <h2>文件生命週期</h2>
             </div>
-            <button class="secondary-button" type="button" id="refresh-provider-observability">Refresh</button>
+            <button class="secondary-button" type="button" id="refresh-documents">更新文件</button>
           </header>
-
-          <form class="audit-form" id="provider-observability-form">
-            <label for="ops-admin-key">Admin Key</label>
-            <input id="ops-admin-key" name="ops-admin-key" type="password" autocomplete="current-password" />
-          </form>
-
-          <section class="tool-section" aria-labelledby="provider-summary-heading">
-            <div class="section-heading">
-              <h3 id="provider-summary-heading">Provider Summary</h3>
-            </div>
-            <div class="ops-summary" id="provider-summary" aria-live="polite">
-              <div class="ops-summary-card">
-                <span>Calls</span>
-                <strong>0</strong>
-              </div>
-              <div class="ops-summary-card">
-                <span>Errors</span>
-                <strong>0</strong>
-              </div>
-              <div class="ops-summary-card">
-                <span>Error Rate</span>
-                <strong>0%</strong>
-              </div>
-              <div class="ops-summary-card">
-                <span>Tokens</span>
-                <strong>0</strong>
-              </div>
-            </div>
-          </section>
-
-          <section class="tool-section" aria-labelledby="provider-budget-heading">
-            <div class="section-heading">
-              <h3 id="provider-budget-heading">Budget Guardrails</h3>
-            </div>
-            <div class="provider-budget" id="provider-budget" aria-live="polite">
-              <p class="muted">No provider budget loaded.</p>
-            </div>
-          </section>
-
-          <section class="tool-section" aria-labelledby="provider-usage-heading">
-            <div class="section-heading">
-              <h3 id="provider-usage-heading">Usage By Operation</h3>
-            </div>
-            <div class="provider-usage" id="provider-usage" aria-live="polite">
-              <p class="muted">No provider usage loaded.</p>
-            </div>
-          </section>
-
-          <section class="tool-section" aria-labelledby="provider-latest-calls-heading">
-            <div class="section-heading">
-              <h3 id="provider-latest-calls-heading">Latest Provider Calls</h3>
-            </div>
-            <div class="provider-calls" id="provider-latest-calls" aria-live="polite">
-              <p class="muted">No provider calls loaded.</p>
-            </div>
-          </section>
-
-          <section class="tool-section" aria-labelledby="provider-traces-heading">
-            <div class="section-heading">
-              <h3 id="provider-traces-heading">Answer Traces</h3>
-            </div>
-            <div class="provider-traces" id="provider-traces" aria-live="polite">
-              <p class="muted">No provider traces loaded.</p>
-            </div>
-          </section>
-        </section>
-
-        <section class="workspace-panel" id="panel-audit" role="tabpanel" tabindex="0" data-panel="audit" aria-labelledby="tab-audit" data-admin-only hidden>
-          <header class="workspace-header">
-            <div>
-              <h2>Audit Log</h2>
-            </div>
-            <button class="secondary-button" type="button" id="refresh-audit">Refresh</button>
-          </header>
-
-          <form class="audit-form" id="audit-filters">
-            <label for="audit-admin-key">Admin Key</label>
-            <input id="audit-admin-key" name="audit-admin-key" type="password" autocomplete="current-password" />
-            <label for="audit-event-type">Event Type</label>
-            <select id="audit-event-type" name="audit-event-type">
-              <option value="">Any</option>
-              <option value="auth.login_failed">auth.login_failed</option>
-              <option value="auth.login_succeeded">auth.login_succeeded</option>
-              <option value="auth.logout">auth.logout</option>
-              <option value="admin.access_denied">admin.access_denied</option>
-              <option value="admin.access_granted">admin.access_granted</option>
-              <option value="security.rate_limited">security.rate_limited</option>
-              <option value="security.upload_concurrency_limited">security.upload_concurrency_limited</option>
-            </select>
-            <label for="audit-outcome">Outcome</label>
-            <select id="audit-outcome" name="audit-outcome">
-              <option value="">Any</option>
-              <option value="success">success</option>
-              <option value="failure">failure</option>
-              <option value="blocked">blocked</option>
-            </select>
-            <label for="audit-actor-type">Actor Type</label>
-            <select id="audit-actor-type" name="audit-actor-type">
-              <option value="">Any</option>
-              <option value="platform">platform</option>
-              <option value="admin">admin</option>
-              <option value="client">client</option>
-            </select>
-            <label for="audit-limit">Limit</label>
-            <input id="audit-limit" name="audit-limit" type="number" min="1" max="100" value="50" />
-          </form>
-
-          <div class="audit-events" id="audit-events" aria-live="polite">
-            <p class="muted">No audit events loaded.</p>
-          </div>
-        </section>
-
-        <section class="workspace-panel" id="panel-sources" role="tabpanel" tabindex="0" data-panel="sources" aria-labelledby="tab-sources" hidden>
-          <header class="workspace-header">
-            <div>
-              <h2>Sources</h2>
-            </div>
-            <div class="button-row">
-              <button class="secondary-button" type="button" id="refresh-status">Refresh Status</button>
-              <button class="secondary-button" type="button" id="refresh-documents">Refresh Documents</button>
-            </div>
-          </header>
-          <form class="document-form" id="document-lifecycle-form" data-admin-only>
-            <label for="document-admin-key">Admin Key</label>
-            <input id="document-admin-key" name="document-admin-key" type="password" autocomplete="current-password" />
-          </form>
-          <div class="source-table" id="source-table">
-            <p class="muted">No indexed sources found.</p>
-          </div>
-          <section class="tool-section" id="admin-documents-section" aria-labelledby="admin-documents-heading" data-admin-only>
-            <div class="section-heading">
-              <h3 id="admin-documents-heading">Document Lifecycle</h3>
+          <section class="tool-section admin-ops-section" id="admin-documents-section" aria-labelledby="admin-documents-heading" data-admin-only>
+            <div class="section-heading admin-ops-heading">
+              <h3 id="admin-documents-heading">管理操作</h3>
             </div>
             <div class="admin-documents" id="admin-documents" aria-live="polite">
-              <p class="muted">No admin documents loaded.</p>
+              <p class="muted">尚未載入文件管理資料。</p>
             </div>
           </section>
         </section>
 
-        <section class="workspace-panel" id="panel-evals" role="tabpanel" tabindex="0" data-panel="evals" aria-labelledby="tab-evals" data-admin-only hidden>
+        <section class="console-panel" id="panel-graph-extract" data-console-panel-body="graph-extract" data-admin-only hidden>
+          <header class="workspace-header">
+            <div>
+              <h2>圖譜抽取</h2>
+              <p class="workspace-subtitle">從課程文件抽取概念並更新知識圖譜。</p>
+            </div>
+            <button class="secondary-button" type="button" id="refresh-graph-extract">重新整理</button>
+          </header>
+          <p class="muted">
+            觸發後會排入 concept_extraction 背景任務，由背景 worker 執行；
+            未啟動 worker 時任務會停留在 queued 狀態。
+          </p>
+          <div class="button-row">
+            <button class="primary-button" type="button" id="trigger-graph-extract">觸發概念抽取</button>
+          </div>
+          <pre class="operation-log graph-extract-status" id="graph-extract-status" aria-live="polite">尚未載入概念抽取任務。</pre>
+        </section>
+
+        <section class="console-panel" id="panel-evals" data-console-panel-body="evals" data-admin-only hidden>
           <header class="workspace-header">
             <div>
               <h2>Feedback / Evals</h2>
@@ -448,8 +415,6 @@
           </header>
 
           <form class="eval-form" id="eval-form">
-            <label for="eval-admin-key">Admin Key</label>
-            <input id="eval-admin-key" name="eval-admin-key" type="password" autocomplete="current-password" />
             <label for="eval-name">Name</label>
             <input id="eval-name" name="name" type="text" />
             <label for="eval-query">Query</label>
@@ -517,81 +482,190 @@
             </section>
           </div>
         </section>
+
+        <section class="console-panel" id="panel-jobs" data-console-panel-body="jobs" data-admin-only hidden>
+          <header class="workspace-header">
+            <div>
+              <h2>背景任務</h2>
+            </div>
+          </header>
+
+          <section class="tool-section" aria-labelledby="background-jobs-heading">
+            <div class="section-heading">
+              <h3 id="background-jobs-heading">Background Jobs</h3>
+              <div class="button-row">
+                <button class="text-button" type="button" id="queue-index-job">Queue Index</button>
+                <button class="text-button" type="button" id="recover-stale-jobs">Recover Stale</button>
+                <button class="text-button" type="button" id="refresh-background-jobs">Refresh</button>
+              </div>
+            </div>
+            <div class="ops-summary" id="background-job-summary" aria-live="polite">
+              <div class="ops-summary-card">
+                <span>Total</span>
+                <strong>0</strong>
+              </div>
+              <div class="ops-summary-card">
+                <span>Queued</span>
+                <strong>0</strong>
+              </div>
+              <div class="ops-summary-card">
+                <span>Running</span>
+                <strong>0</strong>
+              </div>
+              <div class="ops-summary-card">
+                <span>Needs Action</span>
+                <strong>0</strong>
+              </div>
+            </div>
+            <div class="job-controls" aria-label="Background job filters">
+              <label class="inline-control" for="background-job-status-filter">
+                Status
+                <select id="background-job-status-filter" name="background-job-status-filter">
+                  <option value="">All</option>
+                  <option value="queued">Queued</option>
+                  <option value="running">Running</option>
+                  <option value="succeeded">Succeeded</option>
+                  <option value="failed">Failed</option>
+                  <option value="canceled">Canceled</option>
+                </select>
+              </label>
+              <label class="inline-control" for="background-job-limit">
+                Limit
+                <select id="background-job-limit" name="background-job-limit">
+                  <option value="10">10</option>
+                  <option value="25">25</option>
+                  <option value="50" selected>50</option>
+                  <option value="100">100</option>
+                </select>
+              </label>
+            </div>
+            <div class="worker-runtime" id="worker-runtime" aria-live="polite">
+              <p class="muted">No worker runtime status loaded.</p>
+            </div>
+            <div class="background-jobs" id="background-jobs" aria-live="polite">
+              <p class="muted">No background jobs loaded.</p>
+            </div>
+          </section>
+        </section>
+
+        <section class="console-panel" id="panel-ops" data-console-panel-body="ops" data-admin-only hidden>
+          <header class="workspace-header">
+            <div>
+              <h2>Provider Ops</h2>
+              <p class="workspace-subtitle">OpenAI/provider reliability, usage, and answer trace health.</p>
+            </div>
+            <button class="secondary-button" type="button" id="refresh-provider-observability">Refresh</button>
+          </header>
+
+          <section class="tool-section" aria-labelledby="provider-summary-heading">
+            <div class="section-heading">
+              <h3 id="provider-summary-heading">Provider Summary</h3>
+            </div>
+            <div class="ops-summary" id="provider-summary" aria-live="polite">
+              <div class="ops-summary-card">
+                <span>Calls</span>
+                <strong>0</strong>
+              </div>
+              <div class="ops-summary-card">
+                <span>Errors</span>
+                <strong>0</strong>
+              </div>
+              <div class="ops-summary-card">
+                <span>Error Rate</span>
+                <strong>0%</strong>
+              </div>
+              <div class="ops-summary-card">
+                <span>Tokens</span>
+                <strong>0</strong>
+              </div>
+            </div>
+          </section>
+
+          <section class="tool-section" aria-labelledby="provider-budget-heading">
+            <div class="section-heading">
+              <h3 id="provider-budget-heading">Budget Guardrails</h3>
+            </div>
+            <div class="provider-budget" id="provider-budget" aria-live="polite">
+              <p class="muted">No provider budget loaded.</p>
+            </div>
+          </section>
+
+          <section class="tool-section" aria-labelledby="provider-usage-heading">
+            <div class="section-heading">
+              <h3 id="provider-usage-heading">Usage By Operation</h3>
+            </div>
+            <div class="provider-usage" id="provider-usage" aria-live="polite">
+              <p class="muted">No provider usage loaded.</p>
+            </div>
+          </section>
+
+          <section class="tool-section" aria-labelledby="provider-latest-calls-heading">
+            <div class="section-heading">
+              <h3 id="provider-latest-calls-heading">Latest Provider Calls</h3>
+            </div>
+            <div class="provider-calls" id="provider-latest-calls" aria-live="polite">
+              <p class="muted">No provider calls loaded.</p>
+            </div>
+          </section>
+
+          <section class="tool-section" aria-labelledby="provider-traces-heading">
+            <div class="section-heading">
+              <h3 id="provider-traces-heading">Answer Traces</h3>
+            </div>
+            <div class="provider-traces" id="provider-traces" aria-live="polite">
+              <p class="muted">No provider traces loaded.</p>
+            </div>
+          </section>
+        </section>
+
+        <section class="console-panel" id="panel-audit" data-console-panel-body="audit" data-admin-only hidden>
+          <header class="workspace-header">
+            <div>
+              <h2>Audit Log</h2>
+            </div>
+            <button class="secondary-button" type="button" id="refresh-audit">Refresh</button>
+          </header>
+
+          <form class="audit-form" id="audit-filters">
+            <label for="audit-event-type">Event Type</label>
+            <select id="audit-event-type" name="audit-event-type">
+              <option value="">Any</option>
+              <option value="auth.login_failed">auth.login_failed</option>
+              <option value="auth.login_succeeded">auth.login_succeeded</option>
+              <option value="auth.logout">auth.logout</option>
+              <option value="admin.access_denied">admin.access_denied</option>
+              <option value="admin.access_granted">admin.access_granted</option>
+              <option value="security.rate_limited">security.rate_limited</option>
+              <option value="security.upload_concurrency_limited">security.upload_concurrency_limited</option>
+            </select>
+            <label for="audit-outcome">Outcome</label>
+            <select id="audit-outcome" name="audit-outcome">
+              <option value="">Any</option>
+              <option value="success">success</option>
+              <option value="failure">failure</option>
+              <option value="blocked">blocked</option>
+            </select>
+            <label for="audit-actor-type">Actor Type</label>
+            <select id="audit-actor-type" name="audit-actor-type">
+              <option value="">Any</option>
+              <option value="platform">platform</option>
+              <option value="admin">admin</option>
+              <option value="client">client</option>
+            </select>
+            <label for="audit-limit">Limit</label>
+            <input id="audit-limit" name="audit-limit" type="number" min="1" max="100" value="50" />
+          </form>
+
+          <div class="audit-events" id="audit-events" aria-live="polite">
+            <p class="muted">No audit events loaded.</p>
+          </div>
+        </section>
+
+        <footer class="console-log-strip" data-admin-only>
+          <h3 class="console-log-title" id="operation-log-title">操作紀錄</h3>
+          <pre class="operation-log" id="operation-log" aria-live="polite" aria-labelledby="operation-log-title">No admin operations yet.</pre>
+        </footer>
       </main>
-
-      <aside class="inspector" aria-label="Context inspector">
-        <section class="inspector-section">
-          <div class="section-heading">
-            <h2>Answer Sources</h2>
-            <span class="count-pill" id="selected-source-count">0</span>
-          </div>
-          <div class="selected-sources" id="answer-sources">
-            <p class="muted">No answer sources for the latest response.</p>
-          </div>
-        </section>
-
-        <section class="inspector-section">
-          <h2>Answer Quality</h2>
-          <dl class="status-grid" id="answer-quality">
-            <div>
-              <dt>Decision</dt>
-              <dd>Unknown</dd>
-            </div>
-            <div>
-              <dt>Grounding</dt>
-              <dd>--</dd>
-            </div>
-            <div>
-              <dt>Retrieval</dt>
-              <dd>--</dd>
-            </div>
-          </dl>
-        </section>
-
-        <section class="inspector-section">
-          <h2>Previewed Source</h2>
-          <div class="preview-source-meta" id="preview-source-meta">
-            <p class="muted">No preview selected.</p>
-          </div>
-          <pre class="markdown-preview" id="markdown-preview" tabindex="0">Select a source to preview markdown.</pre>
-        </section>
-
-        <section class="inspector-section">
-          <h2>Index Status</h2>
-          <dl class="status-grid" id="index-status">
-            <div>
-              <dt>Status</dt>
-              <dd>Unknown</dd>
-            </div>
-            <div>
-              <dt>Chunks</dt>
-              <dd>--</dd>
-            </div>
-            <div>
-              <dt>Updated</dt>
-              <dd>--</dd>
-            </div>
-          </dl>
-        </section>
-
-        <section class="inspector-section">
-          <h2>Eval Summary</h2>
-          <dl class="status-grid" id="eval-summary">
-            <div>
-              <dt>Status</dt>
-              <dd>Unknown</dd>
-            </div>
-            <div>
-              <dt>Pass Rate</dt>
-              <dd>--</dd>
-            </div>
-            <div>
-              <dt>Cases</dt>
-              <dd>--</dd>
-            </div>
-          </dl>
-        </section>
-      </aside>
     </div>
   </body>
 </html>

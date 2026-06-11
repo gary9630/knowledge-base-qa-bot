@@ -131,6 +131,10 @@ def test_chat_stream_sends_sources_tokens_and_done(
     assert done_payload["decision"] == "can_answer"
     assert done_payload["answer_quality"]["answer_valid"] is True
     assert done_payload["answer_quality"]["cited_source_ids"] == ["常見問題FAQ.md#課程網站"]
+    assert done_payload["context_assembly"] is not None
+    assert done_payload["context_assembly"]["hit_count"] >= 1
+    assert done_payload["sources"]
+    assert done_payload["sources"][0]["source_id"] == "常見問題FAQ.md#課程網站"
     assert UUID(done_payload["conversation_id"])
     assert UUID(done_payload["user_message_id"])
     assert UUID(done_payload["assistant_message_id"])

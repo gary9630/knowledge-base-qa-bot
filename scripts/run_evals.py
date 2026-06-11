@@ -111,6 +111,7 @@ def _runner_from_dependencies(
                     embedding_provider=resolved_embedding_provider,
                     answer_provider=resolved_answer_provider,
                     options=options,
+                    settings=resolved_settings,
                 )
             except (NoActiveEvalCasesError, EvalCasesNotFoundError) as error:
                 eval_run = record_failed_eval_run(

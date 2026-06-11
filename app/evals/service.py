@@ -1,13 +1,20 @@
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from typing import Protocol
 from uuid import UUID
 
 from app.answer.citations import CANNOT_CONFIRM_ANSWER
+from app.answer.context_assembly import AssembledContext
 from app.answer.providers import AnswerProvider
 from app.answer.service import AnswerResult, AnswerService
-from app.retrieval.models import RetrievalDecision, RetrievalResult, RetrievalStrategy
+from app.retrieval.models import (
+    RetrievalDecision,
+    RetrievalResult,
+    RetrievalStrategy,
+    RetrievedCandidate,
+)
 
 
 @dataclass(frozen=True)
@@ -58,15 +65,21 @@ class EvaluationRetriever(Protocol):
     ) -> RetrievalResult: ...
 
 
+class EvaluationContextAssembler(Protocol):
+    def assemble(self, candidates: Sequence[RetrievedCandidate]) -> AssembledContext: ...
+
+
 class EvaluationService:
     def __init__(
         self,
         *,
         retriever: EvaluationRetriever,
         answer_provider: AnswerProvider,
+        context_assembler: EvaluationContextAssembler,
     ) -> None:
         self.retriever = retriever
         self.answer_provider = answer_provider
+        self.context_assembler = context_assembler
 
     def evaluate_case(
         self,
@@ -76,9 +89,10 @@ class EvaluationService:
         limit: int,
     ) -> EvalCaseResult:
         retrieval_result = self.retriever.search(case.query, strategy=strategy, limit=limit)
+        assembled = self.context_assembler.assemble(retrieval_result.candidates)
         answer_result = AnswerService(self.answer_provider).answer(
             case.query,
-            retrieval_result.candidates,
+            assembled.sources,
         )
         actual_decision = _answer_decision(retrieval_result.decision, answer_result)
         selected_source_ids = tuple(

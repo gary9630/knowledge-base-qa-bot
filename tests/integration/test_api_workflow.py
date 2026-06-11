@@ -193,6 +193,52 @@ def test_index_search_chat_sources_and_feedback_workflow(
     assert user_feedback_response.status_code == 400
 
 
+def test_chat_answers_with_expanded_section_context(
+    db_session: Session,
+    tmp_path: Path,
+) -> None:
+    docs_dir = tmp_path / "docs"
+    docs_dir.mkdir()
+    (docs_dir / "guide.md").write_text(
+        "# Guide\n\n"
+        "## Setup\n\n"
+        "Install the toolchain before the first lecture.\n\n"
+        "## Submission\n\n"
+        "Submit homework through the course portal.\n\n"
+        "## Grading\n\n"
+        "Grades are published two weeks after the deadline.\n",
+        encoding="utf-8",
+    )
+    settings = Settings(
+        docs_dir=str(docs_dir),
+        raw_dir=str(tmp_path / "raw"),
+        kb_dir=str(tmp_path / ".kb"),
+        embedding_provider="fake",
+        answer_provider="fake",
+    )
+    app = create_app(settings=settings, session_factory=_session_factory(db_session))
+    client = TestClient(app)
+    index_response = client.post("/index")
+    assert index_response.status_code == 200
+
+    response = client.post(
+        "/chat",
+        json={"query": "How do I submit homework?", "strategy": "markdown"},
+    )
+    payload = response.json()
+
+    assert response.status_code == 200
+    assert "context_assembly" in payload
+    assert payload["context_assembly"]["hit_count"] >= 1
+    assert payload["context_assembly"]["neighbor_count"] >= 1
+    assert payload["context_assembly"]["token_budget"] == 8000
+
+    retrieval_event = db_session.get(RetrievalEvent, UUID(payload["retrieval_event_id"]))
+    assert retrieval_event is not None
+    assert retrieval_event.scores_json["context_assembly"]["token_budget"] == 8000
+    assert retrieval_event.scores_json["context_assembly"]["hit_count"] >= 1
+
+
 def test_ready_reports_operational_checks(app_with_test_db: FastAPI) -> None:
     client = TestClient(app_with_test_db)
 

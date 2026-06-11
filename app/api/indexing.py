@@ -97,6 +97,7 @@ def rebuild_index(
                 docs_dir=Path(settings.docs_dir),
                 kb_dir=Path(settings.kb_dir),
                 embedding_provider=get_embedding_provider(request),
+                token_encoding=settings.token_encoding,
             ).rebuild_index()
         except (FileNotFoundError, NotADirectoryError) as error:
             raise HTTPException(status_code=400, detail=str(error)) from error

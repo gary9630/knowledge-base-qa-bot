@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session, selectinload
 
 from app.api.dependencies import (
     get_answer_provider,
+    get_app_settings,
     get_embedding_provider,
     get_request_db_session,
     require_admin_access,
@@ -249,6 +250,7 @@ def run_evals(
             session=session,
             embedding_provider=get_embedding_provider(request),
             answer_provider=get_answer_provider(request),
+            settings=get_app_settings(request),
             options=EvalRunOptions(
                 trigger="api",
                 strategy=payload.strategy,
