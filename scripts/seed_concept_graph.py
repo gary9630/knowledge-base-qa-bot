@@ -11,6 +11,10 @@ Usage:
     # validation only, no writes:
     uv run --python 3.12 python -m scripts.seed_concept_graph \\
         --file docs/plans/2026-06-11-concept-graph-seed.json --dry-run
+
+    # wipe-and-replace (removes zombie concepts/edges from previous runs):
+    uv run --python 3.12 python -m scripts.seed_concept_graph \\
+        --file docs/plans/2026-06-11-concept-graph-seed.json --replace
 """
 from __future__ import annotations
 
@@ -21,7 +25,7 @@ from pathlib import Path
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from app.graph.extraction import EDGE_KINDS
@@ -128,6 +132,13 @@ def parse_seed_graph(payload: dict[str, Any]) -> SeedGraph:  # noqa: C901
             raise ValueError(f"concepts[{idx}].summary is missing or empty.")
         if not isinstance(aliases, list):
             raise ValueError(f"concepts[{idx}].aliases must be a list.")
+        # M5: validate alias items are strings
+        for alias_idx, alias in enumerate(aliases):
+            if not isinstance(alias, str):
+                raise ValueError(
+                    f"concepts[{idx}].aliases[{alias_idx}] must be a string, "
+                    f"got {type(alias).__name__!r}."
+                )
         if not isinstance(cluster_name, str) or not cluster_name.strip():
             raise ValueError(f"concepts[{idx}].cluster is missing or empty.")
         if cluster_name not in seen_cluster_names:
@@ -138,6 +149,15 @@ def parse_seed_graph(payload: dict[str, Any]) -> SeedGraph:  # noqa: C901
             raise ValueError(
                 f"concepts[{idx}] ({slug!r}) must have at least one source_id in source_ids."
             )
+
+        # C1: reject duplicate source_ids within a concept
+        seen_sids: set[str] = set()
+        for sid in source_ids:
+            if sid in seen_sids:
+                raise ValueError(
+                    f"Duplicate source_id {sid!r} in concept {slug!r} (concepts[{idx}])."
+                )
+            seen_sids.add(sid)
 
         if slug in seen_slugs:
             raise ValueError(
@@ -219,11 +239,16 @@ def apply_seed_graph(
     seed: SeedGraph,
     *,
     strict: bool = True,
+    replace: bool = False,
 ) -> dict[str, int]:
     """Apply *seed* to the database.
 
     - Resolves ``source_ids`` → :class:`Section` rows via a single IN query.
-    - In strict mode, raises :class:`ValueError` listing every unknown source_id.
+    - In strict mode, raises :class:`ValueError` listing every unknown source_id
+      as ``concept-slug: unknown-source-id``, one per line.
+    - When *replace* is True, all existing concept graph rows are deleted
+      (concept_sources, concept_edges, concept_extraction_state, concepts,
+      concept_clusters — in FK-safe order) before applying the seed.
     - Upserts clusters by name (update position on conflict).
     - Upserts concepts by slug (update name/summary/aliases/cluster on conflict).
     - Replaces each seeded concept's :class:`ConceptSource` rows.
@@ -232,8 +257,9 @@ def apply_seed_graph(
       ≥1 cited section using the document's CURRENT ``content_hash``.
 
     Returns a dict of counts:
-    ``{"clusters": N, "concepts": N, "edges": N, "sources": N,
-       "extraction_states": N}``
+    ``{"clusters_created": N, "clusters_updated": N,
+       "concepts_created": N, "concepts_updated": N,
+       "edges": N, "sources": N, "extraction_states": N}``
 
     Does **not** commit — the caller (main / test) owns the transaction.
     """
@@ -246,14 +272,40 @@ def apply_seed_graph(
     )
     resolved_source_map: dict[str, Section] = {s.source_id: s for s in section_rows}
 
-    # Check for unknown source_ids
-    unknown = sorted(all_source_ids - resolved_source_map.keys())
-    if unknown:
+    # Check for unknown source_ids — build per-concept mapping for actionable errors (I2)
+    unknown_by_concept: dict[str, list[str]] = {}
+    for concept in seed.concepts:
+        bad = [sid for sid in concept.source_ids if sid not in resolved_source_map]
+        if bad:
+            unknown_by_concept[concept.slug] = bad
+
+    if unknown_by_concept:
         if strict:
+            lines = "\n".join(
+                f"  {slug}: {sid}"
+                for slug, sids in sorted(unknown_by_concept.items())
+                for sid in sids
+            )
             raise ValueError(
-                f"Unknown source_id(s) not found in sections table: {unknown!r}"
+                f"Unknown source_id(s) not found in sections table:\n{lines}"
             )
         # non-strict: silently skip unknown ids (they'll just not create sources)
+
+    # --- Replace mode (I3): wipe all existing concept graph data -------------
+    if replace:
+        # Delete in FK-safe order:
+        # 1. concept_extraction_state (FK → documents, independent of concepts)
+        session.execute(delete(ConceptExtractionState))
+        # 2. concept_sources (FK → concepts + sections, cascade="all, delete-orphan"
+        #    on Concept.sources, but explicit delete is cleaner here)
+        session.execute(delete(ConceptSource))
+        # 3. concept_edges (FK → concepts with ondelete="CASCADE")
+        session.execute(delete(ConceptEdge))
+        # 4. concepts (FK → concept_clusters with ondelete="SET NULL")
+        session.execute(delete(Concept))
+        # 5. concept_clusters (now safe — all concepts referencing them are gone)
+        session.execute(delete(ConceptCluster))
+        session.flush()
 
     # Collect document ids involved (for extraction state)
     doc_id_to_hash: dict[UUID, str] = {}
@@ -263,9 +315,10 @@ def apply_seed_graph(
             if doc is not None:
                 doc_id_to_hash[section.document_id] = doc.content_hash
 
-    # --- Upsert clusters ----------------------------------------------------
+    # --- Upsert clusters ---------------------------------------------------- (M1)
     cluster_name_to_obj: dict[str, ConceptCluster] = {}
-    clusters_count = 0
+    clusters_created = 0
+    clusters_updated = 0
     for seed_cluster in seed.clusters:
         existing_cluster = session.scalar(
             select(ConceptCluster).where(ConceptCluster.name == seed_cluster.name)
@@ -274,16 +327,18 @@ def apply_seed_graph(
             cluster_obj = ConceptCluster(name=seed_cluster.name, position=seed_cluster.position)
             session.add(cluster_obj)
             session.flush()
+            clusters_created += 1
         else:
             existing_cluster.position = seed_cluster.position
             cluster_obj = existing_cluster
             session.flush()
+            clusters_updated += 1
         cluster_name_to_obj[seed_cluster.name] = cluster_obj
-        clusters_count += 1
 
-    # --- Upsert concepts ----------------------------------------------------
+    # --- Upsert concepts ---------------------------------------------------- (M1)
     concept_slug_to_obj: dict[str, Concept] = {}
-    concepts_count = 0
+    concepts_created = 0
+    concepts_updated = 0
     for seed_concept in seed.concepts:
         maybe_cluster = cluster_name_to_obj.get(seed_concept.cluster)
         cluster_id = maybe_cluster.id if maybe_cluster is not None else None
@@ -301,6 +356,7 @@ def apply_seed_graph(
             )
             session.add(concept_obj)
             session.flush()
+            concepts_created += 1
         else:
             existing_concept.name = seed_concept.name
             existing_concept.summary = seed_concept.summary
@@ -308,8 +364,8 @@ def apply_seed_graph(
             existing_concept.cluster_id = cluster_id
             concept_obj = existing_concept
             session.flush()
+            concepts_updated += 1
         concept_slug_to_obj[seed_concept.slug] = concept_obj
-        concepts_count += 1
 
     # --- Replace concept sources --------------------------------------------
     sources_count = 0
@@ -380,8 +436,10 @@ def apply_seed_graph(
     session.flush()
 
     return {
-        "clusters": clusters_count,
-        "concepts": concepts_count,
+        "clusters_created": clusters_created,
+        "clusters_updated": clusters_updated,
+        "concepts_created": concepts_created,
+        "concepts_updated": concepts_updated,
         "edges": edges_count,
         "sources": sources_count,
         "extraction_states": extraction_states_count,
@@ -396,8 +454,9 @@ def apply_seed_graph(
 def main(argv: list[str] | None = None) -> int:
     """Entry point for the seed CLI.
 
-    --file   Required path to the JSON seed dataset.
+    --file     Required path to the JSON seed dataset.
     --dry-run  Parse + validate against the DB without writing.
+    --replace  Delete all existing concept graph data before applying.
     """
     # Import here to avoid circular imports at test-collection time
     import json
@@ -418,6 +477,12 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         default=False,
         help="Parse and validate without writing to the database.",
+    )
+    parser.add_argument(
+        "--replace",
+        action="store_true",
+        default=False,
+        help="Delete all existing concept graph data before applying the seed.",
     )
     namespace = parser.parse_args(argv)
 
@@ -447,35 +512,36 @@ def main(argv: list[str] | None = None) -> int:
     )
 
     if namespace.dry_run:
-        # Validate source_ids against DB without writing
-        all_source_ids: set[str] = {
-            sid for concept in seed.concepts for sid in concept.source_ids
-        }
-        with SessionLocal() as session:
-            from app.models.tables import Section as _Section
-
-            resolved = set(
-                session.scalars(
-                    select(_Section.source_id).where(
-                        _Section.source_id.in_(all_source_ids)
+        # M2: run apply_seed_graph inside a transaction and roll back —
+        # this exercises the real validation path (including C1 fixes) and
+        # guarantees zero writes.
+        try:
+            with SessionLocal() as session:
+                try:
+                    apply_seed_graph(session, seed, strict=True)
+                except ValueError as exc:
+                    # Collect unknown-source errors and report per-concept (I2)
+                    print(
+                        f"Dry-run: validation failed:\n{exc}",
+                        file=sys.stderr,
                     )
-                )
-            )
-        unknown = sorted(all_source_ids - resolved)
-        if unknown:
-            print(
-                f"Dry-run: {len(unknown)} unknown source_id(s) would be rejected "
-                f"in strict mode:\n  " + "\n  ".join(unknown),
-                file=sys.stderr,
-            )
-        else:
-            print(f"Dry-run: all {len(all_source_ids)} source_ids resolved. No issues found.")
+                    return 1
+                finally:
+                    # Always roll back — never commit in dry-run mode
+                    session.rollback()
+        except Exception as exc:
+            print(f"Dry-run: unexpected error: {exc}", file=sys.stderr)
+            return 1
+
+        print(
+            "Dry-run: all source_ids resolved and seed validated. No issues found."
+        )
         return 0
 
     # 2. Apply
     try:
         with SessionLocal() as session:
-            counts = apply_seed_graph(session, seed, strict=True)
+            counts = apply_seed_graph(session, seed, strict=True, replace=namespace.replace)
             session.commit()
     except ValueError as exc:
         print(f"Error applying seed graph: {exc}", file=sys.stderr)
@@ -486,8 +552,10 @@ def main(argv: list[str] | None = None) -> int:
 
     print(
         f"Seeded concept graph: "
-        f"{counts['clusters']} clusters, "
-        f"{counts['concepts']} concepts, "
+        f"{counts['clusters_created']} clusters created, "
+        f"{counts['clusters_updated']} updated; "
+        f"{counts['concepts_created']} concepts created, "
+        f"{counts['concepts_updated']} updated; "
         f"{counts['edges']} edges, "
         f"{counts['sources']} sources, "
         f"{counts['extraction_states']} extraction state(s)."
