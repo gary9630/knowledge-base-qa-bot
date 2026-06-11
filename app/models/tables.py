@@ -626,3 +626,106 @@ class EvalResult(JsonDefaultsMixin, TimestampMixin, Base):
 
     run: Mapped[EvalRun] = relationship(back_populates="results")
     case: Mapped[EvalCase] = relationship(back_populates="results")
+
+
+class ConceptCluster(TimestampMixin, Base):
+    __tablename__ = "concept_clusters"
+    __table_args__ = (Index("ux_concept_clusters_name", "name", unique=True),)
+
+    id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), primary_key=True, default=uuid4)
+    name: Mapped[str] = mapped_column(Text, nullable=False)
+    position: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+
+    concepts: Mapped[list[Concept]] = relationship(back_populates="cluster")
+
+
+class Concept(JsonDefaultsMixin, TimestampMixin, Base):
+    __tablename__ = "concepts"
+    __table_args__ = (Index("ux_concepts_slug", "slug", unique=True),)
+    __json_defaults__ = {"aliases": list}
+
+    id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), primary_key=True, default=uuid4)
+    name: Mapped[str] = mapped_column(Text, nullable=False)
+    slug: Mapped[str] = mapped_column(Text, nullable=False)
+    summary: Mapped[str] = mapped_column(Text, nullable=False)
+    cluster_id: Mapped[UUID | None] = mapped_column(
+        PG_UUID(as_uuid=True),
+        ForeignKey("concept_clusters.id", ondelete="SET NULL"),
+    )
+    aliases: Mapped[list[str]] = mapped_column(
+        JSONB,
+        nullable=False,
+        default=list,
+        server_default=text("'[]'::jsonb"),
+    )
+
+    cluster: Mapped[ConceptCluster | None] = relationship(back_populates="concepts")
+    sources: Mapped[list[ConceptSource]] = relationship(
+        back_populates="concept",
+        cascade="all, delete-orphan",
+    )
+
+
+class ConceptEdge(TimestampMixin, Base):
+    __tablename__ = "concept_edges"
+    __table_args__ = (
+        Index(
+            "ux_concept_edges_source_target_kind",
+            "source_concept_id",
+            "target_concept_id",
+            "kind",
+            unique=True,
+        ),
+    )
+
+    id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), primary_key=True, default=uuid4)
+    source_concept_id: Mapped[UUID] = mapped_column(
+        PG_UUID(as_uuid=True),
+        ForeignKey("concepts.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    target_concept_id: Mapped[UUID] = mapped_column(
+        PG_UUID(as_uuid=True),
+        ForeignKey("concepts.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    kind: Mapped[str] = mapped_column(Text, nullable=False)
+
+
+class ConceptSource(TimestampMixin, Base):
+    __tablename__ = "concept_sources"
+    __table_args__ = (
+        Index("ux_concept_sources_concept_section", "concept_id", "section_id", unique=True),
+    )
+
+    id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), primary_key=True, default=uuid4)
+    concept_id: Mapped[UUID] = mapped_column(
+        PG_UUID(as_uuid=True),
+        ForeignKey("concepts.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    section_id: Mapped[UUID] = mapped_column(
+        PG_UUID(as_uuid=True),
+        ForeignKey("sections.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+
+    concept: Mapped[Concept] = relationship(back_populates="sources")
+    section: Mapped[Section] = relationship()
+
+
+class ConceptExtractionState(TimestampMixin, Base):
+    __tablename__ = "concept_extraction_state"
+    __table_args__ = (Index("ux_concept_extraction_state_document", "document_id", unique=True),)
+
+    id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), primary_key=True, default=uuid4)
+    document_id: Mapped[UUID] = mapped_column(
+        PG_UUID(as_uuid=True),
+        ForeignKey("documents.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    content_hash: Mapped[str] = mapped_column(Text, nullable=False)
