@@ -33,6 +33,21 @@ class ScriptedCaller:
                 return queued.pop(0)
         return "{}"
 
+    def queued_total(self) -> int:
+        return sum(len(queued) for queued in self.responses.values())
+
+    def call_kinds(self) -> list[str]:
+        markers = {
+            "extract a concept graph": "extract",
+            "deduplicate concept names": "merge",
+            "group course concepts": "cluster",
+            "Propose edges": "cluster-edges",
+        }
+        return [
+            next((kind for marker, kind in markers.items() if marker in system), "unknown")
+            for system, _ in self.calls
+        ]
+
 
 def _seed_document(
     db_session: Session, *, filename: str, slugs: list[str], content_hash: str
@@ -86,17 +101,22 @@ def test_pipeline_extracts_merges_and_clusters(db_session: Session) -> None:
         "extract a concept graph",
         _document_response("a.md", ["Caching", "TTL"], ["s1", "s2"]),
     )
-    caller.queue("deduplicate concept names", json.dumps({"merges": []}))
+    # no merge response queued: with no pre-existing concepts the merge call is skipped
     caller.queue(
         "group course concepts",
         json.dumps({"clusters": [{"name": "快取", "concepts": ["Caching", "TTL"]}]}),
     )
     caller.queue("Propose edges", json.dumps({"edges": []}))
+    queued = caller.queued_total()
 
     pipeline = GraphExtractionPipeline(
         session=db_session, caller=caller, max_concepts_per_doc=30, token_budget=12000
     )
     stats = pipeline.run()
+
+    assert caller.call_kinds() == ["extract", "cluster", "cluster-edges"]
+    assert len(caller.calls) == queued
+    assert caller.queued_total() == 0  # every queued response was consumed
 
     concepts = db_session.scalars(select(Concept)).all()
     assert {concept.name for concept in concepts} == {"Caching", "TTL"}
@@ -144,10 +164,16 @@ def test_pipeline_reextracts_changed_document_and_prunes_orphans(db_session: Ses
         json.dumps({"clusters": [{"name": "主題", "concepts": ["Fresh"]}]}),
     )
     caller.queue("Propose edges", json.dumps({"edges": []}))
+    queued = caller.queued_total()
 
     GraphExtractionPipeline(
         session=db_session, caller=caller, max_concepts_per_doc=30, token_budget=12000
     ).run()
+
+    # merge runs because the stale concept pre-exists when the new names arrive
+    assert caller.call_kinds() == ["extract", "merge", "cluster", "cluster-edges"]
+    assert len(caller.calls) == queued
+    assert caller.queued_total() == 0  # every queued response was consumed
 
     names = {concept.name for concept in db_session.scalars(select(Concept)).all()}
     assert names == {"Fresh"}  # stale concept lost its only source and was pruned
@@ -175,10 +201,15 @@ def test_pipeline_merges_into_existing_concepts(db_session: Session) -> None:
         json.dumps({"clusters": [{"name": "主題", "concepts": ["Consistent Hashing"]}]}),
     )
     caller.queue("Propose edges", json.dumps({"edges": []}))
+    queued = caller.queued_total()
 
     GraphExtractionPipeline(
         session=db_session, caller=caller, max_concepts_per_doc=30, token_budget=12000
     ).run()
+
+    assert caller.call_kinds() == ["extract", "merge", "cluster", "cluster-edges"]
+    assert len(caller.calls) == queued
+    assert caller.queued_total() == 0  # every queued response was consumed
 
     concepts = db_session.scalars(select(Concept)).all()
     assert len(concepts) == 1

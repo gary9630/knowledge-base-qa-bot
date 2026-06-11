@@ -8,7 +8,6 @@ from uuid import UUID
 from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
-from app.answer.providers import _completion_usage, _response_request_id
 from app.document_lifecycle import active_document_filter
 from app.graph.extraction import (
     CLUSTER_EDGES_SYSTEM_PROMPT,
@@ -37,7 +36,14 @@ from app.models.tables import (
     Document,
     Section,
 )
-from app.provider_telemetry import ProviderCallContext, ProviderCallRecord
+from app.provider_telemetry import (
+    ProviderCallContext,
+    ProviderCallRecord,
+    ProviderCallStatus,
+    ProviderUsage,
+    completion_usage,
+    response_request_id,
+)
 
 # Re-cluster everything when more than this share of concepts was created or
 # changed in a single run (per design: ">30% of concepts new/changed").
@@ -103,8 +109,11 @@ class GraphExtractionPipeline:
         ConceptExtractionState per successfully extracted
         document; return stats dict: documents_considered, documents_extracted,
         documents_failed, concepts_created, concepts_merged, concepts_pruned,
-        edges_created, clusters_total."""
+        edges_created, clusters_total, plus failures — a list of
+        {"filename", "error_type"} dicts, one per failed document."""
         stats: dict[str, Any] = dict.fromkeys(_STATS_KEYS, 0)
+        failures: list[dict[str, str]] = []
+        stats["failures"] = failures
 
         considered, pending = self._pending_documents()
         stats["documents_considered"] = considered
@@ -116,13 +125,16 @@ class GraphExtractionPipeline:
             sections = self._document_sections(document.id)
             try:
                 extraction = self._extract_document(document, sections)
-            except Exception:
-                stats["documents_failed"] += 1
+            except Exception as error:
+                failures.append(
+                    {"filename": document.filename, "error_type": type(error).__name__}
+                )
                 continue
             extractions[document.id] = extraction
             document_sections[document.id] = sections
             document_hashes[document.id] = document.content_hash
             stats["documents_extracted"] += 1
+        stats["documents_failed"] = len(failures)
 
         extracted_by_slug: dict[str, ExtractedConcept] = {}
         for extraction in extractions.values():
@@ -138,15 +150,21 @@ class GraphExtractionPipeline:
                 slug_to_concept=slug_to_concept,
             )
 
+        # Existing edge identity keys are loaded once per run and updated in
+        # memory as edges are inserted, so later phases keep deduping without
+        # re-scanning the table.
+        edge_keys = self._load_edge_keys()
         stats["edges_created"] += self._insert_edges(
-            _document_edge_triples(extractions.values(), slug_to_concept)
+            _document_edge_triples(extractions.values(), slug_to_concept),
+            existing=edge_keys,
         )
         stats["concepts_pruned"] = self._prune_orphan_concepts()
         receiving_cluster_ids = self._assign_clusters(changed_ids)
-        stats["edges_created"] += self._propose_cluster_edges(receiving_cluster_ids)
+        stats["edges_created"] += self._propose_cluster_edges(
+            receiving_cluster_ids, edge_keys
+        )
 
-        for document_id, content_hash in document_hashes.items():
-            self._refresh_state(document_id, content_hash)
+        self._refresh_states(document_hashes)
         self._session.flush()
 
         stats["clusters_total"] = int(
@@ -367,11 +385,9 @@ class GraphExtractionPipeline:
             self._session.add(ConceptSource(concept_id=concept_id, section_id=section_id))
         self._session.flush()
 
-    def _insert_edges(self, triples: list[tuple[Concept, Concept, str]]) -> int:
-        if not triples:
-            return 0
-        self._session.flush()
-        existing: set[tuple[UUID, UUID, str]] = {
+    def _load_edge_keys(self) -> set[tuple[UUID, UUID, str]]:
+        """Load all existing edge identity keys; call once per run."""
+        return {
             (row.source_concept_id, row.target_concept_id, row.kind)
             for row in self._session.execute(
                 select(
@@ -381,6 +397,22 @@ class GraphExtractionPipeline:
                 )
             )
         }
+
+    def _insert_edges(
+        self,
+        triples: list[tuple[Concept, Concept, str]],
+        *,
+        existing: set[tuple[UUID, UUID, str]],
+    ) -> int:
+        """Insert edges whose keys are absent from ``existing``, updating it in place.
+
+        Dedupe is a pre-check against keys loaded once per run (single-writer
+        assumption): a concurrent run inserting the same edge would raise
+        IntegrityError on the unique constraint rather than being ignored.
+        """
+        if not triples:
+            return 0
+        self._session.flush()
         created = 0
         for source, target, kind in triples:
             key = (source.id, target.id, kind)
@@ -481,7 +513,11 @@ class GraphExtractionPipeline:
             receiving.difference_update(empty_ids)
         return receiving
 
-    def _propose_cluster_edges(self, cluster_ids: set[UUID]) -> int:
+    def _propose_cluster_edges(
+        self,
+        cluster_ids: set[UUID],
+        edge_keys: set[tuple[UUID, UUID, str]],
+    ) -> int:
         created = 0
         for cluster_id in sorted(cluster_ids):
             cluster = self._session.get(ConceptCluster, cluster_id)
@@ -518,23 +554,26 @@ class GraphExtractionPipeline:
                 if source is None or target is None:
                     continue
                 triples.append((source, target, edge.kind))
-            created += self._insert_edges(triples)
+            created += self._insert_edges(triples, existing=edge_keys)
         return created
 
     # -- extraction state ------------------------------------------------------------
 
-    def _refresh_state(self, document_id: UUID, content_hash: str) -> None:
-        state = self._session.scalar(
+    def _refresh_states(self, document_hashes: dict[UUID, str]) -> None:
+        if not document_hashes:
+            return
+        states = self._session.scalars(
             select(ConceptExtractionState).where(
-                ConceptExtractionState.document_id == document_id
+                ConceptExtractionState.document_id.in_(list(document_hashes))
             )
         )
-        if state is None:
+        missing = dict(document_hashes)
+        for state in states:
+            state.content_hash = missing.pop(state.document_id)
+        for document_id, content_hash in missing.items():
             self._session.add(
                 ConceptExtractionState(document_id=document_id, content_hash=content_hash)
             )
-        else:
-            state.content_hash = content_hash
 
 
 def _document_edge_triples(
@@ -593,19 +632,25 @@ class OpenAIGraphCaller:
     def __init__(
         self,
         *,
-        api_key: str,
+        api_key: str | None = None,
         model: str,
-        timeout_seconds: float,
+        timeout_seconds: float = 30.0,
         max_retries: int = 2,
         context: ProviderCallContext | None = None,
+        client: object | None = None,
     ) -> None:
-        from openai import OpenAI
+        if client is None and not api_key:
+            raise ValueError("OPENAI_API_KEY is required for OpenAI graph caller")
 
-        self._client: Any = OpenAI(
-            api_key=api_key,
-            timeout=timeout_seconds,
-            max_retries=max_retries,
-        )
+        if client is None:
+            from openai import OpenAI
+
+            client = OpenAI(
+                api_key=api_key,
+                timeout=timeout_seconds,
+                max_retries=max_retries,
+            )
+        self._client: Any = client
         self._model = model
         self._context = context if context is not None else ProviderCallContext()
 
@@ -633,25 +678,39 @@ class OpenAIGraphCaller:
                 error_type=error.__class__.__name__,
             )
             raise
-        usage = _completion_usage(response)
+        usage = completion_usage(response)
+        provider_request_id = response_request_id(response)
+        choices = response.choices
+        content = choices[0].message.content if choices else None
+        if not isinstance(content, str) or not content:
+            # An empty extraction parses as {} and would silently wipe the
+            # document's concept sources; fail the document instead.
+            self._record(
+                status="failed",
+                started_at=started_at,
+                client_request_id=client_request_id,
+                provider_request_id=provider_request_id,
+                usage=usage,
+                error_type="RuntimeError",
+            )
+            raise RuntimeError("graph extraction returned empty content")
         self._record(
             status="succeeded",
             started_at=started_at,
             client_request_id=client_request_id,
-            provider_request_id=_response_request_id(response),
+            provider_request_id=provider_request_id,
             usage=usage,
         )
-        content = response.choices[0].message.content
-        return content if isinstance(content, str) else ""
+        return content
 
     def _record(
         self,
         *,
-        status: str,
+        status: ProviderCallStatus,
         started_at: float,
         client_request_id: str | None,
         provider_request_id: str | None = None,
-        usage: Any = None,
+        usage: ProviderUsage | None = None,
         error_type: str | None = None,
     ) -> None:
         self._context.record(
@@ -659,7 +718,7 @@ class OpenAIGraphCaller:
                 provider="openai",
                 operation=GRAPH_EXTRACTION_OPERATION,
                 model=self._model,
-                status="failed" if status == "failed" else "succeeded",
+                status=status,
                 client_request_id=client_request_id,
                 provider_request_id=provider_request_id,
                 usage=usage,
