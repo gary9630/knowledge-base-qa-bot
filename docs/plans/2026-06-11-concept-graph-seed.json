@@ -1,0 +1,2322 @@
+{
+  "version": 1,
+  "clusters": [
+    {
+      "name": "網路與通訊協定",
+      "position": 0
+    },
+    {
+      "name": "系統架構基礎",
+      "position": 1
+    },
+    {
+      "name": "資料庫核心",
+      "position": 2
+    },
+    {
+      "name": "索引與搜尋",
+      "position": 3
+    },
+    {
+      "name": "快取與 CDN",
+      "position": 4
+    },
+    {
+      "name": "分片與複製",
+      "position": 5
+    },
+    {
+      "name": "讀寫擴展模式",
+      "position": 6
+    },
+    {
+      "name": "非同步與訊息",
+      "position": 7
+    },
+    {
+      "name": "即時更新",
+      "position": 8
+    },
+    {
+      "name": "大型檔案處理",
+      "position": 9
+    },
+    {
+      "name": "資料管線",
+      "position": 10
+    },
+    {
+      "name": "AI 與 RAG",
+      "position": 11
+    },
+    {
+      "name": "基礎設施元件",
+      "position": 12
+    },
+    {
+      "name": "並行控制",
+      "position": 13
+    },
+    {
+      "name": "過載保護與韌性",
+      "position": 14
+    },
+    {
+      "name": "可觀測性",
+      "position": 15
+    }
+  ],
+  "concepts": [
+    {
+      "name": "ACID",
+      "slug": "acid",
+      "summary": "資料庫 Transaction 的四個可靠性保證：Atomicity（原子性，全成功或全回滾）、Consistency（一致性，維持商業規則）、Isolation（隔離性，並發交易互不干擾）、Durability（持久性，commit 後不遺失）。理解 ACID 是設計任何涉及多步驟寫入系統的基礎。",
+      "aliases": [
+        "ACID 屬性",
+        "原子性一致性隔離性持久性"
+      ],
+      "source_ids": [
+        "1-基本觀念-08-Database Transactions.md#acid四個保證",
+        "1-基本觀念-08-Database Transactions.md#什麼是-transaction"
+      ],
+      "cluster": "資料庫核心"
+    },
+    {
+      "name": "API Design",
+      "slug": "api-design",
+      "summary": "API 設計的核心是先釐清使用者（外部 client、內部服務、admin、webhook）、選擇合適的 style（REST / GraphQL / gRPC），再考量冪等性、分頁、版本管理、安全與可觀測性。好的 API 讓快取、權限、rate limiting 與非同步任務都更容易說清楚。",
+      "aliases": [],
+      "source_ids": [
+        "1-基本觀念-05-API Design.md#api-design",
+        "1-基本觀念-05-API Design.md#先判斷-api-的使用者",
+        "1-基本觀念-05-API Design.md#api-設計-checklist"
+      ],
+      "cluster": "網路與通訊協定"
+    },
+    {
+      "name": "API Gateway",
+      "slug": "api-gateway",
+      "summary": "API Gateway 是外部流量的統一入口，集中處理 routing、authentication/authorization、rate limiting、TLS termination、request transformation 與 observability，讓 client 不需了解內部服務拓樸。",
+      "aliases": [
+        "閘道",
+        "Gateway"
+      ],
+      "source_ids": [
+        "3-常用技術-03-API Gateway.md#api-gateway",
+        "3-常用技術-03-API Gateway.md#api-gateway-api-gateway",
+        "3-常用技術-03-API Gateway.md#gateway-不只是-reverse-proxy"
+      ],
+      "cluster": "基礎設施元件"
+    },
+    {
+      "name": "At-Least-Once Delivery",
+      "slug": "at-least-once-delivery",
+      "summary": "Queue 系統的標準投遞語意：message 保證至少被處理一次，但可能重複。Worker 使用 ack 機制確認處理完成；若 crash 或 visibility timeout 到期，message 重新可見並被重新消費。必須搭配 idempotency 才能安全。",
+      "aliases": [
+        "At-least-once",
+        "至少一次投遞"
+      ],
+      "source_ids": [
+        "4-維運與可靠性-03-Reliable Delivery.md#at-least-once",
+        "4-維運與可靠性-03-Reliable Delivery.md#ack-與-visibility-timeout"
+      ],
+      "cluster": "非同步與訊息"
+    },
+    {
+      "name": "B-Tree Index",
+      "slug": "b-tree-index",
+      "summary": "關聯式資料庫最常見的索引結構，支援等值查詢、範圍查詢、排序和 unique constraint。是設計讀多寫少系統時的預設索引選擇，但每個索引都會增加寫入和儲存成本。",
+      "aliases": [
+        "B-tree",
+        "B+tree",
+        "B-tree Index"
+      ],
+      "source_ids": [
+        "1-基本觀念-07-Database Indexing.md#b-tree-index",
+        "1-基本觀念-07-Database Indexing.md#indexing-decision-framework"
+      ],
+      "cluster": "索引與搜尋"
+    },
+    {
+      "name": "Backfill",
+      "slug": "backfill",
+      "summary": "Backfill 是用歷史資料重跑 pipeline，用於修正 bug、新增欄位或重建 index。需要控制速度避免壓垮線上系統，並能與 live streaming 資料去重、可暫停重跑、結果可驗證。",
+      "aliases": [],
+      "source_ids": [
+        "2-設計模式-07-Data Pipeline Design.md#backfill",
+        "2-設計模式-07-Data Pipeline Design.md#reprocessing"
+      ],
+      "cluster": "資料管線"
+    },
+    {
+      "name": "Backpressure",
+      "slug": "backpressure",
+      "summary": "下游承受不住時，主動將壓力訊號傳遞給上游，讓上游降低輸入速率（如 queue lag 高時限制 job 建立速率、consumer 暫停拉取）。是避免系統雪崩的協同機制，讓整個 pipeline 有一致的流量控制。",
+      "aliases": [
+        "背壓",
+        "Flow Control"
+      ],
+      "source_ids": [
+        "2-設計模式-02-Scaling Writes.md#backpressure",
+        "2-設計模式-02-Scaling Writes.md#下游能不能跟上",
+        "2-設計模式-05-Real-time Updates.md#backpressure",
+        "2-設計模式-07-Data Pipeline Design.md#queue-stream",
+        "4-維運與可靠性-02-Overload Protection.md#backpressure"
+      ],
+      "cluster": "過載保護與韌性"
+    },
+    {
+      "name": "Batch vs Streaming",
+      "slug": "batch-vs-streaming",
+      "summary": "Batch 處理定期大量資料，延遲高但成本低；Streaming 即時處理每筆事件，延遲低但複雜度高。Pipeline 設計首先依 latency budget 選擇模式，避免為全部需求都追求 streaming。",
+      "aliases": [
+        "Micro-batch"
+      ],
+      "source_ids": [
+        "2-設計模式-07-Data Pipeline Design.md#batch-vs-streaming",
+        "2-設計模式-07-Data Pipeline Design.md#latency-budget"
+      ],
+      "cluster": "資料管線"
+    },
+    {
+      "name": "Object Storage",
+      "slug": "blob-storage",
+      "summary": "Blob Storage（如 AWS S3、GCS）以 object 為單位儲存大型二進位資料，支援高 durability、低成本與近乎無限水平擴展。設計時 bytes 放 object storage，可查詢 metadata 放 database，下載走 CDN 或 signed URL。",
+      "aliases": [
+        "Blob Storage",
+        "Object Storage",
+        "S3",
+        "物件儲存"
+      ],
+      "source_ids": [
+        "2-設計模式-04-Handling Large Blobs.md#object-storage",
+        "2-設計模式-04-Handling Large Blobs.md#大型-blob-在解什麼問題",
+        "2-設計模式-04-Handling Large Blobs.md#不要把-blob-放進-database-主表",
+        "3-常用技術-02-Blob Storage.md#blob-storage",
+        "3-常用技術-02-Blob Storage.md#什麼是-blob-storage",
+        "3-常用技術-02-Blob Storage.md#durability-與-availability"
+      ],
+      "cluster": "大型檔案處理"
+    },
+    {
+      "name": "Bulkhead",
+      "slug": "bulkhead",
+      "summary": "將不同流量或功能的資源（thread pool、queue、connection pool）隔離，讓一個區域的過載或故障不會蔓延到整個系統。例如 webhook delivery worker 與 user-facing API 使用不同 pool，確保互不影響。",
+      "aliases": [
+        "艙壁隔離"
+      ],
+      "source_ids": [
+        "4-維運與可靠性-02-Overload Protection.md#bulkhead"
+      ],
+      "cluster": "過載保護與韌性"
+    },
+    {
+      "name": "Cache-Aside",
+      "slug": "cache-aside",
+      "summary": "最常見的快取模式：application 先查 cache，miss 時查 database 並將結果回填 cache。簡單可控，適合大多數讀多寫少的場景，但首次 miss 較慢且需處理 stampede 問題。",
+      "aliases": [
+        "Lazy Loading",
+        "旁路快取"
+      ],
+      "source_ids": [
+        "1-基本觀念-09-Caching.md#cache-aside",
+        "1-基本觀念-09-Caching.md#快取模式",
+        "2-設計模式-01-Scaling Reads.md#第三層external-cache",
+        "2-設計模式-01-Scaling Reads.md#cache-適合放什麼",
+        "2-設計模式-01-Scaling Reads.md#ttl-與-invalidation"
+      ],
+      "cluster": "快取與 CDN"
+    },
+    {
+      "name": "Cache Consistency",
+      "slug": "cache-consistency",
+      "summary": "快取與 source of truth 之間的資料同步問題。常見策略有 write invalidate、write update、short TTL、event-driven invalidation。對 correctness-critical 的操作（如 booking）必須在最終決策時回 source of truth 驗證。",
+      "aliases": [
+        "快取一致性",
+        "Cache Invalidation"
+      ],
+      "source_ids": [
+        "1-基本觀念-09-Caching.md#cache-consistency",
+        "1-基本觀念-09-Caching.md#cache-penetration"
+      ],
+      "cluster": "快取與 CDN"
+    },
+    {
+      "name": "Cache Eviction Policy",
+      "slug": "cache-eviction-policy",
+      "summary": "當 cache 記憶體不足時決定移除哪些資料的策略，常見有 LRU（最近最少使用）、LFU（使用頻率最低）、TTL（到期移除）。選擇策略需配合 workload 的熱資料特性；TTL 同時也是 freshness policy。",
+      "aliases": [
+        "淘汰策略",
+        "TTL",
+        "LRU",
+        "LFU",
+        "Cache Eviction"
+      ],
+      "source_ids": [
+        "1-基本觀念-09-Caching.md#淘汰策略和-ttl"
+      ],
+      "cluster": "快取與 CDN"
+    },
+    {
+      "name": "Cache Stampede",
+      "slug": "cache-stampede",
+      "summary": "熱門 key 過期後大量 request 同時 cache miss，全部打回 database 造成突刺流量的問題。可用 request coalescing（只讓一個 request 重建）、stale-while-revalidate、TTL jitter 或 cache warming 緩解。",
+      "aliases": [
+        "快取雪崩（單 key）",
+        "Thundering Herd",
+        "Cache Thundering Herd",
+        "Dogpile",
+        "快取雪崩"
+      ],
+      "source_ids": [
+        "1-基本觀念-09-Caching.md#cache-stampede",
+        "2-設計模式-01-Scaling Reads.md#cache-stampede",
+        "2-設計模式-01-Scaling Reads.md#q4cache-stampede-怎麼解",
+        "3-常用技術-08-Distributed Cache.md#cache-stampede"
+      ],
+      "cluster": "快取與 CDN"
+    },
+    {
+      "name": "CAP Theorem",
+      "slug": "cap-theorem",
+      "summary": "CAP 定理說明分散式系統在網路分區（Partition）發生時，只能在一致性（Consistency）與可用性（Availability）中擇一保留。實際設計時不是替整個系統貼標籤，而是依每條 request path 的業務後果決定偏 CP 或偏 AP。",
+      "aliases": [
+        "CAP 定理"
+      ],
+      "source_ids": [
+        "1-基本觀念-03-CAP Theorem.md#cap-theorem",
+        "1-基本觀念-03-CAP Theorem.md#先分辨這條-path-可不可以接受舊資料",
+        "1-基本觀念-03-CAP Theorem.md#常見誤解"
+      ],
+      "cluster": "系統架構基礎"
+    },
+    {
+      "name": "CDN",
+      "slug": "cdn",
+      "summary": "CDN（Content Delivery Network）把可快取內容放到離使用者最近的 edge location，降低全球延遲、保護 origin 免受大量重複請求衝擊，並在 origin 短暫不穩時維持部分服務可用性。",
+      "aliases": [
+        "Content Delivery Network",
+        "內容傳遞網路",
+        "Edge cache"
+      ],
+      "source_ids": [
+        "1-基本觀念-01-Networking Essentials.md#cdn",
+        "1-基本觀念-01-Networking Essentials.md#dnscdn-與全球延遲",
+        "3-常用技術-10-CDN (Content Delivery Network).md#cdn-content-delivery-network",
+        "3-常用技術-10-CDN (Content Delivery Network).md#cdn-在解什麼問題",
+        "3-常用技術-10-CDN (Content Delivery Network).md#基本架構"
+      ],
+      "cluster": "快取與 CDN"
+    },
+    {
+      "name": "CDN 與 Edge Cache",
+      "slug": "cdn-edge-cache",
+      "summary": "將公開靜態內容或可快取的 API response 放到靠近使用者的 edge 節點，降低跨區域讀取延遲。設計重點是 cache key、TTL、purge 策略與 origin protection；不適合個人化或權限敏感資料。",
+      "aliases": [
+        "Content Delivery Network",
+        "Edge Caching"
+      ],
+      "source_ids": [
+        "2-設計模式-01-Scaling Reads.md#第四層cdn-與-edge-cache",
+        "2-設計模式-01-Scaling Reads.md#edge-的一致性問題"
+      ],
+      "cluster": "快取與 CDN"
+    },
+    {
+      "name": "Chunking",
+      "slug": "chunking",
+      "summary": "Chunking 把文件切成適合召回的片段，在上下文完整性與向量精準度之間取得平衡。好的 chunking 保留 heading 路徑、表格完整性和程式碼邊界，避免固定 token 數機械切分。",
+      "aliases": [],
+      "source_ids": [
+        "2-設計模式-08-RAG (Retrieval-Augmented Generation).md#chunking",
+        "2-設計模式-08-RAG (Retrieval-Augmented Generation).md#ingestion-pipeline"
+      ],
+      "cluster": "AI 與 RAG"
+    },
+    {
+      "name": "Circuit Breaker",
+      "slug": "circuit-breaker",
+      "summary": "當下游持續失敗或變慢，Circuit Breaker 暫停對該下游的呼叫（Open 狀態），避免本服務資源被拖垮；冷卻後進入 Half-Open 狀態，以少量探測決定是否恢復正常呼叫。是防止 cascading failure 的核心模式。",
+      "aliases": [
+        "斷路器"
+      ],
+      "source_ids": [
+        "1-基本觀念-01-Networking Essentials.md#circuit-breaker",
+        "4-維運與可靠性-02-Overload Protection.md#circuit-breaker",
+        "4-維運與可靠性-03-Reliable Delivery.md#circuit-breaker-與-fallback"
+      ],
+      "cluster": "過載保護與韌性"
+    },
+    {
+      "name": "Citation 與 Grounding",
+      "slug": "citation-grounding",
+      "summary": "RAG 的 grounding 要求模型的每個回答都能映射到被選中的 source chunk，防止模型自由編造來源。來源不足時應回傳「無法確認」而非強行補充，維持回答可追溯性。",
+      "aliases": [
+        "Citation",
+        "Grounding"
+      ],
+      "source_ids": [
+        "2-設計模式-08-RAG (Retrieval-Augmented Generation).md#citation-與-grounding",
+        "2-設計模式-08-RAG (Retrieval-Augmented Generation).md#prompt",
+        "2-設計模式-08-RAG (Retrieval-Augmented Generation).md#評估-rag"
+      ],
+      "cluster": "AI 與 RAG"
+    },
+    {
+      "name": "Client-Server Architecture",
+      "slug": "client-server-architecture",
+      "summary": "Client 負責發起請求與顯示介面，Server 負責執行商業邏輯與資料處理，兩者透過 Request-Response 模型溝通。這是現代 Web 系統的基礎，理解職責分離後才能進一步討論擴展、API 設計與快取。",
+      "aliases": [
+        "客戶端-伺服器架構"
+      ],
+      "source_ids": [
+        "1-基本觀念-02-Client-Server Architecture.md#什麼是-client-server-architecture",
+        "1-基本觀念-02-Client-Server Architecture.md#client-和-server-的角色",
+        "1-基本觀念-02-Client-Server Architecture.md#在系統設計面試中的應用"
+      ],
+      "cluster": "系統架構基礎"
+    },
+    {
+      "name": "Cold Start",
+      "slug": "cold-start",
+      "summary": "Cold Start 是 serverless 平台需要新啟動 function instance 時產生的額外延遲，影響因素包含 runtime、package size、VPC 設定與初始化邏輯。對同步 API 會影響 P95/P99，可透過 provisioned concurrency 緩解。",
+      "aliases": [
+        "冷啟動"
+      ],
+      "source_ids": [
+        "3-常用技術-06-Serverless.md#cold-start"
+      ],
+      "cluster": "基礎設施元件"
+    },
+    {
+      "name": "Conditional Update",
+      "slug": "conditional-update",
+      "summary": "將「先讀再寫」合併為單一 atomic SQL 操作，透過 WHERE 條件（如 available_count > 0）同時完成檢查與更新，避免多個 app server 基於舊狀態同時下決策。是解決簡單 contention 最輕量的手段。",
+      "aliases": [
+        "Atomic Conditional Write"
+      ],
+      "source_ids": [
+        "4-維運與可靠性-01-Dealing With Contention.md#conditional-update"
+      ],
+      "cluster": "並行控制"
+    },
+    {
+      "name": "Consistency vs Availability Trade-off",
+      "slug": "consistency-vs-availability",
+      "summary": "當網路分區發生時，偏 CP 的系統寧可拒絕請求也要保證資料正確（適合銀行扣款、訂房庫存）；偏 AP 的系統讓服務繼續回應但可能返回舊資料（適合使用者頭像、公開 feed）。同一產品的不同功能可以有不同選擇。",
+      "aliases": [
+        "CP vs AP"
+      ],
+      "source_ids": [
+        "1-基本觀念-03-CAP Theorem.md#atm-提款機案例",
+        "1-基本觀念-03-CAP Theorem.md#選-cp先保帳戶正確",
+        "1-基本觀念-03-CAP Theorem.md#選-ap先讓服務繼續",
+        "1-基本觀念-03-CAP Theorem.md#課程案例"
+      ],
+      "cluster": "系統架構基礎"
+    },
+    {
+      "name": "Consistent Hashing",
+      "slug": "consistent-hashing",
+      "summary": "一種將 key 和節點都映射到同一個 hash ring 的路由策略，讓 key 順時針尋找最近節點。節點數量改變時，只有鄰近的一段 key range 需要重新分配，大幅減少擴縮容時的 cache miss 和資料搬遷成本。",
+      "aliases": [
+        "一致性雜湊",
+        "hash ring"
+      ],
+      "source_ids": [
+        "1-基本觀念-06-Consistent Hashing.md#consistent-hashing-在解什麼問題",
+        "1-基本觀念-06-Consistent Hashing.md#consistent-hashing-的核心想法",
+        "1-基本觀念-06-Consistent Hashing.md#為什麼-hashkey-n-會出事",
+        "1-基本觀念-06-Consistent Hashing.md#consistent-hashing-不解決什麼"
+      ],
+      "cluster": "分片與複製"
+    },
+    {
+      "name": "Container",
+      "slug": "container",
+      "summary": "Container 將 application 和其 runtime、library、設定打包成可重複部署的隔離單位，最適合 stateless service。搭配 orchestrator（Kubernetes、ECS）可實現自動 scheduling、rolling update、health check 與水平擴縮。",
+      "aliases": [
+        "容器",
+        "Docker container"
+      ],
+      "source_ids": [
+        "3-常用技術-05-Container.md#container",
+        "3-常用技術-05-Container.md#container-在解什麼問題",
+        "3-常用技術-05-Container.md#container-適合-stateless-service"
+      ],
+      "cluster": "基礎設施元件"
+    },
+    {
+      "name": "Container Orchestration",
+      "slug": "container-orchestration",
+      "summary": "Container Orchestration（如 Kubernetes、ECS、Nomad）負責 container 的排程、重啟、rolling deployment、service discovery、resource allocation 與 secret 管理，讓 production 環境的大量 container 可以自動化運維。",
+      "aliases": [
+        "Kubernetes",
+        "容器編排",
+        "K8s"
+      ],
+      "source_ids": [
+        "3-常用技術-05-Container.md#orchestration",
+        "3-常用技術-05-Container.md#rollout-與-rollback"
+      ],
+      "cluster": "基礎設施元件"
+    },
+    {
+      "name": "CQRS 與 Read Model",
+      "slug": "cqrs-read-model",
+      "summary": "將寫入模型（追求正確性）與讀取模型（追求查詢效率）分離的設計思路。透過 denormalization、materialized view 或獨立 search index，讓讀取路徑不受 normalized write schema 拖累。",
+      "aliases": [
+        "CQRS",
+        "Command Query Responsibility Segregation",
+        "Denormalization",
+        "Read Model"
+      ],
+      "source_ids": [
+        "2-設計模式-01-Scaling Reads.md#cqrs-的直覺",
+        "2-設計模式-01-Scaling Reads.md#denormalization-與-read-model",
+        "2-設計模式-01-Scaling Reads.md#materialized-view",
+        "2-設計模式-01-Scaling Reads.md#第五層search-index-與-specialized-read-store"
+      ],
+      "cluster": "讀寫擴展模式"
+    },
+    {
+      "name": "Cross-Shard Query",
+      "slug": "cross-shard-query",
+      "summary": "查詢需要跨多個 shard 的情況，通常以 scatter-gather 模式實現：router 將子查詢發送到所有相關 shard 再聚合結果。延遲受最慢 shard 影響且 fanout 成本高，是選錯 shard key 的常見症狀。",
+      "aliases": [
+        "Scatter-Gather",
+        "跨分片查詢"
+      ],
+      "source_ids": [
+        "1-基本觀念-10-Sharding.md#cross-shard-query",
+        "1-基本觀念-10-Sharding.md#sharding-之後會變難的事"
+      ],
+      "cluster": "分片與複製"
+    },
+    {
+      "name": "Database",
+      "slug": "database",
+      "summary": "資料庫依資料模型與工作負載分為多種類型（Relational、Key-Value、Document、Search、OLAP、Vector 等），選型時需同時考量查詢形狀、一致性需求、擴展方式與運維成本。面試時應先說明 source of truth，再說明讀取模型與資料流。",
+      "aliases": [
+        "DB",
+        "資料庫"
+      ],
+      "source_ids": [
+        "3-常用技術-01-Database.md#database",
+        "3-常用技術-01-Database.md#常見分類",
+        "3-常用技術-01-Database.md#選資料庫的問題清單"
+      ],
+      "cluster": "資料庫核心"
+    },
+    {
+      "name": "Dead Letter Queue",
+      "slug": "dead-letter-queue",
+      "summary": "多次重試仍失敗的 message 會被移至 DLQ，作為運維界面供告警、排查原因、修復資料後手動 replay。DLQ 不是垃圾桶，而是可靠投遞系統中的最後安全網，確保失敗訊息不會無聲消失。",
+      "aliases": [
+        "DLQ",
+        "死信佇列"
+      ],
+      "source_ids": [
+        "2-設計模式-03-Manage Long Running Tasks.md#retry-policy",
+        "2-設計模式-03-Manage Long Running Tasks.md#總結",
+        "3-常用技術-07-Message Queue.md#retrybackoffdlq",
+        "3-常用技術-06-Serverless.md#retry-與-dlq",
+        "4-維運與可靠性-03-Reliable Delivery.md#dead-letter-queue"
+      ],
+      "cluster": "非同步與訊息"
+    },
+    {
+      "name": "Distributed Cache",
+      "slug": "distributed-cache",
+      "summary": "Distributed Cache（如 Redis、Memcached）是多台 application server 共用的快取層，提供低延遲讀取並減少 database 負擔，設計時需考量 TTL、invalidation、hot key、cache stampede 與 cache failure 的降級策略。",
+      "aliases": [
+        "分散式快取",
+        "Redis",
+        "Memcached"
+      ],
+      "source_ids": [
+        "3-常用技術-08-Distributed Cache.md#distributed-cache",
+        "3-常用技術-08-Distributed Cache.md#distributed-cache-在解什麼問題",
+        "3-常用技術-08-Distributed Cache.md#cache-aside"
+      ],
+      "cluster": "快取與 CDN"
+    },
+    {
+      "name": "Distributed Lock",
+      "slug": "distributed-lock",
+      "summary": "Distributed Lock 讓多個 process 對同一 shared resource 做互斥操作，需搭配 lease（TTL）避免永久持有，以及 fencing token 防止過期 holder 繼續寫入。許多場景可優先用 database transaction 或 conditional update 替代。",
+      "aliases": [
+        "分散式鎖",
+        "Redis lock"
+      ],
+      "source_ids": [
+        "3-常用技術-09-Distributed Lock.md#distributed-lock",
+        "3-常用技術-09-Distributed Lock.md#distributed-lock-在解什麼問題",
+        "3-常用技術-09-Distributed Lock.md#lease",
+        "3-常用技術-09-Distributed Lock.md#fencing-token",
+        "4-維運與可靠性-01-Dealing With Contention.md#distributed-lock"
+      ],
+      "cluster": "並行控制"
+    },
+    {
+      "name": "Distributed Tracing",
+      "slug": "distributed-tracing",
+      "summary": "透過 Trace 追蹤單一 request 跨多個服務的完整路徑，每個 Span 代表一段工作（API handler、DB query、LLM call 等）。搭配 Correlation ID（request id / trace id）可串起 logs 與 traces，快速定位跨服務瓶頸。",
+      "aliases": [
+        "分散式追蹤",
+        "Traces",
+        "Correlation ID"
+      ],
+      "source_ids": [
+        "4-維運與可靠性-04-Observability.md#traces",
+        "4-維運與可靠性-04-Observability.md#correlation-id"
+      ],
+      "cluster": "可觀測性"
+    },
+    {
+      "name": "DNS",
+      "slug": "dns",
+      "summary": "DNS 將 domain name 解析成 IP 或 edge endpoint，也可根據地區回傳不同入口輔助流量導向。因有 TTL 快取，更新不是即時生效，不適合承擔需要秒級精準切換的 routing decision。",
+      "aliases": [],
+      "source_ids": [
+        "1-基本觀念-01-Networking Essentials.md#dns",
+        "1-基本觀念-01-Networking Essentials.md#dnscdn-與全球延遲"
+      ],
+      "cluster": "網路與通訊協定"
+    },
+    {
+      "name": "Embedding",
+      "slug": "embedding",
+      "summary": "Embedding 把文字轉成稠密向量，使語意相近的內容在向量空間中距離接近。它是 RAG 語意檢索的核心，但 embedding model 和維度一旦更改通常需要重建整個 vector index。",
+      "aliases": [
+        "Embeddings"
+      ],
+      "source_ids": [
+        "2-設計模式-08-RAG (Retrieval-Augmented Generation).md#embeddings",
+        "2-設計模式-08-RAG (Retrieval-Augmented Generation).md#rag-不是只有-vector-search"
+      ],
+      "cluster": "AI 與 RAG"
+    },
+    {
+      "name": "Failover",
+      "slug": "failover",
+      "summary": "當 leader 失效時，從 follower 中選出新 leader 並重新設定系統路由的過程。主要挑戰包括 split brain 風險、非同步複製造成的資料遺失，以及 timeout 門檻難以拿捏。",
+      "aliases": [
+        "自動 Failover",
+        "Leader 選舉"
+      ],
+      "source_ids": [
+        "1-基本觀念-11-Replication.md#leader-失效failover",
+        "1-基本觀念-11-Replication.md#failover-時怎麼避免資料遺失"
+      ],
+      "cluster": "分片與複製"
+    },
+    {
+      "name": "Fencing Token",
+      "slug": "fencing-token",
+      "summary": "Fencing Token 是每次取得 distributed lock 時遞增的版本號，下游 resource 只接受最新 token 的寫入，防止因 GC pause 或網路延遲而過期的 lock holder 繼續造成資料損壞。",
+      "aliases": [
+        "柵欄令牌"
+      ],
+      "source_ids": [
+        "3-常用技術-09-Distributed Lock.md#fencing-token"
+      ],
+      "cluster": "並行控制"
+    },
+    {
+      "name": "Geospatial Index",
+      "slug": "geospatial-index",
+      "summary": "針對地理座標查詢設計的索引，支援附近搜尋、地圖 viewport、polygon intersection 等空間操作。是 Airbnb 地圖搜尋、Robotaxi 派車等場景不可或缺的基礎設施。",
+      "aliases": [
+        "地理空間索引"
+      ],
+      "source_ids": [
+        "1-基本觀念-07-Database Indexing.md#geospatial-index"
+      ],
+      "cluster": "索引與搜尋"
+    },
+    {
+      "name": "GraphQL",
+      "slug": "graphql",
+      "summary": "GraphQL 讓 client 明確指定所需欄位，適合前端頁面需要組合多種 entity、不同 client 欄位需求差異大的場景。代價是 server 需處理 resolver N+1、query complexity 及 field-level authorization 等挑戰。",
+      "aliases": [],
+      "source_ids": [
+        "1-基本觀念-01-Networking Essentials.md#graphql",
+        "1-基本觀念-05-API Design.md#課程案例"
+      ],
+      "cluster": "網路與通訊協定"
+    },
+    {
+      "name": "gRPC",
+      "slug": "grpc",
+      "summary": "gRPC 使用 Protocol Buffers 定義 typed 契約，適合內部服務之間的低延遲、高頻呼叫。常見模式是外部 API 用 REST 或 GraphQL，內部高頻服務用 gRPC。",
+      "aliases": [],
+      "source_ids": [
+        "1-基本觀念-01-Networking Essentials.md#grpc",
+        "1-基本觀念-05-API Design.md#選-api-style-的課程框架"
+      ],
+      "cluster": "網路與通訊協定"
+    },
+    {
+      "name": "Health Check",
+      "slug": "health-check",
+      "summary": "Health Check 讓 Load Balancer 或 orchestrator 判斷後端節點是否可接流量，分為 liveness（process 是否存活）、readiness（是否能接 request）與 startup。設定過寬或過嚴都會造成問題。",
+      "aliases": [
+        "健康檢查"
+      ],
+      "source_ids": [
+        "3-常用技術-04-Load Balancer.md#health-check",
+        "3-常用技術-05-Container.md#health-check"
+      ],
+      "cluster": "基礎設施元件"
+    },
+    {
+      "name": "Heartbeat / Lease",
+      "slug": "heartbeat-lease",
+      "summary": "Worker 定期更新 heartbeat_at，系統以此判斷執行中的 job 是否已孤立（orphaned）。超時未更新的 job 可被 recover 流程重新排隊，避免任務永遠卡在 running 狀態。",
+      "aliases": [
+        "Lease 與 Heartbeat"
+      ],
+      "source_ids": [
+        "2-設計模式-03-Manage Long Running Tasks.md#lease-與-heartbeat",
+        "2-設計模式-03-Manage Long Running Tasks.md#concurrency-control"
+      ],
+      "cluster": "非同步與訊息"
+    },
+    {
+      "name": "Horizontal Scaling",
+      "slug": "horizontal-scaling",
+      "summary": "水平擴展透過增加機器數量並搭配 Load Balancer 分攤工作，理論上可無限擴展，彈性佳，適合大規模長期成長。代價是系統設計複雜，需要處理分散式資料一致性、stateless 服務等問題。",
+      "aliases": [
+        "水平擴展",
+        "Scale Out"
+      ],
+      "source_ids": [
+        "1-基本觀念-04-Scalability.md#水平擴展horizontal-scaling"
+      ],
+      "cluster": "系統架構基礎"
+    },
+    {
+      "name": "Hot Key",
+      "slug": "hot-key",
+      "summary": "單一 cache key 或 shard key 的流量遠高於其他 key，導致持有該 key 的節點過載。整體 hit rate 高也無法掩蓋 hot key 問題；常見解法包括 in-process cache、key fanout、dedicated replica。",
+      "aliases": [
+        "熱點 Key",
+        "熱點鍵"
+      ],
+      "source_ids": [
+        "1-基本觀念-09-Caching.md#hot-key",
+        "1-基本觀念-10-Sharding.md#hot-shard-和-hot-key"
+      ],
+      "cluster": "快取與 CDN"
+    },
+    {
+      "name": "Hot Row 與 Contention",
+      "slug": "hot-row-contention",
+      "summary": "多個請求同時更新同一筆資料（如熱門房源庫存）造成的鎖競爭問題，無法靠增加 app server 解決。常見手段包括 conditional update、optimistic locking、queue by key 及 reservation hold。",
+      "aliases": [
+        "Hot Key",
+        "Write Contention",
+        "鎖競爭"
+      ],
+      "source_ids": [
+        "2-設計模式-02-Scaling Writes.md#hot-row-與-contention",
+        "2-設計模式-02-Scaling Writes.md#conditional-update-範例",
+        "2-設計模式-02-Scaling Writes.md#有沒有-hot-key"
+      ],
+      "cluster": "並行控制"
+    },
+    {
+      "name": "HTTP / HTTPS",
+      "slug": "http-https",
+      "summary": "HTTP 是 Request-Response 模型的應用層協議，HTTPS 在其上加 TLS 保護傳輸不被攔截或竄改。大多數 public API 都應使用 HTTPS，但 HTTPS 不等於 authentication，server 仍需驗證 token 與身份。",
+      "aliases": [
+        "HTTP",
+        "HTTPS"
+      ],
+      "source_ids": [
+        "1-基本觀念-01-Networking Essentials.md#http-https",
+        "1-基本觀念-01-Networking Essentials.md#application-protocol不是每個即時需求都一樣"
+      ],
+      "cluster": "網路與通訊協定"
+    },
+    {
+      "name": "Hybrid Retrieval",
+      "slug": "hybrid-retrieval",
+      "summary": "Hybrid Retrieval 結合關鍵詞搜尋（BM25）與向量語意搜尋，互補彼此的弱點。keyword search 擅長精確名詞和 ID；vector search 擅長語意模糊查詢；production RAG 通常兩者並用。",
+      "aliases": [],
+      "source_ids": [
+        "2-設計模式-08-RAG (Retrieval-Augmented Generation).md#rag-不是只有-vector-search",
+        "2-設計模式-08-RAG (Retrieval-Augmented Generation).md#query-flow"
+      ],
+      "cluster": "AI 與 RAG"
+    },
+    {
+      "name": "Idempotency",
+      "slug": "idempotency",
+      "summary": "冪等性確保同一操作重複執行多次的結果與執行一次相同，是 retry 機制的前提。常見做法是在 request header 帶 Idempotency-Key，server 記錄處理結果，相同 key 再次出現時直接回傳先前結果而非重新執行副作用。",
+      "aliases": [
+        "冪等性",
+        "Idempotency Key"
+      ],
+      "source_ids": [
+        "1-基本觀念-01-Networking Essentials.md#idempotency",
+        "1-基本觀念-05-API Design.md#api-設計-checklist",
+        "2-設計模式-02-Scaling Writes.md#idempotency",
+        "2-設計模式-02-Scaling Writes.md#retry-不是免費的",
+        "4-維運與可靠性-01-Dealing With Contention.md#idempotency",
+        "4-維運與可靠性-03-Reliable Delivery.md#idempotency"
+      ],
+      "cluster": "過載保護與韌性"
+    },
+    {
+      "name": "Indexing Pipeline",
+      "slug": "indexing-pipeline",
+      "summary": "Indexing Pipeline 把 source data 經過抽取、正規化、tokenization、enrichment 後寫入 search index。它決定哪些欄位可被搜尋、facet 如何建立，以及 eventually consistent 的 index lag。",
+      "aliases": [],
+      "source_ids": [
+        "2-設計模式-06-Search System.md#indexing-pipeline",
+        "2-設計模式-06-Search System.md#index-lag",
+        "2-設計模式-06-Search System.md#reindex"
+      ],
+      "cluster": "索引與搜尋"
+    },
+    {
+      "name": "Inverted Index",
+      "slug": "inverted-index",
+      "summary": "Inverted Index 是全文搜尋的核心資料結構，從 token 映射到包含該 token 的文件清單。它讓搜尋系統快速找到相關文件，再進行 ranking，是 Elasticsearch 等搜尋引擎的基礎。",
+      "aliases": [
+        "倒排索引"
+      ],
+      "source_ids": [
+        "1-基本觀念-07-Database Indexing.md#inverted-index",
+        "1-基本觀念-07-Database Indexing.md#indexing-decision-framework",
+        "2-設計模式-06-Search System.md#inverted-index",
+        "2-設計模式-06-Search System.md#search-system-在解什麼問題"
+      ],
+      "cluster": "索引與搜尋"
+    },
+    {
+      "name": "Isolation Levels",
+      "slug": "isolation-levels",
+      "summary": "資料庫提供的四種隔離等級（Read Uncommitted、Read Committed、Repeatable Read、Serializable），讓開發者在並行性能與異常防護之間做取捨。大多數系統預設 Read Committed；金融場景才需要 Serializable。",
+      "aliases": [
+        "隔離等級",
+        "Transaction Isolation",
+        "交易隔離等級"
+      ],
+      "source_ids": [
+        "1-基本觀念-08-Database Transactions.md#隔離等級isolation-levels",
+        "1-基本觀念-08-Database Transactions.md#三種並發異常"
+      ],
+      "cluster": "資料庫核心"
+    },
+    {
+      "name": "Job Queue",
+      "slug": "job-queue",
+      "summary": "Job Queue 是讓 API server 快速接收任務、由後台 worker 依序執行的機制。它把「接受請求」和「執行工作」分開，讓長任務不阻塞 HTTP 請求、並支援重試與可觀測性。",
+      "aliases": [
+        "Queue + Worker",
+        "Queue / Stream"
+      ],
+      "source_ids": [
+        "2-設計模式-03-Manage Long Running Tasks.md#queue-worker-模型",
+        "2-設計模式-03-Manage Long Running Tasks.md#長任務管理在解什麼問題",
+        "2-設計模式-03-Manage Long Running Tasks.md#worker-claim"
+      ],
+      "cluster": "非同步與訊息"
+    },
+    {
+      "name": "Job 狀態機",
+      "slug": "job-狀態機",
+      "summary": "Job 狀態機定義長任務從 queued、running 到 succeeded / failed / canceled 的完整生命週期。明確的狀態轉換讓重試、取消與 worker crash 恢復有清晰的依據。",
+      "aliases": [],
+      "source_ids": [
+        "2-設計模式-03-Manage Long Running Tasks.md#job-狀態機",
+        "2-設計模式-03-Manage Long Running Tasks.md#cancel",
+        "2-設計模式-03-Manage Long Running Tasks.md#failure-visibility"
+      ],
+      "cluster": "非同步與訊息"
+    },
+    {
+      "name": "Key-Value Store",
+      "slug": "key-value-store",
+      "summary": "Key-Value store（如 Redis、DynamoDB、Memcached）透過 key 快速讀寫，適合 cache、session、rate limit counter 等對查詢形狀固定且可接受 eventual consistency 的場景。",
+      "aliases": [
+        "Key-value database",
+        "KV store"
+      ],
+      "source_ids": [
+        "3-常用技術-01-Database.md#key-value-與-document"
+      ],
+      "cluster": "資料庫核心"
+    },
+    {
+      "name": "Latency",
+      "slug": "latency",
+      "summary": "延遲指單一請求從發出到完成所需的時間，是衡量系統回應速度的關鍵指標。影響延遲的因素包括網路傳輸、服務處理時間、資料庫查詢與跨 region 距離。",
+      "aliases": [
+        "延遲"
+      ],
+      "source_ids": [
+        "1-基本觀念-04-Scalability.md#什麼是可擴展性"
+      ],
+      "cluster": "系統架構基礎"
+    },
+    {
+      "name": "Latency 與 Throughput 估算",
+      "slug": "latency-throughput-估算",
+      "summary": "系統設計估算的核心工具：先估 request rate（QPS）與資料量，再估 latency budget，找出第一個瓶頸，最後才決定擴展手段。不同元件（cache、DB、queue）的延遲量級差異決定了架構選擇。",
+      "aliases": [
+        "Numbers to Know",
+        "容量估算",
+        "Back-of-envelope estimation"
+      ],
+      "source_ids": [
+        "1-基本觀念-12-Numbers to Know.md#numbers-to-know-在解什麼問題",
+        "1-基本觀念-12-Numbers to Know.md#面試估算的五步流程",
+        "1-基本觀念-12-Numbers to Know.md#接著估-latency-budget",
+        "1-基本觀念-12-Numbers to Know.md#課程常用量級"
+      ],
+      "cluster": "系統架構基礎"
+    },
+    {
+      "name": "Leaderless Replication",
+      "slug": "leaderless-replication",
+      "summary": "完全不設 leader，client 直接向多台 replica 並行讀寫，透過 quorum 條件確保讀到最新資料。適合需要高寫入可用性且能接受最終一致性的場景，代表系統有 Cassandra、Riak。",
+      "aliases": [
+        "Dynamo-style Replication",
+        "無主節點複製"
+      ],
+      "source_ids": [
+        "1-基本觀念-11-Replication.md#第三種架構leaderless-replication",
+        "1-基本觀念-11-Replication.md#當節點掛掉時怎麼寫入",
+        "1-基本觀念-11-Replication.md#讓-stale-replica-追上進度"
+      ],
+      "cluster": "分片與複製"
+    },
+    {
+      "name": "Load Balancing",
+      "slug": "load-balancer",
+      "summary": "Load Balancer 將流量分配到健康的後端節點，並在節點故障時停止路由。需根據連線型態（短 request vs 長連線）、routing 需求（L4 vs L7）及演算法（round robin、least connections 等）做選擇。",
+      "aliases": [
+        "負載平衡",
+        "Load Balancing",
+        "LB",
+        "負載平衡器",
+        "Load Balancer"
+      ],
+      "source_ids": [
+        "1-基本觀念-01-Networking Essentials.md#load-balancing",
+        "1-基本觀念-01-Networking Essentials.md#l4-vs-l7",
+        "1-基本觀念-01-Networking Essentials.md#load-balancing-algorithm",
+        "3-常用技術-04-Load Balancer.md#load-balancer",
+        "3-常用技術-04-Load Balancer.md#load-balancer-load-balancer",
+        "3-常用技術-04-Load Balancer.md#l4-vs-l7"
+      ],
+      "cluster": "基礎設施元件"
+    },
+    {
+      "name": "Load Shedding",
+      "slug": "load-shedding",
+      "summary": "系統承受不住時，主動拒絕或降級低優先級請求（如關閉昂貴功能、回 stale cache、禁止大型 export），確保核心路徑（checkout、payment）仍可服務。有意識地丟棄比隨機 timeout 更可控。",
+      "aliases": [
+        "降載",
+        "Request Shedding"
+      ],
+      "source_ids": [
+        "4-維運與可靠性-02-Overload Protection.md#load-shedding",
+        "4-維運與可靠性-02-Overload Protection.md#request-prioritization",
+        "4-維運與可靠性-02-Overload Protection.md#graceful-degradation"
+      ],
+      "cluster": "過載保護與韌性"
+    },
+    {
+      "name": "Lost Update",
+      "slug": "lost-update",
+      "summary": "兩個 transaction 同時讀取同一筆資料、各自計算新值再寫回，後寫入的會覆蓋前者的更新。可用樂觀鎖（版本號）或悲觀鎖（SELECT FOR UPDATE）解決，超賣問題的本質就是 Lost Update。",
+      "aliases": [
+        "更新遺失",
+        "Optimistic Locking",
+        "Pessimistic Locking"
+      ],
+      "source_ids": [
+        "1-基本觀念-08-Database Transactions.md#常見陷阱lost-update更新遺失"
+      ],
+      "cluster": "資料庫核心"
+    },
+    {
+      "name": "LSM Tree",
+      "slug": "lsm-tree",
+      "summary": "Log-Structured Merge Tree，為大量寫入與 append-heavy workload 最佳化的索引結構，寫入快但讀取需要合併多層資料（compaction）。適合 event log、time-series、delivery attempts 等場景。",
+      "aliases": [
+        "LSM-Tree",
+        "Log-Structured Merge Tree"
+      ],
+      "source_ids": [
+        "1-基本觀念-07-Database Indexing.md#lsm-tree"
+      ],
+      "cluster": "索引與搜尋"
+    },
+    {
+      "name": "Message Queue",
+      "slug": "message-queue",
+      "summary": "Message Queue 把「現在一定要完成」和「可以稍後完成」的工作切開，核心用途是削峰、非同步處理與可重試，讓 producer 和 consumer 解耦，並在流量突增時保護下游系統。",
+      "aliases": [
+        "MQ",
+        "消息佇列",
+        "Queue"
+      ],
+      "source_ids": [
+        "3-常用技術-07-Message Queue.md#message-queue",
+        "3-常用技術-07-Message Queue.md#message-queue-在解什麼問題",
+        "3-常用技術-07-Message Queue.md#queue-架構"
+      ],
+      "cluster": "非同步與訊息"
+    },
+    {
+      "name": "Metrics",
+      "slug": "metrics",
+      "summary": "數值型時間序列資料（Counter、Gauge、Histogram），用於聚合、趨勢分析、百分位數計算與告警。RED（Rate、Errors、Duration）和 USE（Utilization、Saturation、Errors）是常見設計框架，回答「系統現在狀態如何」。",
+      "aliases": [
+        "指標",
+        "時間序列指標"
+      ],
+      "source_ids": [
+        "4-維運與可靠性-04-Observability.md#metrics",
+        "4-維運與可靠性-04-Observability.md#metrics-設計"
+      ],
+      "cluster": "可觀測性"
+    },
+    {
+      "name": "Multi-Leader Replication",
+      "slug": "multi-leader-replication",
+      "summary": "多個節點同時接受寫入，每台 leader 也是其他 leader 的 follower。適合跨多個 datacenter 部署、離線操作、協作編輯等場景，可降低跨區寫入延遲，但需處理寫入衝突。",
+      "aliases": [
+        "Multi-Master Replication",
+        "Active-Active Replication"
+      ],
+      "source_ids": [
+        "1-基本觀念-11-Replication.md#第二種架構multi-leader-replication",
+        "1-基本觀念-11-Replication.md#multi-leader-的適用場景",
+        "1-基本觀念-11-Replication.md#處理寫入衝突"
+      ],
+      "cluster": "分片與複製"
+    },
+    {
+      "name": "Multipart Upload",
+      "slug": "multipart-upload",
+      "summary": "Multipart Upload 將大型檔案切成多個 part 並行上傳，失敗只需重傳部分，適合 GB 級影片或資料集。需處理 upload session 過期、abandoned parts 清理與完成時的 checksum 驗證。",
+      "aliases": [
+        "Resumable Upload",
+        "分段上傳"
+      ],
+      "source_ids": [
+        "2-設計模式-04-Handling Large Blobs.md#multipart-resumable-upload",
+        "3-常用技術-02-Blob Storage.md#multipart-upload"
+      ],
+      "cluster": "大型檔案處理"
+    },
+    {
+      "name": "MVCC",
+      "slug": "mvcc",
+      "summary": "Multi-Version Concurrency Control（多版本並行控制），透過對同一份資料保存多個版本，讓讀操作看到 transaction 開始時的快照而不必等待寫操作。是 PostgreSQL、MySQL InnoDB 實現高並發隔離的核心機制。",
+      "aliases": [
+        "Multi-Version Concurrency Control",
+        "多版本並行控制"
+      ],
+      "source_ids": [
+        "1-基本觀念-08-Database Transactions.md#資料庫如何實現隔離mvcc"
+      ],
+      "cluster": "資料庫核心"
+    },
+    {
+      "name": "Optimistic Concurrency Control",
+      "slug": "optimistic-concurrency-control",
+      "summary": "OCC 假設衝突不常發生，允許多個 request 同時讀取資料，但寫入時透過 version 號確認資料未被他人修改；若版本不符則 retry 或回傳失敗。適合低至中等衝突頻率、不想長期持鎖的場景。",
+      "aliases": [
+        "OCC",
+        "Optimistic Locking"
+      ],
+      "source_ids": [
+        "4-維運與可靠性-01-Dealing With Contention.md#optimistic-concurrency-control"
+      ],
+      "cluster": "並行控制"
+    },
+    {
+      "name": "Origin Protection",
+      "slug": "origin-protection",
+      "summary": "Origin Protection 防止 CDN cache miss 或大量 purge 時 origin server 被瞬間打爆，常見手段包含 origin shield（單點回源層）、request coalescing（合併同一 key 的多個 miss 請求）、rate limit 與 stale-if-error。",
+      "aliases": [
+        "Origin Shield",
+        "源站保護"
+      ],
+      "source_ids": [
+        "3-常用技術-10-CDN (Content Delivery Network).md#origin-protection",
+        "3-常用技術-10-CDN (Content Delivery Network).md#ttlversioningpurge"
+      ],
+      "cluster": "快取與 CDN"
+    },
+    {
+      "name": "Outbox Pattern",
+      "slug": "outbox-pattern",
+      "summary": "在同一個 DB transaction 中同時寫入業務資料行與 outbox 事件行，再由獨立 worker 發送 outbox 事件，解決「DB commit 成功但 event 發送失敗」的不一致問題。是保證 DB 與 event bus 之間資料一致的標準模式。",
+      "aliases": [
+        "Transactional Outbox",
+        "Outbox"
+      ],
+      "source_ids": [
+        "2-設計模式-02-Scaling Writes.md#outbox-pattern",
+        "2-設計模式-02-Scaling Writes.md#把核心寫入和副作用拆開",
+        "2-設計模式-02-Scaling Writes.md#交易邊界",
+        "2-設計模式-07-Data Pipeline Design.md#outbox",
+        "2-設計模式-07-Data Pipeline Design.md#event-collection",
+        "4-維運與可靠性-03-Reliable Delivery.md#outbox-pattern"
+      ],
+      "cluster": "非同步與訊息"
+    },
+    {
+      "name": "P95/P99 Latency",
+      "slug": "p95-p99-latency",
+      "summary": "第 95/99 百分位延遲，代表 95%/99% 的請求完成時間在此閾值以下，比平均值更能反映使用者真實體感。透過 Histogram 估算，用於發現 tail latency 問題，是定義 SLO 與排查下游飽和的核心指標。",
+      "aliases": [
+        "Tail Latency",
+        "Percentile Latency",
+        "Histogram 與 Percentile"
+      ],
+      "source_ids": [
+        "4-維運與可靠性-04-Observability.md#histogram-與-percentile"
+      ],
+      "cluster": "可觀測性"
+    },
+    {
+      "name": "Peer-to-Peer (P2P)",
+      "slug": "peer-to-peer",
+      "summary": "P2P 架構讓節點之間直接溝通，無集中 Server 控管，適合視訊通話（WebRTC）或檔案分享等去中心化場景。系統設計面試中絕大多數問題仍以 Client-Server 為主，只有明確需要 peer-to-peer 媒體傳輸時才討論 P2P。",
+      "aliases": [
+        "點對點架構",
+        "P2P"
+      ],
+      "source_ids": [
+        "1-基本觀念-02-Client-Server Architecture.md#client-server-vs-peer-to-peerp2p"
+      ],
+      "cluster": "系統架構基礎"
+    },
+    {
+      "name": "Pessimistic Lock",
+      "slug": "pessimistic-lock",
+      "summary": "悲觀鎖在 transaction 中對 row 加鎖（如 SELECT FOR UPDATE），確保同一時間只有一個 request 可修改該資料。適合衝突機率高且正確性優先於吞吐的場景，代價是 lock wait 延遲與 deadlock 風險。",
+      "aliases": [
+        "Pessimistic Locking",
+        "Row Lock"
+      ],
+      "source_ids": [
+        "4-維運與可靠性-01-Dealing With Contention.md#pessimistic-lock"
+      ],
+      "cluster": "並行控制"
+    },
+    {
+      "name": "Presigned URL",
+      "slug": "presigned-url",
+      "summary": "Presigned URL 讓 client 在有效期限內直接對 object storage 上傳或下載，無需經過 application server 代理大檔。API 控制權限、storage 處理實際傳輸，兼顧安全與效能。",
+      "aliases": [
+        "Signed URL",
+        "pre-signed URL"
+      ],
+      "source_ids": [
+        "2-設計模式-04-Handling Large Blobs.md#presigned-url",
+        "2-設計模式-04-Handling Large Blobs.md#download-path",
+        "3-常用技術-02-Blob Storage.md#presigned-url",
+        "3-常用技術-02-Blob Storage.md#基本使用流程"
+      ],
+      "cluster": "大型檔案處理"
+    },
+    {
+      "name": "Processing Pipeline",
+      "slug": "processing-pipeline",
+      "summary": "Blob 上傳後通常需要背景 processing pipeline（validate、transcode、thumbnail、embedding 等），產生衍生 artifact。Worker 應設計成可重試且能辨識 source object 版本，避免舊 worker 覆蓋新結果。",
+      "aliases": [
+        "背景處理流水線"
+      ],
+      "source_ids": [
+        "3-常用技術-02-Blob Storage.md#processing-pipeline",
+        "3-常用技術-02-Blob Storage.md#常見衍生資料"
+      ],
+      "cluster": "大型檔案處理"
+    },
+    {
+      "name": "Pub/Sub",
+      "slug": "pub-sub",
+      "summary": "Pub/Sub 讓事件生產者發佈到 topic，多個訂閱者獨立消費，實現解耦與 fan-out。即時更新系統用 Pub/Sub 把後端狀態變化分發給多個 connection server 再推到 client。",
+      "aliases": [
+        "Pub/Sub 與 Fan-out"
+      ],
+      "source_ids": [
+        "2-設計模式-05-Real-time Updates.md#pubsub-與-fan-out",
+        "2-設計模式-05-Real-time Updates.md#課程案例polymarket-market-data"
+      ],
+      "cluster": "非同步與訊息"
+    },
+    {
+      "name": "Queue Serialization",
+      "slug": "queue-serialization",
+      "summary": "將同一 key（如 home_id、user_id）的操作路由到同一 queue partition 或 worker，確保同一資源的更新依序執行，天然避免 contention。適合 order book、餘額更新、state machine 等需要保序的場景。",
+      "aliases": [
+        "Partition-based Serialization"
+      ],
+      "source_ids": [
+        "4-維運與可靠性-01-Dealing With Contention.md#queue-serialization"
+      ],
+      "cluster": "非同步與訊息"
+    },
+    {
+      "name": "Queue 吸收寫入尖峰",
+      "slug": "queue-write-buffering",
+      "summary": "Message queue 的核心價值不是讓工作變快，而是吸收 burst、解耦 producer 與 consumer、保護慢下游，讓可延遲的寫入（analytics、通知、webhook）非同步處理。設計需考慮 durability、順序、重試與 consumer lag。",
+      "aliases": [
+        "Write Buffering",
+        "Async Queue",
+        "消息佇列"
+      ],
+      "source_ids": [
+        "2-設計模式-02-Scaling Writes.md#queue-吸收寫入尖峰",
+        "2-設計模式-02-Scaling Writes.md#寫入能不能延遲",
+        "1-基本觀念-12-Numbers to Know.md#queue"
+      ],
+      "cluster": "讀寫擴展模式"
+    },
+    {
+      "name": "QUIC",
+      "slug": "quic",
+      "summary": "QUIC 建立在 UDP 之上，提供類似 TCP + TLS + multiplexing 的能力，是 HTTP/3 的傳輸基礎。在全球 latency、mobile network 或 connection migration 等議題才需要深入討論。",
+      "aliases": [],
+      "source_ids": [
+        "1-基本觀念-01-Networking Essentials.md#quic"
+      ],
+      "cluster": "網路與通訊協定"
+    },
+    {
+      "name": "Quorum",
+      "slug": "quorum",
+      "summary": "Leaderless 系統中保證讀寫一致性的條件：寫入節點數 w 加上讀取節點數 r 必須大於總副本數 n（w+r>n），確保讀寫節點有交集。常見配置為 n=3, w=2, r=2，可容忍一個節點失效。",
+      "aliases": [
+        "Quorum Read",
+        "Quorum Write",
+        "法定多數"
+      ],
+      "source_ids": [
+        "1-基本觀念-11-Replication.md#quorum-reads-和-writes",
+        "1-基本觀念-11-Replication.md#quorum-一致性的限制",
+        "1-基本觀念-11-Replication.md#q3leaderless-架構中quorum-的條件公式是什麼n3-時w-和-r-通常設多少"
+      ],
+      "cluster": "分片與複製"
+    },
+    {
+      "name": "Ranking",
+      "slug": "ranking",
+      "summary": "Ranking 決定搜尋結果的排序，從簡單的 BM25 關鍵詞分數到 freshness、地理距離、個人化乃至 learned ranking model。搜尋系統的核心價值通常在 ranking 品質而非單純的 index 選型。",
+      "aliases": [],
+      "source_ids": [
+        "2-設計模式-06-Search System.md#ranking",
+        "2-設計模式-06-Search System.md#評估搜尋品質"
+      ],
+      "cluster": "索引與搜尋"
+    },
+    {
+      "name": "Rate Limiting",
+      "slug": "rate-limiting",
+      "summary": "Rate Limiting 在 API Gateway 按 IP、user、tenant 或 API key 限制請求速率，常用 Fixed Window、Sliding Window、Token Bucket、Leaky Bucket 等演算法，保護後端服務不被打爆並防止濫用。",
+      "aliases": [
+        "限流",
+        "Rate Limit",
+        "流量限制"
+      ],
+      "source_ids": [
+        "3-常用技術-03-API Gateway.md#rate-limiting",
+        "4-維運與可靠性-02-Overload Protection.md#rate-limiting",
+        "4-維運與可靠性-02-Overload Protection.md#token-bucket"
+      ],
+      "cluster": "過載保護與韌性"
+    },
+    {
+      "name": "Read Replica",
+      "slug": "read-replica",
+      "summary": "把 primary 資料複製到一台或多台只負責讀取的 database，讓寫入走 primary、讀取分散到 replica，適合讀多寫少場景。需注意 replication lag 與 read-after-write consistency 的設計。",
+      "aliases": [
+        "Read Replica",
+        "Follower",
+        "從節點"
+      ],
+      "source_ids": [
+        "2-設計模式-01-Scaling Reads.md#第二層read-replica",
+        "2-設計模式-01-Scaling Reads.md#replica-lag",
+        "1-基本觀念-11-Replication.md#什麼時候在面試裡用這些"
+      ],
+      "cluster": "分片與複製"
+    },
+    {
+      "name": "Relational Database",
+      "slug": "relational-database",
+      "summary": "關聯式資料庫（如 PostgreSQL、MySQL、Aurora）支援 ACID transaction、強 schema、join 與 constraint，最適合核心業務資料（booking、payment、order）。水平 sharding 複雜是主要擴展限制。",
+      "aliases": [
+        "Relational DB",
+        "關聯式資料庫",
+        "SQL database"
+      ],
+      "source_ids": [
+        "3-常用技術-01-Database.md#relational-database",
+        "3-常用技術-01-Database.md#什麼時候先選-relational-db"
+      ],
+      "cluster": "資料庫核心"
+    },
+    {
+      "name": "Replication Lag",
+      "slug": "replication-lag",
+      "summary": "非同步 replication 下，follower 資料落後 leader 的時間差，通常只有幾毫秒，但系統高負載時可能達秒級。Lag 會導致 Read-After-Write 不一致、Monotonic Reads 不一致與 Consistent Prefix Reads 問題，需在設計中明確處理。",
+      "aliases": [
+        "Replica Lag",
+        "Replication Delay"
+      ],
+      "source_ids": [
+        "1-基本觀念-11-Replication.md#replication-lag-的問題",
+        "1-基本觀念-11-Replication.md#問題一read-after-write讀自己剛寫的不一致",
+        "1-基本觀念-11-Replication.md#問題二monotonic-reads單調讀取不一致",
+        "1-基本觀念-11-Replication.md#問題三consistent-prefix-reads因果一致性不一致",
+        "2-設計模式-01-Scaling Reads.md#replica-lag"
+      ],
+      "cluster": "分片與複製"
+    },
+    {
+      "name": "Resharding",
+      "slug": "resharding",
+      "summary": "調整 shard 數量或重新分配資料的操作，是 sharding 最複雜的維運挑戰。常見做法是預先建立比實體 shard 更多的 virtual buckets，增加 shard 時只搬部分 buckets，而非重算所有 key。",
+      "aliases": [
+        "Rebalancing",
+        "重分片"
+      ],
+      "source_ids": [
+        "1-基本觀念-10-Sharding.md#resharding-怎麼想",
+        "1-基本觀念-10-Sharding.md#常見-sharding-策略"
+      ],
+      "cluster": "分片與複製"
+    },
+    {
+      "name": "REST",
+      "slug": "rest",
+      "summary": "REST 以資源為核心設計 API，使用標準 HTTP 方法（GET、POST、PUT、DELETE），適合資源模型清楚的對外 API。優點是簡單、易 debug、容易接 API Gateway 與快取；複雜頁面可能需要多次 request 或回傳冗餘欄位。",
+      "aliases": [
+        "RESTful API"
+      ],
+      "source_ids": [
+        "1-基本觀念-01-Networking Essentials.md#rest",
+        "1-基本觀念-05-API Design.md#選-api-style-的課程框架",
+        "1-基本觀念-05-API Design.md#課程案例"
+      ],
+      "cluster": "網路與通訊協定"
+    },
+    {
+      "name": "Retry with Backoff and Jitter",
+      "slug": "retry-with-backoff-and-jitter",
+      "summary": "對 transient failure 進行重試時，使用指數退避（Exponential Backoff）拉長重試間隔，並加入隨機 Jitter 避免所有 client 同時重試形成 retry storm。必須搭配最大重試次數、retry budget 與 idempotency 才能安全使用。",
+      "aliases": [
+        "指數退避重試",
+        "Exponential Backoff",
+        "Backoff + Jitter"
+      ],
+      "source_ids": [
+        "1-基本觀念-01-Networking Essentials.md#retry-with-backoff-and-jitter",
+        "4-維運與可靠性-03-Reliable Delivery.md#retry",
+        "4-維運與可靠性-03-Reliable Delivery.md#backoff-jitter"
+      ],
+      "cluster": "過載保護與韌性"
+    },
+    {
+      "name": "Saga Pattern",
+      "slug": "saga-pattern",
+      "summary": "將分散式 transaction 拆成一系列有補償機制的本地 transaction，每步失敗時執行對應補償操作。以最終一致性換取更好的可用性與容錯能力，是現代微服務處理跨服務操作的主流選擇。",
+      "aliases": [
+        "Saga",
+        "補償交易"
+      ],
+      "source_ids": [
+        "1-基本觀念-08-Database Transactions.md#saga-pattern",
+        "1-基本觀念-08-Database Transactions.md#分散式-transaction-的挑戰"
+      ],
+      "cluster": "資料庫核心"
+    },
+    {
+      "name": "Scalability",
+      "slug": "scalability",
+      "summary": "可擴展性指系統能透過增加資源來應對不斷成長的使用者、資料量與流量，同時維持低延遲（Latency）與高吞吐量（Throughput）。是分散式系統設計的核心關注點，關係到業務成長、成本效率與系統可靠性。",
+      "aliases": [
+        "可擴展性"
+      ],
+      "source_ids": [
+        "1-基本觀念-04-Scalability.md#什麼是可擴展性",
+        "1-基本觀念-04-Scalability.md#為什麼重要"
+      ],
+      "cluster": "系統架構基礎"
+    },
+    {
+      "name": "Schema Evolution",
+      "slug": "schema-evolution",
+      "summary": "Schema Evolution 是在事件 schema 改變時保持 producer 和 consumer 相容的策略。核心原則是加欄位相容、刪欄位危險、使用 schema_version，並讓 consumer 忽略未知欄位。",
+      "aliases": [],
+      "source_ids": [
+        "2-設計模式-07-Data Pipeline Design.md#schema-evolution"
+      ],
+      "cluster": "資料管線"
+    },
+    {
+      "name": "Search Database",
+      "slug": "search-database",
+      "summary": "Search database（如 Elasticsearch、OpenSearch）適合全文搜尋、filter、facet 與 ranking，通常由 primary DB 或 pipeline 同步資料，不是 source of truth。",
+      "aliases": [
+        "Search index",
+        "Elasticsearch",
+        "全文搜尋資料庫"
+      ],
+      "source_ids": [
+        "3-常用技術-01-Database.md#searcholap-與-vector"
+      ],
+      "cluster": "資料庫核心"
+    },
+    {
+      "name": "Serverless",
+      "slug": "serverless",
+      "summary": "Serverless（如 AWS Lambda、Cloud Run）將 server provisioning 與 scaling 交給平台，開發者只提供 function 邏輯由事件觸發執行，適合事件驅動、突發流量與背景處理，但需注意 cold start、timeout 限制與下游保護。",
+      "aliases": [
+        "FaaS",
+        "Function-as-a-Service",
+        "無伺服器"
+      ],
+      "source_ids": [
+        "3-常用技術-06-Serverless.md#serverless",
+        "3-常用技術-06-Serverless.md#serverless-在解什麼問題",
+        "3-常用技術-06-Serverless.md#function-模型"
+      ],
+      "cluster": "基礎設施元件"
+    },
+    {
+      "name": "Shard Key",
+      "slug": "shard-key",
+      "summary": "決定資料落在哪個 shard 的欄位或組合，需具備高基數、相對均勻分布、並對齊主要查詢模式三個條件。錯誤的 shard key 會導致 hot shard、頻繁 cross-shard query 或跨 shard transaction。",
+      "aliases": [
+        "分片鍵",
+        "Partition Key"
+      ],
+      "source_ids": [
+        "1-基本觀念-10-Sharding.md#shard-key-怎麼選",
+        "1-基本觀念-10-Sharding.md#先問四個診斷問題"
+      ],
+      "cluster": "分片與複製"
+    },
+    {
+      "name": "Sharding",
+      "slug": "sharding",
+      "summary": "將同一份邏輯資料集拆分到多台 database 以突破單機容量、寫入吞吐和讀取吞吐限制。Shard key 的選擇至關重要：需對齊查詢模式、高基數均勻分布，且讓強一致性操作盡量落在同一 shard。",
+      "aliases": [
+        "分片",
+        "資料分片",
+        "Horizontal Partitioning"
+      ],
+      "source_ids": [
+        "1-基本觀念-10-Sharding.md#sharding-在解什麼問題",
+        "1-基本觀念-10-Sharding.md#先釐清-partitioning-和-sharding",
+        "1-基本觀念-10-Sharding.md#shard-key-怎麼選"
+      ],
+      "cluster": "分片與複製"
+    },
+    {
+      "name": "Single-Leader Replication",
+      "slug": "single-leader-replication",
+      "summary": "所有寫入只走一台 leader，其他 follower 透過 replication log 同步資料，讀取可分散到任意 replica。這是最常見的 replication 架構，簡單且無寫入衝突，但 leader 是單點故障，所有寫入都集中於一個節點。",
+      "aliases": [
+        "Leader-Follower Replication",
+        "Leader-based Replication",
+        "Primary-Replica Replication"
+      ],
+      "source_ids": [
+        "1-基本觀念-11-Replication.md#第一種架構single-leader-replication",
+        "1-基本觀念-11-Replication.md#基本運作方式",
+        "1-基本觀念-11-Replication.md#什麼是-replication"
+      ],
+      "cluster": "分片與複製"
+    },
+    {
+      "name": "SLI/SLO/SLA",
+      "slug": "sli-slo-sla",
+      "summary": "SLI 是衡量服務健康的具體指標（如 P95 latency、成功率）；SLO 是內部目標值；SLA 是對客戶的合約承諾。告警應對準 SLO 而非每個低層 metric 波動，確保告警具備業務意義與可行動性。",
+      "aliases": [
+        "SLI",
+        "SLO",
+        "SLA",
+        "Service Level"
+      ],
+      "source_ids": [
+        "4-維運與可靠性-04-Observability.md#slisslosslas"
+      ],
+      "cluster": "可觀測性"
+    },
+    {
+      "name": "Sloppy Quorum 與 Hinted Handoff",
+      "slug": "sloppy-quorum-hinted-handoff",
+      "summary": "網路分區時，Sloppy Quorum 允許把寫入暫存到可達的非「家」節點以提升可用性；Hinted Handoff 是網路恢復後將臨時寫入送回原本節點的機制。代價是即使滿足 w+r>n 也無法保證讀到最新值。",
+      "aliases": [
+        "Hinted Handoff"
+      ],
+      "source_ids": [
+        "1-基本觀念-11-Replication.md#sloppy-quorum-和-hinted-handoff",
+        "1-基本觀念-11-Replication.md#q6什麼是-sloppy-quorum-和-hinted-handoff"
+      ],
+      "cluster": "分片與複製"
+    },
+    {
+      "name": "Snapshot + Delta",
+      "slug": "snapshot-delta",
+      "summary": "高頻即時資料先讓 client 取得完整 snapshot，之後只傳送增量 delta。Client 斷線後若 sequence gap 過大則重抓 snapshot，確保不靠全量傳輸也能維持狀態一致。",
+      "aliases": [],
+      "source_ids": [
+        "2-設計模式-05-Real-time Updates.md#snapshot-delta",
+        "2-設計模式-05-Real-time Updates.md#reconnect-與-replay"
+      ],
+      "cluster": "即時更新"
+    },
+    {
+      "name": "SSE",
+      "slug": "sse",
+      "summary": "SSE（Server-Sent Events）是建立在 HTTP 之上的 server 到 client 單向推送機制，適合任務進度、通知、dashboard 更新等低頻場景。相較 WebSocket 實作更簡單，client 只需接收無需雙向互動時為首選。",
+      "aliases": [
+        "Server-Sent Events"
+      ],
+      "source_ids": [
+        "1-基本觀念-01-Networking Essentials.md#sse",
+        "1-基本觀念-01-Networking Essentials.md#real-time-updatesssewebsocketwebrtc",
+        "2-設計模式-05-Real-time Updates.md#sse",
+        "2-設計模式-05-Real-time Updates.md#更新方式光譜"
+      ],
+      "cluster": "即時更新"
+    },
+    {
+      "name": "Sticky Session",
+      "slug": "sticky-session",
+      "summary": "Sticky Session 讓同一 client 的請求固定路由到同一後端節點，適合本機 session 或 WebSocket room ownership，但會造成熱點節點、降低擴展彈性，節點掛掉時 session 仍會遺失。",
+      "aliases": [
+        "Session Affinity",
+        "黏性 session"
+      ],
+      "source_ids": [
+        "3-常用技術-04-Load Balancer.md#sticky-session"
+      ],
+      "cluster": "基礎設施元件"
+    },
+    {
+      "name": "Structured Logging",
+      "slug": "structured-logging",
+      "summary": "以結構化格式（如 JSON）記錄離散事件，包含 timestamp、log level、request id、route、error code 與 latency，便於查詢與聚合。相較於自然語言 log，結構化 log 可直接接入 observability 平台進行分析與告警。",
+      "aliases": [
+        "Structured Log",
+        "結構化日誌"
+      ],
+      "source_ids": [
+        "4-維運與可靠性-04-Observability.md#logs",
+        "4-維運與可靠性-04-Observability.md#log-level"
+      ],
+      "cluster": "可觀測性"
+    },
+    {
+      "name": "TCP",
+      "slug": "tcp",
+      "summary": "TCP 提供可靠、有序的 byte stream，是 REST API、GraphQL、gRPC 等大多數 Application Protocol 的傳輸基礎。它以連線管理、重傳與壅塞控制換取可靠性，適合需要完整資料的場景。",
+      "aliases": [],
+      "source_ids": [
+        "1-基本觀念-01-Networking Essentials.md#tcp",
+        "1-基本觀念-01-Networking Essentials.md#transporttcpudpquic-怎麼選"
+      ],
+      "cluster": "網路與通訊協定"
+    },
+    {
+      "name": "Thin Client vs Thick Client",
+      "slug": "thin-client-vs-thick-client",
+      "summary": "Thin Client 將大部分邏輯留在 Server，Client 只負責渲染；Thick Client（如 SPA）讓 Client 承擔更多邏輯，Server 主要提供資料 API。現代系統設計多假設 Thick Client，因此 API 設計需同步考量 Client 的資料需求。",
+      "aliases": [
+        "瘦客戶端",
+        "胖客戶端"
+      ],
+      "source_ids": [
+        "1-基本觀念-02-Client-Server Architecture.md#thin-client-vs-thick-client"
+      ],
+      "cluster": "系統架構基礎"
+    },
+    {
+      "name": "Throughput",
+      "slug": "throughput",
+      "summary": "吞吐量指系統每秒能處理的請求數量，是衡量系統容量的關鍵指標。設計時需根據預估的 request rate 判斷是否需要擴展，並選擇合適的擴展策略。",
+      "aliases": [
+        "吞吐量"
+      ],
+      "source_ids": [
+        "1-基本觀念-04-Scalability.md#什麼是可擴展性"
+      ],
+      "cluster": "系統架構基礎"
+    },
+    {
+      "name": "Two-Phase Commit",
+      "slug": "two-phase-commit",
+      "summary": "由協調者（coordinator）確保所有參與節點在分散式環境下同意 commit 的協議，分為 Prepare 和 Commit/Abort 兩階段。提供強一致性但協調者崩潰時節點可能卡死，在高可用場景下難以使用。",
+      "aliases": [
+        "2PC",
+        "兩階段提交",
+        "Two-Phase Commit（2PC）"
+      ],
+      "source_ids": [
+        "1-基本觀念-08-Database Transactions.md#two-phase-commit2pc兩階段提交"
+      ],
+      "cluster": "資料庫核心"
+    },
+    {
+      "name": "UDP",
+      "slug": "udp",
+      "summary": "UDP 不保證送達或順序，overhead 低、延遲低，適合音視訊、遊戲狀態更新等可容忍少量遺失的即時資料。選用前需確認 client 支援及業務是否能接受資料遺失。",
+      "aliases": [],
+      "source_ids": [
+        "1-基本觀念-01-Networking Essentials.md#udp",
+        "1-基本觀念-01-Networking Essentials.md#transporttcpudpquic-怎麼選"
+      ],
+      "cluster": "網路與通訊協定"
+    },
+    {
+      "name": "Version Vector",
+      "slug": "version-vector",
+      "summary": "在多 replica 系統中追蹤因果依賴的機制，每個 replica 維護各自的 version number，合併成 vector 隨讀寫傳遞，讓系統能判斷操作間的 happens-before 關係與並發衝突。",
+      "aliases": [
+        "Vector Clock",
+        "版本向量"
+      ],
+      "source_ids": [
+        "1-基本觀念-11-Replication.md#用-version-vector-追蹤因果依賴",
+        "1-基本觀念-11-Replication.md#偵測並發寫入"
+      ],
+      "cluster": "分片與複製"
+    },
+    {
+      "name": "Vertical Scaling",
+      "slug": "vertical-scaling",
+      "summary": "垂直擴展透過升級單一機器（增加 CPU、記憶體、硬碟）來提升容量，改動少、上手快，但有物理上限且成本隨規模急增。通常作為短期快速解決方案，流量持續增加後再考慮水平擴展。",
+      "aliases": [
+        "垂直擴展",
+        "Scale Up"
+      ],
+      "source_ids": [
+        "1-基本觀念-04-Scalability.md#垂直擴展vertical-scaling"
+      ],
+      "cluster": "系統架構基礎"
+    },
+    {
+      "name": "Virtual Nodes",
+      "slug": "virtual-nodes",
+      "summary": "讓每台實體節點在 hash ring 上擁有多個位置，解決節點數量少時 key range 分布不均的問題。更多 vNode 也讓擴縮容時的搬遷更細膩，並可透過設置不同數量的 vNode 來表達節點的容量差異。",
+      "aliases": [
+        "vNodes",
+        "虛擬節點"
+      ],
+      "source_ids": [
+        "1-基本觀念-06-Consistent Hashing.md#virtual-nodes讓負載更平均"
+      ],
+      "cluster": "分片與複製"
+    },
+    {
+      "name": "WebRTC",
+      "slug": "webrtc",
+      "summary": "WebRTC 支援瀏覽器之間的音訊、視訊與低延遲 peer-to-peer 資料傳輸，需要 signaling server、STUN 與 TURN 輔助。只有在題目明確涉及視訊通話、語音或螢幕分享時才主動提出。",
+      "aliases": [],
+      "source_ids": [
+        "1-基本觀念-01-Networking Essentials.md#webrtc",
+        "1-基本觀念-01-Networking Essentials.md#real-time-updatesssewebsocketwebrtc"
+      ],
+      "cluster": "即時更新"
+    },
+    {
+      "name": "WebSocket",
+      "slug": "websocket",
+      "summary": "WebSocket 提供持久雙向連線，適合 client 和 server 都會主動送資料的高頻互動場景（如即時 price feed、聊天室）。需要設計 connection draining、backpressure、reconnect 與大量連線管理。",
+      "aliases": [],
+      "source_ids": [
+        "1-基本觀念-01-Networking Essentials.md#websocket",
+        "1-基本觀念-01-Networking Essentials.md#real-time-updatesssewebsocketwebrtc",
+        "2-設計模式-05-Real-time Updates.md#websocket",
+        "2-設計模式-05-Real-time Updates.md#connection-server",
+        "2-設計模式-05-Real-time Updates.md#即時更新在解什麼問題"
+      ],
+      "cluster": "即時更新"
+    },
+    {
+      "name": "Write Partitioning",
+      "slug": "write-partitioning",
+      "summary": "當寫入量超過單一 DB 可承受時，依 partition key（如 user_id、market_id）將資料分散到多個分區。選 partition key 需避免 hot partition、時間排序造成的 newest-partition 過熱，以及跨分區 transaction。",
+      "aliases": [
+        "Write Sharding",
+        "Partitioning 寫入"
+      ],
+      "source_ids": [
+        "2-設計模式-02-Scaling Writes.md#partitioning-寫入",
+        "2-設計模式-02-Scaling Writes.md#時間分區",
+        "2-設計模式-02-Scaling Writes.md#q3看到寫入很多第一個反應應該是-sharding-嗎"
+      ],
+      "cluster": "讀寫擴展模式"
+    },
+    {
+      "name": "同步與非同步 Replication",
+      "slug": "同步與非同步-replication",
+      "summary": "同步 replication 確保 follower 收到資料後才回覆 client，保一致性但犧牲可用性；非同步 replication 不等 follower 確認，寫入更快但有資料遺失風險。常見折衷是半同步：一台 follower 同步、其他非同步。",
+      "aliases": [
+        "Synchronous Replication",
+        "Asynchronous Replication",
+        "Semi-synchronous Replication"
+      ],
+      "source_ids": [
+        "1-基本觀念-11-Replication.md#同步-vs-非同步-replication",
+        "1-基本觀念-11-Replication.md#q5同步-replication-和非同步-replication-的核心取捨是什麼"
+      ],
+      "cluster": "分片與複製"
+    },
+    {
+      "name": "瓶頸判斷與擴展決策",
+      "slug": "瓶頸判斷與擴展決策",
+      "summary": "在決定使用 cache、replica、queue 或 sharding 前，先判斷「第一個瓶頸在哪裡」：高讀取量、單一 row 競爭、寫入尖峰、資料量過大或跨區延遲各有不同對應手段，避免過度工程。",
+      "aliases": [
+        "避免 Over-engineering",
+        "Bottleneck Analysis"
+      ],
+      "source_ids": [
+        "1-基本觀念-12-Numbers to Know.md#numbers-to-know-判斷第一個瓶頸",
+        "1-基本觀念-12-Numbers to Know.md#最後才決定擴展手段",
+        "1-基本觀念-12-Numbers to Know.md#課程版判斷表",
+        "1-基本觀念-12-Numbers to Know.md#避免-over-engineering"
+      ],
+      "cluster": "系統架構基礎"
+    }
+  ],
+  "edges": [
+    {
+      "source": "acid",
+      "target": "isolation-levels",
+      "kind": "part_of"
+    },
+    {
+      "source": "acid",
+      "target": "saga-pattern",
+      "kind": "prerequisite"
+    },
+    {
+      "source": "acid",
+      "target": "two-phase-commit",
+      "kind": "prerequisite"
+    },
+    {
+      "source": "api-design",
+      "target": "graphql",
+      "kind": "part_of"
+    },
+    {
+      "source": "api-design",
+      "target": "grpc",
+      "kind": "part_of"
+    },
+    {
+      "source": "api-design",
+      "target": "idempotency",
+      "kind": "related"
+    },
+    {
+      "source": "api-design",
+      "target": "rest",
+      "kind": "part_of"
+    },
+    {
+      "source": "api-gateway",
+      "target": "load-balancer",
+      "kind": "prerequisite"
+    },
+    {
+      "source": "api-gateway",
+      "target": "rate-limiting",
+      "kind": "part_of"
+    },
+    {
+      "source": "at-least-once-delivery",
+      "target": "dead-letter-queue",
+      "kind": "related"
+    },
+    {
+      "source": "at-least-once-delivery",
+      "target": "outbox-pattern",
+      "kind": "related"
+    },
+    {
+      "source": "at-least-once-delivery",
+      "target": "queue-serialization",
+      "kind": "related"
+    },
+    {
+      "source": "b-tree-index",
+      "target": "inverted-index",
+      "kind": "related"
+    },
+    {
+      "source": "b-tree-index",
+      "target": "lsm-tree",
+      "kind": "related"
+    },
+    {
+      "source": "backfill",
+      "target": "batch-vs-streaming",
+      "kind": "related"
+    },
+    {
+      "source": "backpressure",
+      "target": "pub-sub",
+      "kind": "related"
+    },
+    {
+      "source": "backpressure",
+      "target": "queue-write-buffering",
+      "kind": "related"
+    },
+    {
+      "source": "backpressure",
+      "target": "rate-limiting",
+      "kind": "related"
+    },
+    {
+      "source": "backpressure",
+      "target": "websocket",
+      "kind": "related"
+    },
+    {
+      "source": "blob-storage",
+      "target": "cdn",
+      "kind": "related"
+    },
+    {
+      "source": "blob-storage",
+      "target": "multipart-upload",
+      "kind": "part_of"
+    },
+    {
+      "source": "blob-storage",
+      "target": "presigned-url",
+      "kind": "part_of"
+    },
+    {
+      "source": "blob-storage",
+      "target": "processing-pipeline",
+      "kind": "related"
+    },
+    {
+      "source": "bulkhead",
+      "target": "circuit-breaker",
+      "kind": "related"
+    },
+    {
+      "source": "cache-aside",
+      "target": "cache-consistency",
+      "kind": "related"
+    },
+    {
+      "source": "cache-aside",
+      "target": "cache-stampede",
+      "kind": "related"
+    },
+    {
+      "source": "cache-aside",
+      "target": "cdn-edge-cache",
+      "kind": "related"
+    },
+    {
+      "source": "cache-aside",
+      "target": "read-replica",
+      "kind": "related"
+    },
+    {
+      "source": "cache-eviction-policy",
+      "target": "cache-stampede",
+      "kind": "related"
+    },
+    {
+      "source": "cache-stampede",
+      "target": "distributed-cache",
+      "kind": "part_of"
+    },
+    {
+      "source": "cache-stampede",
+      "target": "hot-key",
+      "kind": "related"
+    },
+    {
+      "source": "cap-theorem",
+      "target": "consistency-vs-availability",
+      "kind": "prerequisite"
+    },
+    {
+      "source": "cap-theorem",
+      "target": "horizontal-scaling",
+      "kind": "related"
+    },
+    {
+      "source": "cdn",
+      "target": "dns",
+      "kind": "related"
+    },
+    {
+      "source": "cdn",
+      "target": "load-balancer",
+      "kind": "related"
+    },
+    {
+      "source": "cdn",
+      "target": "origin-protection",
+      "kind": "part_of"
+    },
+    {
+      "source": "chunking",
+      "target": "embedding",
+      "kind": "prerequisite"
+    },
+    {
+      "source": "circuit-breaker",
+      "target": "retry-with-backoff-and-jitter",
+      "kind": "related"
+    },
+    {
+      "source": "client-server-architecture",
+      "target": "api-design",
+      "kind": "prerequisite"
+    },
+    {
+      "source": "client-server-architecture",
+      "target": "http-https",
+      "kind": "prerequisite"
+    },
+    {
+      "source": "client-server-architecture",
+      "target": "load-balancer",
+      "kind": "related"
+    },
+    {
+      "source": "client-server-architecture",
+      "target": "peer-to-peer",
+      "kind": "related"
+    },
+    {
+      "source": "client-server-architecture",
+      "target": "thin-client-vs-thick-client",
+      "kind": "part_of"
+    },
+    {
+      "source": "cold-start",
+      "target": "serverless",
+      "kind": "part_of"
+    },
+    {
+      "source": "conditional-update",
+      "target": "optimistic-concurrency-control",
+      "kind": "related"
+    },
+    {
+      "source": "consistent-hashing",
+      "target": "resharding",
+      "kind": "related"
+    },
+    {
+      "source": "consistent-hashing",
+      "target": "sharding",
+      "kind": "related"
+    },
+    {
+      "source": "consistent-hashing",
+      "target": "virtual-nodes",
+      "kind": "part_of"
+    },
+    {
+      "source": "container",
+      "target": "container-orchestration",
+      "kind": "part_of"
+    },
+    {
+      "source": "container",
+      "target": "serverless",
+      "kind": "related"
+    },
+    {
+      "source": "cqrs-read-model",
+      "target": "read-replica",
+      "kind": "related"
+    },
+    {
+      "source": "cqrs-read-model",
+      "target": "replication-lag",
+      "kind": "related"
+    },
+    {
+      "source": "cross-shard-query",
+      "target": "sharding",
+      "kind": "part_of"
+    },
+    {
+      "source": "database",
+      "target": "key-value-store",
+      "kind": "part_of"
+    },
+    {
+      "source": "database",
+      "target": "relational-database",
+      "kind": "part_of"
+    },
+    {
+      "source": "database",
+      "target": "search-database",
+      "kind": "part_of"
+    },
+    {
+      "source": "dead-letter-queue",
+      "target": "job-queue",
+      "kind": "part_of"
+    },
+    {
+      "source": "dead-letter-queue",
+      "target": "job-queue",
+      "kind": "related"
+    },
+    {
+      "source": "dead-letter-queue",
+      "target": "message-queue",
+      "kind": "part_of"
+    },
+    {
+      "source": "distributed-cache",
+      "target": "database",
+      "kind": "prerequisite"
+    },
+    {
+      "source": "distributed-cache",
+      "target": "distributed-lock",
+      "kind": "related"
+    },
+    {
+      "source": "distributed-lock",
+      "target": "fencing-token",
+      "kind": "part_of"
+    },
+    {
+      "source": "distributed-lock",
+      "target": "idempotency",
+      "kind": "prerequisite"
+    },
+    {
+      "source": "distributed-tracing",
+      "target": "structured-logging",
+      "kind": "related"
+    },
+    {
+      "source": "embedding",
+      "target": "hybrid-retrieval",
+      "kind": "prerequisite"
+    },
+    {
+      "source": "failover",
+      "target": "single-leader-replication",
+      "kind": "related"
+    },
+    {
+      "source": "health-check",
+      "target": "load-balancer",
+      "kind": "part_of"
+    },
+    {
+      "source": "heartbeat-lease",
+      "target": "job-狀態機",
+      "kind": "related"
+    },
+    {
+      "source": "horizontal-scaling",
+      "target": "load-balancer",
+      "kind": "related"
+    },
+    {
+      "source": "horizontal-scaling",
+      "target": "scalability",
+      "kind": "part_of"
+    },
+    {
+      "source": "hot-key",
+      "target": "shard-key",
+      "kind": "related"
+    },
+    {
+      "source": "hot-key",
+      "target": "sharding",
+      "kind": "part_of"
+    },
+    {
+      "source": "hot-row-contention",
+      "target": "write-partitioning",
+      "kind": "related"
+    },
+    {
+      "source": "http-https",
+      "target": "rest",
+      "kind": "prerequisite"
+    },
+    {
+      "source": "http-https",
+      "target": "sse",
+      "kind": "prerequisite"
+    },
+    {
+      "source": "hybrid-retrieval",
+      "target": "citation-grounding",
+      "kind": "prerequisite"
+    },
+    {
+      "source": "hybrid-retrieval",
+      "target": "inverted-index",
+      "kind": "related"
+    },
+    {
+      "source": "idempotency",
+      "target": "at-least-once-delivery",
+      "kind": "prerequisite"
+    },
+    {
+      "source": "idempotency",
+      "target": "optimistic-concurrency-control",
+      "kind": "related"
+    },
+    {
+      "source": "idempotency",
+      "target": "outbox-pattern",
+      "kind": "related"
+    },
+    {
+      "source": "idempotency",
+      "target": "retry-with-backoff-and-jitter",
+      "kind": "prerequisite"
+    },
+    {
+      "source": "indexing-pipeline",
+      "target": "inverted-index",
+      "kind": "part_of"
+    },
+    {
+      "source": "indexing-pipeline",
+      "target": "outbox-pattern",
+      "kind": "related"
+    },
+    {
+      "source": "indexing-pipeline",
+      "target": "ranking",
+      "kind": "related"
+    },
+    {
+      "source": "isolation-levels",
+      "target": "lost-update",
+      "kind": "related"
+    },
+    {
+      "source": "isolation-levels",
+      "target": "mvcc",
+      "kind": "related"
+    },
+    {
+      "source": "job-queue",
+      "target": "job-狀態機",
+      "kind": "related"
+    },
+    {
+      "source": "latency",
+      "target": "scalability",
+      "kind": "part_of"
+    },
+    {
+      "source": "latency-throughput-估算",
+      "target": "瓶頸判斷與擴展決策",
+      "kind": "prerequisite"
+    },
+    {
+      "source": "leaderless-replication",
+      "target": "quorum",
+      "kind": "part_of"
+    },
+    {
+      "source": "leaderless-replication",
+      "target": "version-vector",
+      "kind": "related"
+    },
+    {
+      "source": "load-balancer",
+      "target": "sticky-session",
+      "kind": "part_of"
+    },
+    {
+      "source": "load-shedding",
+      "target": "rate-limiting",
+      "kind": "related"
+    },
+    {
+      "source": "message-queue",
+      "target": "processing-pipeline",
+      "kind": "related"
+    },
+    {
+      "source": "message-queue",
+      "target": "serverless",
+      "kind": "related"
+    },
+    {
+      "source": "metrics",
+      "target": "p95-p99-latency",
+      "kind": "part_of"
+    },
+    {
+      "source": "multi-leader-replication",
+      "target": "single-leader-replication",
+      "kind": "related"
+    },
+    {
+      "source": "multi-leader-replication",
+      "target": "version-vector",
+      "kind": "related"
+    },
+    {
+      "source": "optimistic-concurrency-control",
+      "target": "pessimistic-lock",
+      "kind": "related"
+    },
+    {
+      "source": "outbox-pattern",
+      "target": "queue-write-buffering",
+      "kind": "part_of"
+    },
+    {
+      "source": "outbox-pattern",
+      "target": "schema-evolution",
+      "kind": "related"
+    },
+    {
+      "source": "p95-p99-latency",
+      "target": "sli-slo-sla",
+      "kind": "related"
+    },
+    {
+      "source": "peer-to-peer",
+      "target": "webrtc",
+      "kind": "related"
+    },
+    {
+      "source": "pub-sub",
+      "target": "snapshot-delta",
+      "kind": "related"
+    },
+    {
+      "source": "pub-sub",
+      "target": "websocket",
+      "kind": "related"
+    },
+    {
+      "source": "queue-write-buffering",
+      "target": "idempotency",
+      "kind": "prerequisite"
+    },
+    {
+      "source": "queue-write-buffering",
+      "target": "瓶頸判斷與擴展決策",
+      "kind": "related"
+    },
+    {
+      "source": "quorum",
+      "target": "sloppy-quorum-hinted-handoff",
+      "kind": "related"
+    },
+    {
+      "source": "read-replica",
+      "target": "replication-lag",
+      "kind": "related"
+    },
+    {
+      "source": "read-replica",
+      "target": "瓶頸判斷與擴展決策",
+      "kind": "related"
+    },
+    {
+      "source": "replication-lag",
+      "target": "single-leader-replication",
+      "kind": "part_of"
+    },
+    {
+      "source": "resharding",
+      "target": "sharding",
+      "kind": "part_of"
+    },
+    {
+      "source": "retry-with-backoff-and-jitter",
+      "target": "idempotency",
+      "kind": "prerequisite"
+    },
+    {
+      "source": "saga-pattern",
+      "target": "two-phase-commit",
+      "kind": "related"
+    },
+    {
+      "source": "scalability",
+      "target": "throughput",
+      "kind": "part_of"
+    },
+    {
+      "source": "scalability",
+      "target": "vertical-scaling",
+      "kind": "part_of"
+    },
+    {
+      "source": "shard-key",
+      "target": "sharding",
+      "kind": "part_of"
+    },
+    {
+      "source": "sli-slo-sla",
+      "target": "metrics",
+      "kind": "prerequisite"
+    },
+    {
+      "source": "sse",
+      "target": "websocket",
+      "kind": "related"
+    },
+    {
+      "source": "tcp",
+      "target": "http-https",
+      "kind": "prerequisite"
+    },
+    {
+      "source": "tcp",
+      "target": "rest",
+      "kind": "prerequisite"
+    },
+    {
+      "source": "udp",
+      "target": "quic",
+      "kind": "prerequisite"
+    },
+    {
+      "source": "udp",
+      "target": "webrtc",
+      "kind": "related"
+    },
+    {
+      "source": "同步與非同步-replication",
+      "target": "failover",
+      "kind": "prerequisite"
+    }
+  ]
+}
