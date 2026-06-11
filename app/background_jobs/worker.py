@@ -6,7 +6,11 @@ from uuid import UUID, uuid4
 
 from sqlalchemy.orm import Session
 
-from app.answer.providers import AnswerProvider, create_answer_provider
+from app.answer.providers import (
+    DEFAULT_OPENAI_CHAT_MODEL,
+    AnswerProvider,
+    create_answer_provider,
+)
 from app.core.config import Settings
 from app.core.database import SessionLocal
 from app.evals.runner import (
@@ -249,17 +253,31 @@ class BackgroundWorker:
             }
 
     def _run_concept_extraction(self) -> dict[str, object]:
+        caller = self._graph_caller()
+        if caller is None:
+            # No real LLM caller available: skip without touching the database.
+            # Running the pipeline with a stub that returns empty extractions
+            # would wipe concept_sources and seal ConceptExtractionState at the
+            # current hash, silently masking the pending work.
+            return {
+                "skipped": True,
+                "reason": "graph extraction requires answer_provider=openai",
+            }
         with self.session_factory() as session:
             pipeline = GraphExtractionPipeline(
                 session=session,
-                caller=self._graph_caller(),
+                caller=caller,
                 max_concepts_per_doc=self.settings.graph_max_concepts_per_doc,
                 token_budget=self.settings.graph_extraction_token_budget,
                 encoding_name=self.settings.token_encoding,
             )
             stats = pipeline.run()
             session.commit()
-        return dict(stats)
+        result = dict(stats)
+        provider_stats = _provider_call_stats(caller)
+        if provider_stats is not None:
+            result.update(provider_stats)
+        return result
 
     def _embedding_provider(self) -> EmbeddingProvider:
         if self.embedding_provider is None:
@@ -271,37 +289,48 @@ class BackgroundWorker:
             self.answer_provider = create_answer_provider(self.settings)
         return self.answer_provider
 
-    def _graph_caller(self) -> ChatCaller:
+    def _graph_caller(self) -> ChatCaller | None:
+        """Resolve the LLM caller for concept extraction, or None to skip.
+
+        Non-OpenAI environments (fake provider) get None so the job skips
+        cleanly instead of running the pipeline with empty extractions.
+        """
         if self._graph_caller_override is not None:
             return self._graph_caller_override
-        if self.settings.answer_provider == "openai":
-            api_key = self.settings.openai_api_key
-            if not api_key:
-                raise ValueError(
-                    "OPENAI_API_KEY is required for concept extraction with answer_provider=openai"
-                )
-            model = self.settings.openai_chat_model or "gpt-4o-mini"
-            return OpenAIGraphCaller(
-                api_key=api_key,
-                model=model,
-                timeout_seconds=self.settings.openai_request_timeout_seconds,
-                max_retries=self.settings.openai_max_retries,
+        if self.settings.answer_provider != "openai":
+            return None
+        api_key = self.settings.openai_api_key
+        if not api_key:
+            raise ValueError(
+                "OPENAI_API_KEY is required for concept extraction with answer_provider=openai"
             )
-        # Non-OpenAI environments (fake provider) return a no-op caller so
-        # concept extraction runs as a no-op without errors.
-        return _FakeGraphCaller()
+        model = self.settings.openai_chat_model or DEFAULT_OPENAI_CHAT_MODEL
+        return OpenAIGraphCaller(
+            api_key=api_key,
+            model=model,
+            timeout_seconds=self.settings.openai_request_timeout_seconds,
+            max_retries=self.settings.openai_max_retries,
+        )
 
 
-class _FakeGraphCaller:
-    """No-op ChatCaller used when the answer_provider is not openai.
-
-    Returns an empty JSON object so the pipeline does nothing without raising,
-    allowing concept-extraction jobs to run (and complete cleanly) in
-    non-OpenAI environments such as the docker smoke stack.
-    """
-
-    def complete(self, *, system: str, user: str) -> str:  # noqa: ARG002
-        return "{}"
+def _provider_call_stats(caller: ChatCaller) -> dict[str, int] | None:
+    """Aggregate provider telemetry from callers exposing ``call_records``."""
+    records = getattr(caller, "call_records", None)
+    if records is None:
+        return None
+    tokens = 0
+    failures = 0
+    for record in records:
+        usage = getattr(record, "usage", None)
+        if usage is not None:
+            tokens += int(getattr(usage, "total_tokens", 0) or 0)
+        if getattr(record, "status", None) == "failed":
+            failures += 1
+    return {
+        "provider_calls": len(records),
+        "provider_tokens": tokens,
+        "provider_failures": failures,
+    }
 
 
 def _indexing_result_payload(result: IndexingResult) -> dict[str, object]:

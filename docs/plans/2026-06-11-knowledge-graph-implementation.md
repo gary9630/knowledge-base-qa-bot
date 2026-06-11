@@ -1218,20 +1218,27 @@ In `app/background_jobs/worker.py`:
 
 ```python
     def _run_concept_extraction(self) -> dict[str, object]:
+        caller = self._graph_caller()
+        if caller is None:
+            # Skip BEFORE constructing the pipeline — zero DB writes.
+            return {
+                "skipped": True,
+                "reason": "graph extraction requires answer_provider=openai",
+            }
         with self.session_factory() as session:
             pipeline = GraphExtractionPipeline(
                 session=session,
-                caller=self._graph_caller(),
+                caller=caller,
                 max_concepts_per_doc=self.settings.graph_max_concepts_per_doc,
                 token_budget=self.settings.graph_extraction_token_budget,
                 encoding_name=self.settings.token_encoding,
             )
             stats = pipeline.run()
             session.commit()
-        return stats
+        return dict(stats)
 ```
 
-- `_graph_caller()`: returns `OpenAIGraphCaller` when `settings.answer_provider == "openai"` (api key required), else a fail-fast error — BUT tests need injection. Follow how `_embedding_provider()` resolves fake vs openai in this file and mirror it; for the fake path return a caller that returns `"{}"` (no-op extraction) so docker smoke environments don't explode.
+- `_graph_caller() -> ChatCaller | None`: the injected test override when present; `OpenAIGraphCaller` when `settings.answer_provider == "openai"` (missing api key raises ValueError); otherwise `None`, which makes `_run_concept_extraction` skip the run entirely so docker smoke environments complete the job cleanly without touching graph data. Do NOT substitute a stub caller that returns `"{}"` for non-OpenAI providers: a successful empty extraction deletes each pending document's concept_sources, prunes orphaned concepts, and seals ConceptExtractionState at the current hash, so a later real extraction silently skips the document. (An earlier revision of this plan prescribed exactly that `"{}"` stub — it predated the Task-3 empty-content guard in `OpenAIGraphCaller` and would reopen the data-loss path that guard closed.)
 
 - [ ] **Step 3: Run the new test** → PASS. Full unit + integration suites. **Step 4:** lint + commit `feat: chain concept extraction after index rebuild`.
 
