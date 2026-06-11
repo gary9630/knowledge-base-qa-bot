@@ -233,3 +233,4 @@ course-materials-raw/
 # local working artifacts
 tmp/
 .DS_Store
+.superpowers/
