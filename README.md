@@ -14,8 +14,13 @@ multi-course product later.
 - Use pgvector for retrieval. FAISS is intentionally not part of the current path.
 - Answer with selected source snippets through an answer provider and validate citations.
 - Stream `/chat/stream` responses from the provider when OpenAI answering is enabled.
-- Provide a three-pane workbench: left functional tabs (including a Graph tab that renders
-  the knowledge graph), center chat, right source preview and diagnostics.
+- Provide a three-pane learner workbench: left functional tabs (chat / knowledge graph /
+  教材總覽), center chat, right source preview and diagnostics, with 主題切換
+  (淺色/深色/自動，自動跟隨作業系統).
+- Provide a separate 管理主控台 (admin console) reached from the workbench footer; it
+  replaces the old admin tabs and gathers overview, uploads/indexing, document lifecycle,
+  graph extraction, evals, background jobs, provider usage, and audit panels behind one
+  shared admin key.
 - Run app, worker, tests, backups, and deploy checks through Docker Compose and Make.
 
 ## Launch Configuration
