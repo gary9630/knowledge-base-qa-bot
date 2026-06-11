@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from fastapi.testclient import TestClient
 
 from app.main import create_app
@@ -360,8 +358,8 @@ def test_ui_separates_answer_sources_from_previewed_source() -> None:
     assert ".source-title" in css_response.text
 
 
-def test_ui_exposes_dual_theme_wiring(client: TestClient | None = None) -> None:
-    _client = client or TestClient(create_app())
+def test_ui_exposes_dual_theme_wiring() -> None:
+    _client = TestClient(create_app())
     page = _client.get("/")
     assert 'lang="zh-Hant"' in page.text
     assert "kb-theme" in page.text  # head boot script reads localStorage("kb-theme")

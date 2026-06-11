@@ -1,4 +1,5 @@
 :root {
+  color-scheme: light;
   --bg: #faf7f2;
   --surface: #fffefb;
   --surface-muted: #f5f1e8;
@@ -33,6 +34,7 @@
 }
 
 [data-theme="dark"] {
+  color-scheme: dark;
   --bg: #171d28;
   --surface: #1c2330;
   --surface-muted: #131823;
@@ -59,6 +61,7 @@
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
     /* same custom-property assignments as [data-theme="dark"] — keep in sync */
+    color-scheme: dark;
     --bg: #171d28;
     --surface: #1c2330;
     --surface-muted: #131823;
