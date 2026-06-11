@@ -1,15 +1,21 @@
 (function () {
   const state = {
     documents: [],
-    mindmap: {
+    graph: {
+      clusters: [],
       nodes: [],
       edges: [],
       stats: {
-        documents: 0,
-        sections: 0,
+        concept_count: 0,
+        cluster_count: 0,
+        edge_count: 0,
+        extracted_at: null,
       },
     },
-    mindmapLoaded: false,
+    graphLoaded: false,
+    graphView: "cluster",
+    collapsedClusters: new Set(),
+    cy: null,
     importJobs: [],
     backgroundJobs: [],
     workerRuntime: null,
@@ -59,8 +65,13 @@
     documentAdminKey: $("#document-admin-key"),
     refreshDocuments: $("#refresh-documents"),
     adminDocuments: $("#admin-documents"),
-    mindmap: $("#mindmap"),
-    loadMindmap: $("#load-mindmap"),
+    graphCanvas: $("#graph-canvas"),
+    graphEmpty: $("#graph-empty"),
+    graphSearch: $("#graph-search"),
+    loadGraph: $("#load-graph"),
+    graphViewCluster: $("#graph-view-cluster"),
+    graphViewRadial: $("#graph-view-radial"),
+    graphViewOrder: $("#graph-view-order"),
     refreshSources: $("#refresh-sources"),
     refreshStatus: $("#refresh-status"),
     statusPill: $("#index-status-pill"),
@@ -129,7 +140,7 @@
     bindChat();
     bindSamplePrompts();
     bindSources();
-    bindMindmap();
+    bindGraph();
     bindAdmin();
     bindEvals();
     refreshAuthSession();
@@ -1131,7 +1142,7 @@
       appendOperation(`Document ${payload.lifecycle_status}: ${payload.filename}`);
       await refreshAdminDocuments();
       await refreshSources();
-      await refreshMindmapAfterContentChange();
+      await refreshGraphAfterContentChange();
     } catch (error) {
       appendOperation(`Document lifecycle update failed: ${errorMessage(error)}`);
     }
@@ -1150,7 +1161,7 @@
       appendOperation(`Document index deleted: ${payload.filename}`);
       await refreshAdminDocuments();
       await refreshSources();
-      await refreshMindmapAfterContentChange();
+      await refreshGraphAfterContentChange();
     } catch (error) {
       appendOperation(`Document index delete failed: ${errorMessage(error)}`);
     }
@@ -1169,7 +1180,7 @@
       appendOperation(`Document reindexed: ${payload.filename}`);
       await refreshAdminDocuments();
       await refreshSources();
-      await refreshMindmapAfterContentChange();
+      await refreshGraphAfterContentChange();
     } catch (error) {
       appendOperation(`Document reindex failed: ${errorMessage(error)}`);
     }
@@ -1258,147 +1269,271 @@
     return clampedLimit;
   }
 
-  function bindMindmap() {
-    elements.loadMindmap.addEventListener("click", loadMindmap);
+  // --- knowledge graph ---
+  const CLUSTER_COLORS = ["#4285f4", "#34a853", "#f9ab00", "#ea4335", "#9334e6",
+    "#12a4af", "#e8710a", "#7b1fa2", "#1565c0", "#2e7d32", "#c2185b", "#5d4037"];
+
+  const GRAPH_EMPTY_TEXT = "尚未建立知識圖譜。請先建立索引並執行概念抽取。";
+
+  function bindGraph() {
+    elements.loadGraph.addEventListener("click", loadGraph);
+    elements.graphViewCluster.addEventListener("click", () => setGraphView("cluster"));
+    elements.graphViewRadial.addEventListener("click", () => setGraphView("radial"));
+    elements.graphViewOrder.addEventListener("click", () => setGraphView("order"));
+    elements.graphSearch.addEventListener("input", filterGraphNodes);
   }
 
-  async function loadMindmap() {
-    elements.loadMindmap.disabled = true;
-    elements.mindmap.replaceChildren(emptyText("Loading source graph..."));
+  async function loadGraph() {
+    elements.loadGraph.disabled = true;
 
     try {
-      state.mindmap = await getJson("/mindmap");
-      state.mindmapLoaded = true;
-      renderMindmap();
+      state.graph = await getJson("/graph");
+      state.graphLoaded = true;
+      renderGraphView(state.graphView || "cluster");
     } catch (error) {
-      state.mindmapLoaded = false;
-      elements.mindmap.replaceChildren(
-        emptyText(`Source graph unavailable: ${errorMessage(error)}`),
-      );
+      state.graphLoaded = false;
+      elements.graphEmpty.hidden = false;
+      elements.graphEmpty.textContent = `圖譜載入失敗：${errorMessage(error)}`;
     } finally {
-      elements.loadMindmap.disabled = false;
+      elements.loadGraph.disabled = false;
     }
   }
 
-  function renderMindmap() {
-    elements.mindmap.replaceChildren();
-    if (!state.mindmapLoaded) {
-      elements.mindmap.append(emptyText("Load the graph to inspect indexed documents and sections."));
+  function graphElements() {
+    const clusterColor = new Map();
+    (state.graph.clusters || []).forEach((cluster, index) => {
+      clusterColor.set(cluster.id, CLUSTER_COLORS[index % CLUSTER_COLORS.length]);
+    });
+    const parents = (state.graph.clusters || []).map((cluster) => ({
+      data: {
+        id: `cluster:${cluster.id}`,
+        label: cluster.name,
+        baseLabel: cluster.name,
+        isCluster: true,
+      },
+    }));
+    const nodes = (state.graph.nodes || []).map((node) => ({
+      data: {
+        id: node.id,
+        label: node.name,
+        summary: node.summary,
+        parent: node.cluster_id ? `cluster:${node.cluster_id}` : undefined,
+        color: clusterColor.get(node.cluster_id) || "#62717f",
+        size: 18 + Math.min(22, node.source_count * 4),
+      },
+    }));
+    const edges = (state.graph.edges || []).map((edge, index) => ({
+      data: { id: `e${index}`, source: edge.source, target: edge.target, kind: edge.kind },
+    }));
+    return { parents, nodes, edges };
+  }
+
+  const GRAPH_LAYOUTS = {
+    cluster: { name: "cose", animate: false, padding: 24, nodeRepulsion: 9000 },
+    radial: { name: "concentric", animate: false, padding: 24, minNodeSpacing: 28,
+      concentric: (node) => (node.data("isCluster") ? 2 : 1), levelWidth: () => 1 },
+    order: { name: "dagre", rankDir: "LR", animate: false, padding: 24 },
+  };
+
+  function renderGraphView(view) {
+    state.graphView = view;
+    document.querySelectorAll(".graph-view-button").forEach((button) => {
+      button.classList.toggle("is-active", button.id === `graph-view-${view}`);
+    });
+    if (!state.graphLoaded) {
       return;
     }
 
-    const nodes = Array.isArray(state.mindmap.nodes) ? state.mindmap.nodes : [];
-    const edges = Array.isArray(state.mindmap.edges) ? state.mindmap.edges : [];
-    if (nodes.length === 0) {
-      elements.mindmap.append(emptyText("No indexed documents found."));
-      return;
-    }
-
-    const stats = document.createElement("div");
-    stats.className = "mindmap-stats";
-    stats.textContent = `${state.mindmap.stats.documents} documents · ${state.mindmap.stats.sections} sections`;
-    elements.mindmap.append(stats);
-
-    const tree = document.createElement("div");
-    tree.className = "mindmap-tree";
-    const nodeById = new Map(nodes.map((node) => [node.id, node]));
-    const sectionIdsByDocumentId = new Map();
-    edges.forEach((edge) => {
-      if (edge.relation !== "contains") {
-        return;
+    const hasNodes = (state.graph.nodes || []).length > 0;
+    elements.graphEmpty.hidden = hasNodes;
+    if (!hasNodes) {
+      elements.graphEmpty.textContent = GRAPH_EMPTY_TEXT;
+      if (state.cy) {
+        state.cy.destroy();
+        state.cy = null;
       }
-      const sectionIds = sectionIdsByDocumentId.get(edge.source) || [];
-      sectionIds.push(edge.target);
-      sectionIdsByDocumentId.set(edge.source, sectionIds);
-    });
-
-    nodes
-      .filter((node) => node.type === "document")
-      .forEach((documentNode) => {
-        const group = document.createElement("section");
-        group.className = "mindmap-group";
-        group.append(mindmapNodeButton(documentNode));
-
-        const sectionList = document.createElement("div");
-        sectionList.className = "mindmap-sections";
-        (sectionIdsByDocumentId.get(documentNode.id) || []).forEach((sectionNodeId) => {
-          const sectionNode = nodeById.get(sectionNodeId);
-          if (sectionNode) {
-            sectionList.append(mindmapNodeButton(sectionNode));
-          }
-        });
-        group.append(sectionList);
-        tree.append(group);
-    });
-    elements.mindmap.append(tree);
-  }
-
-  function mindmapNodeButton(node) {
-    const button = document.createElement("button");
-    button.type = "button";
-    button.className = `mindmap-node is-${node.type}`;
-    button.addEventListener("click", () => previewMindmapNode(node));
-
-    const title = document.createElement("strong");
-    title.textContent = node.label || "Untitled node";
-    const meta = document.createElement("span");
-    meta.textContent = mindmapNodeMeta(node);
-
-    button.append(title, meta);
-    return button;
-  }
-
-  function mindmapNodeMeta(node) {
-    const metadata = node.metadata || {};
-    if (node.type === "document") {
-      return `${metadata.section_count || 0} sections · ${metadata.source_type || "source"}`;
-    }
-
-    return [metadata.source_id, `level ${metadata.level || "--"}`].filter(Boolean).join(" · ");
-  }
-
-  async function previewMindmapNode(node) {
-    const metadata = node.metadata || {};
-    if (node.type === "document" && metadata.document_id) {
-      await previewDocument({
-        id: metadata.document_id,
-        filename: metadata.filename || node.label,
-        title: metadata.title || node.label,
-        source_type: metadata.source_type || "source",
-        section_count: metadata.section_count || 0,
-      });
       return;
     }
 
-    if (node.type === "section" && metadata.document_id && metadata.section_id) {
-      elements.markdownPreview.textContent = "Loading source section...";
+    const { parents, nodes, edges } = graphElements();
+    const useCompound = view === "cluster";
+    const orderView = view === "order";
+    if (state.cy) {
+      state.cy.destroy();
+    }
+    state.cy = cytoscape({
+      container: elements.graphCanvas,
+      elements: [...(useCompound ? parents : []), ...nodes, ...edges],
+      layout: GRAPH_LAYOUTS[view],
+      style: [
+        { selector: "node", style: {
+          label: "data(label)", "font-size": 11, width: "data(size)", height: "data(size)",
+          "background-color": "data(color)", "text-valign": "bottom", "text-margin-y": 4 } },
+        { selector: "node[?isCluster]", style: {
+          "background-opacity": 0.08, "border-width": 1.5, "border-color": "#aaa",
+          label: "data(label)", "font-size": 14, "font-weight": 700,
+          "text-valign": "top", shape: "round-rectangle" } },
+        { selector: "edge", style: {
+          width: 1.4, "line-color": "#c4ccd4", "curve-style": "bezier" } },
+        { selector: 'edge[kind = "prerequisite"]', style: {
+          "target-arrow-shape": "triangle", "target-arrow-color": "#8a96a3",
+          "line-color": "#8a96a3" } },
+        { selector: 'edge[kind = "part_of"]', style: { "line-style": "dashed" } },
+        ...(orderView
+          ? [{ selector: 'edge[kind != "prerequisite"]', style: { opacity: 0.25 } }]
+          : []),
+        { selector: "node.dimmed", style: { opacity: 0.15 } },
+        { selector: "node.highlighted", style: { "border-width": 3, "border-color": "#162029" } },
+      ],
+    });
+    state.cy.on("tap", "node[^isCluster]", (event) => previewConcept(event.target.id()));
+    state.cy.on("tap", "node[?isCluster]", (event) => toggleClusterCollapse(event.target.id()));
+    applyClusterCollapse();
+    filterGraphNodes();
+  }
+
+  function setGraphView(view) {
+    renderGraphView(view);
+  }
+
+  function toggleClusterCollapse(clusterNodeId) {
+    if (state.collapsedClusters.has(clusterNodeId)) {
+      state.collapsedClusters.delete(clusterNodeId);
+    } else {
+      state.collapsedClusters.add(clusterNodeId);
+    }
+    applyClusterCollapse();
+  }
+
+  function applyClusterCollapse() {
+    if (!state.cy || state.graphView !== "cluster") {
+      return;
+    }
+    state.cy.nodes("[?isCluster]").forEach((clusterNode) => {
+      const collapsed = state.collapsedClusters.has(clusterNode.id());
+      const children = clusterNode.children();
+      children.style("display", collapsed ? "none" : "element");
+      children.connectedEdges().style("display", collapsed ? "none" : "element");
+      clusterNode.data(
+        "label",
+        collapsed
+          ? `${clusterNode.data("baseLabel")} (+${children.length})`
+          : clusterNode.data("baseLabel"),
+      );
+    });
+    state.cy.edges().forEach((edge) => {
+      const endpointHidden =
+        edge.source().style("display") === "none" || edge.target().style("display") === "none";
+      if (endpointHidden) {
+        edge.style("display", "none");
+      }
+    });
+  }
+
+  function filterGraphNodes() {
+    if (!state.cy) {
+      return;
+    }
+    const query = elements.graphSearch.value.trim().toLowerCase();
+    state.cy.nodes("[^isCluster]").forEach((node) => {
+      const match = !query || node.data("label").toLowerCase().includes(query);
+      node.toggleClass("dimmed", !match);
+      node.toggleClass("highlighted", Boolean(query) && match);
+    });
+  }
+
+  async function previewConcept(conceptId) {
+    elements.markdownPreview.textContent = "Loading concept detail...";
+
+    try {
+      const detail = await getJson(`/graph/concepts/${conceptId}`);
+      renderConceptDetail(detail);
+    } catch (error) {
+      resetPreviewSourceMeta();
+      elements.markdownPreview.textContent = `Concept detail unavailable: ${errorMessage(error)}`;
+    }
+  }
+
+  function renderConceptDetail(detail) {
+    const sources = Array.isArray(detail.sources) ? detail.sources : [];
+    renderPreviewSourceMeta({
+      title: detail.name,
+      summary: [detail.cluster, `${sources.length} sources`].filter(Boolean).join(" · "),
+      kind: "Graph concept",
+    });
+
+    const askButton = document.createElement("button");
+    askButton.type = "button";
+    askButton.id = "ask-about-concept";
+    askButton.className = "secondary-button";
+    askButton.textContent = "去問問題";
+    askButton.addEventListener("click", () => askAboutConcept(detail.name));
+    elements.previewSourceMeta.append(askButton);
+
+    const sourceList = document.createElement("div");
+    sourceList.className = "concept-sources";
+    sources.forEach((source) => {
+      const row = document.createElement("button");
+      row.type = "button";
+      row.className = "source-row";
+      row.addEventListener("click", () => previewConceptSource(source));
+
+      const title = document.createElement("strong");
+      title.className = "source-title";
+      title.textContent = source.heading || source.source_id;
+      const meta = document.createElement("span");
+      meta.className = "source-meta";
+      meta.textContent = [source.filename, source.source_id].filter(Boolean).join(" · ");
+
+      row.append(title, meta);
+      sourceList.append(row);
+    });
+    elements.previewSourceMeta.append(sourceList);
+
+    const aliases = Array.isArray(detail.aliases) ? detail.aliases : [];
+    elements.markdownPreview.textContent = [
+      detail.name,
+      detail.summary,
+      aliases.length > 0 ? `Aliases: ${aliases.join(", ")}` : null,
+    ]
+      .filter(Boolean)
+      .join("\n\n");
+  }
+
+  async function previewConceptSource(source) {
+    elements.markdownPreview.textContent = "Loading source section...";
+    renderPreviewSourceMeta({
+      title: source.heading || source.source_id,
+      summary: source.source_id || "Concept source",
+      kind: "Graph preview",
+    });
+    try {
+      const section = await getJson(
+        `/sources/${source.document_id}/sections/${source.section_id}`,
+      );
       renderPreviewSourceMeta({
-        title: metadata.heading || node.label,
-        summary: metadata.source_id || "Mindmap section",
-        kind: "Mindmap preview",
+        title: section.heading,
+        summary: section.source_id,
+        kind: "Graph preview",
       });
-      try {
-        const section = await getJson(
-          `/sources/${metadata.document_id}/sections/${metadata.section_id}`,
-        );
-        renderPreviewSourceMeta({
-          title: section.heading,
-          summary: section.source_id,
-          kind: "Mindmap preview",
-        });
-        elements.markdownPreview.textContent = [section.heading, section.body_md].join("\n\n");
-      } catch (error) {
-        elements.markdownPreview.textContent = `Source preview unavailable: ${errorMessage(error)}`;
-      }
+      elements.markdownPreview.textContent = [section.heading, section.body_md].join("\n\n");
+    } catch (error) {
+      elements.markdownPreview.textContent = `Source preview unavailable: ${errorMessage(error)}`;
     }
   }
 
-  async function refreshMindmapAfterContentChange() {
-    if (!state.mindmapLoaded) {
+  function askAboutConcept(name) {
+    elements.chatQuery.value = `請解釋「${name}」，以及它和課程裡其他概念的關係。`;
+    activateTab("chat");
+    elements.chatQuery.focus();
+  }
+
+  async function refreshGraphAfterContentChange() {
+    if (!state.graphLoaded) {
       return;
     }
 
-    await loadMindmap();
+    await loadGraph();
   }
 
   function bindAdmin() {
@@ -1473,7 +1608,7 @@
       );
       await refreshStatus();
       await refreshSources();
-      await refreshMindmapAfterContentChange();
+      await refreshGraphAfterContentChange();
     } catch (error) {
       appendOperation(`Index rebuild failed: ${errorMessage(error)}`);
     } finally {

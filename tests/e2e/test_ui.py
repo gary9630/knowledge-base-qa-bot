@@ -10,7 +10,7 @@ def test_ui_serves_three_column_workbench() -> None:
 
     assert response.status_code == 200
     assert "Chat" in response.text
-    assert "Mindmap" in response.text
+    assert "知識圖譜" in response.text
     assert "Admin Uploads" in response.text
     assert "Feedback / Evals" in response.text
     assert "answer sources" in response.text.lower()
@@ -98,7 +98,7 @@ def test_ui_serves_student_landing_page_and_marks_admin_surfaces() -> None:
     assert "Course Assistant" in response.text
     assert "Student sign in" in response.text
     assert 'id="tab-chat"' in response.text
-    assert 'id="tab-mindmap"' in response.text
+    assert 'id="tab-graph"' in response.text
     assert 'id="tab-sources"' in response.text
     for tab_id in ("tab-uploads", "tab-ops", "tab-audit", "tab-evals"):
         tab_markup = response.text.split(f'id="{tab_id}"', 1)[1].split(">", 1)[0]
@@ -358,16 +358,37 @@ def test_ui_separates_answer_sources_from_previewed_source() -> None:
     assert ".source-title" in css_response.text
 
 
-def test_ui_exposes_mindmap_on_demand_wiring() -> None:
+def test_ui_exposes_graph_tab_wiring() -> None:
     client = TestClient(create_app())
 
     response = client.get("/")
     js_response = client.get("/static/app.js")
 
     assert response.status_code == 200
-    assert 'id="load-mindmap"' in response.text
-    assert "getJson(\"/mindmap\"" in js_response.text
-    assert "loadMindmap" in js_response.text
-    assert "refreshMindmapAfterContentChange" in js_response.text
+    assert 'id="tab-graph"' in response.text
+    assert 'id="panel-graph"' in response.text
+    assert 'id="graph-canvas"' in response.text
+    assert 'id="graph-empty"' in response.text
+    assert 'id="graph-search"' in response.text
+    assert 'id="load-graph"' in response.text
+    assert "vendor/cytoscape.min.js" in response.text
+    assert "vendor/dagre.min.js" in response.text
+    assert "vendor/cytoscape-dagre.js" in response.text
+
+    assert "getJson(\"/graph\")" in js_response.text
+    assert "renderGraphView" in js_response.text
+    assert "graph-view-cluster" in js_response.text
+    assert "graph-view-radial" in js_response.text
+    assert "graph-view-order" in js_response.text
+    assert "askAboutConcept" in js_response.text
+    assert "refreshGraphAfterContentChange" in js_response.text
     init_body = js_response.text.split("function init() {", 1)[1].split("}", 1)[0]
-    assert "loadMindmap" not in init_body
+    assert "loadGraph" not in init_body
+
+    for vendor_path in (
+        "/static/vendor/cytoscape.min.js",
+        "/static/vendor/dagre.min.js",
+        "/static/vendor/cytoscape-dagre.js",
+    ):
+        vendor_response = client.get(vendor_path)
+        assert vendor_response.status_code == 200

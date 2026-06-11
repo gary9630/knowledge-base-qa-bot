@@ -6,6 +6,9 @@
     <title>Knowledge Base Workbench</title>
     <link rel="icon" href="data:," />
     <link rel="stylesheet" href="{{ url_for('static', path='app.css') }}" />
+    <script src="{{ url_for('static', path='vendor/cytoscape.min.js') }}" defer></script>
+    <script src="{{ url_for('static', path='vendor/dagre.min.js') }}" defer></script>
+    <script src="{{ url_for('static', path='vendor/cytoscape-dagre.js') }}" defer></script>
     <script src="{{ url_for('static', path='app.js') }}" defer></script>
   </head>
   <body>
@@ -76,11 +79,11 @@
             </svg>
             Chat
           </button>
-          <button class="tab" id="tab-mindmap" type="button" role="tab" aria-selected="false" aria-controls="panel-mindmap" tabindex="-1" data-tab="mindmap">
+          <button class="tab" id="tab-graph" type="button" role="tab" aria-selected="false" aria-controls="panel-graph" tabindex="-1" data-tab="graph">
             <svg aria-hidden="true" viewBox="0 0 24 24">
               <path d="M12 5v4m0 0H8m4 0h4m-4 0v5m-6 5a3 3 0 1 0 0-6 3 3 0 0 0 0 6Zm12 0a3 3 0 1 0 0-6 3 3 0 0 0 0 6ZM12 19a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z" />
             </svg>
-            Mindmap
+            知識圖譜
           </button>
           <button class="tab" id="tab-uploads" type="button" role="tab" aria-selected="false" aria-controls="panel-uploads" tabindex="-1" data-tab="uploads" data-admin-only>
             <svg aria-hidden="true" viewBox="0 0 24 24">
@@ -168,16 +171,24 @@
           </form>
         </section>
 
-        <section class="workspace-panel" id="panel-mindmap" role="tabpanel" tabindex="0" data-panel="mindmap" aria-labelledby="tab-mindmap" hidden>
+        <section class="workspace-panel" id="panel-graph" role="tabpanel" tabindex="0" data-panel="graph" aria-labelledby="tab-graph" hidden>
           <header class="workspace-header">
             <div>
-              <h2>Mindmap</h2>
+              <h2>知識圖譜</h2>
             </div>
-            <button class="secondary-button" type="button" id="load-mindmap">Load Graph</button>
+            <div class="graph-toolbar">
+              <label class="sr-only" for="graph-search">搜尋概念</label>
+              <input class="graph-search" id="graph-search" type="search" placeholder="搜尋概念…" />
+              <div class="graph-view-toggle" role="group" aria-label="圖譜視角">
+                <button class="graph-view-button is-active" type="button" id="graph-view-cluster">叢集</button>
+                <button class="graph-view-button" type="button" id="graph-view-radial">放射</button>
+                <button class="graph-view-button" type="button" id="graph-view-order">學習順序</button>
+              </div>
+              <button class="secondary-button" type="button" id="load-graph">載入圖譜</button>
+            </div>
           </header>
-          <div class="mindmap" id="mindmap">
-            <p class="muted">Load the graph to inspect indexed documents and sections.</p>
-          </div>
+          <div class="graph-canvas" id="graph-canvas"></div>
+          <p class="graph-empty" id="graph-empty">尚未建立知識圖譜。請先建立索引並執行概念抽取。</p>
         </section>
 
         <section class="workspace-panel" id="panel-uploads" role="tabpanel" tabindex="0" data-panel="uploads" aria-labelledby="tab-uploads" data-admin-only hidden>
