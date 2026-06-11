@@ -383,6 +383,7 @@ textarea:disabled {
 .primary-button:focus-visible,
 .secondary-button:focus-visible,
 .source-row:focus-visible,
+.doc-row:focus-visible,
 .source-chip:focus-visible,
 .citation-pill:focus-visible,
 .feedback-button:focus-visible,
@@ -1264,24 +1265,6 @@ select {
   line-height: 1.25;
 }
 
-.source-table-row {
-  display: grid;
-  grid-template-columns: minmax(160px, 1fr) 90px 120px;
-  gap: 12px;
-  align-items: center;
-  border-bottom: 1px solid var(--border);
-  padding: 10px 0;
-}
-
-.source-table-row:first-child {
-  border-top: 1px solid var(--border);
-}
-
-.source-table-row span {
-  min-width: 0;
-  overflow-wrap: anywhere;
-}
-
 /* ── 教材總覽 reading-list row ────────────────────────── */
 .doc-row {
   display: grid;
@@ -1314,10 +1297,6 @@ select {
   font-size: 14px;
   font-weight: 600;
   overflow-wrap: anywhere;
-}
-
-.doc-row .source-meta {
-  font-size: 12px;
 }
 
 /* ── Admin ops grouping inside sources panel ─────────── */
@@ -1435,7 +1414,4 @@ select {
     flex-direction: column;
   }
 
-  .source-table-row {
-    grid-template-columns: 1fr;
-  }
 }

@@ -262,8 +262,8 @@
     elements.platformLogout.hidden = !state.auth.authRequired || !state.auth.authenticated;
     applyAccessPolicy();
     elements.platformAuthStatus.textContent = state.auth.authenticated
-      ? `Signed in${state.auth.username ? ` as ${state.auth.username}` : ""}.`
-      : "Sign in to continue.";
+      ? `已登入${state.auth.username ? `：${state.auth.username}` : ""}。`
+      : "請以課程帳號登入以繼續使用。";
 
     if (!blocked) {
       refreshLearnerContext();
@@ -1055,8 +1055,8 @@
       updateLearnerChatStatus();
     } catch (error) {
       state.documents = [];
-      elements.sourceList.replaceChildren(emptyText(`Sources unavailable: ${errorMessage(error)}`));
-      elements.sourceTable.replaceChildren(emptyText("No indexed sources found."));
+      elements.sourceList.replaceChildren(emptyText(`無法載入來源：${errorMessage(error)}`));
+      elements.sourceTable.replaceChildren(emptyText("尚未找到已索引的來源。"));
       updateLearnerChatStatus("Course sources unavailable.");
     }
   }
@@ -1066,8 +1066,8 @@
     elements.sourceTable.replaceChildren();
 
     if (state.documents.length === 0) {
-      elements.sourceList.append(emptyText("No sources loaded"));
-      elements.sourceTable.append(emptyText("No indexed sources found."));
+      elements.sourceList.append(emptyText("尚未載入任何來源"));
+      elements.sourceTable.append(emptyText("尚未找到已索引的來源。"));
       return;
     }
 
@@ -1099,6 +1099,7 @@
     const row = document.createElement("button");
     row.type = "button";
     row.className = "doc-row";
+    row.dataset.docId = documentItem.id;
     row.addEventListener("click", () => previewDocument(documentItem));
 
     const title = document.createElement("strong");
@@ -1114,9 +1115,7 @@
 
   function documentSourceSummaryZh(documentItem) {
     const sectionCount = documentItem.section_count || 0;
-    const status = documentItem.index_status === "indexed" ? "已索引"
-      : documentItem.index_status === "not_indexed" ? "未索引"
-      : documentItem.index_status || "未知";
+    const status = sectionCount > 0 ? "已索引" : "未索引";
     const parts = [
       `${sectionCount} 個段落`,
       status,
@@ -1138,7 +1137,7 @@
     } catch (error) {
       state.adminDocuments = [];
       elements.adminDocuments.replaceChildren(
-        emptyText(`Document lifecycle unavailable: ${errorMessage(error)}`),
+        emptyText(`文件生命週期資料無法載入：${errorMessage(error)}`),
       );
     }
   }
@@ -1148,7 +1147,7 @@
     elements.adminDocuments.replaceChildren();
 
     if (state.adminDocuments.length === 0) {
-      elements.adminDocuments.append(emptyText("No admin documents loaded."));
+      elements.adminDocuments.append(emptyText("尚未載入管理文件。"));
       return;
     }
 
@@ -1259,7 +1258,14 @@
   }
 
   async function previewDocument(documentItem) {
-    elements.markdownPreview.textContent = "Loading source metadata...";
+    $$("#source-table .doc-row").forEach((row) => row.classList.remove("is-active"));
+    const activeRow = $$("#source-table .doc-row").find(
+      (row) => row.dataset.docId === String(documentItem.id),
+    );
+    if (activeRow) {
+      activeRow.classList.add("is-active");
+    }
+    elements.markdownPreview.textContent = "載入來源中…";
     renderPreviewSourceMeta({
       title: documentDisplayTitle(documentItem),
       summary: documentSourceSummary(documentItem),
@@ -1307,9 +1313,9 @@
 
   function documentSourceSummary(documentItem) {
     const parts = [
-      `${documentItem.section_count || 0} sections`,
+      `${documentItem.section_count || 0} 個段落`,
       documentItem.source_type || "source",
-      documentItem.imported_from ? `from ${documentItem.imported_from}` : documentItem.filename,
+      documentItem.imported_from ? documentItem.imported_from : documentItem.filename,
     ];
     return parts.filter(Boolean).join(" · ");
   }
