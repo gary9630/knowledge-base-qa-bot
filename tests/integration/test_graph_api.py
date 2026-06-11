@@ -271,6 +271,52 @@ def test_graph_excludes_cluster_with_no_visible_concepts(
     assert str(invisible_cluster.id) not in cluster_ids
 
 
+def test_graph_mixed_visibility_source_count(db_session: Session) -> None:
+    """A concept with sources in both a public and a restricted document should
+    show source_count == 2 (public only) on /graph, and the detail endpoint
+    should list exactly those 2 public sources in filename+position order."""
+    # Two public sections in "alpha.md"
+    pub_doc, pub_s1, pub_s2 = _seed_document(db_session, filename="alpha.md")
+    # One restricted section in "zeta.md" (cohort-x)
+    priv_doc, priv_s1, _ = _seed_document(
+        db_session, filename="zeta.md", visibility=["cohort-x"]
+    )
+
+    mixed_c = Concept(
+        name="MixedConcept",
+        slug="mixed-concept",
+        summary="混合可見性的概念。",
+    )
+    db_session.add(mixed_c)
+    db_session.flush()
+
+    # 2 public sources + 1 restricted source
+    db_session.add(ConceptSource(concept_id=mixed_c.id, section_id=pub_s1.id))
+    db_session.add(ConceptSource(concept_id=mixed_c.id, section_id=pub_s2.id))
+    db_session.add(ConceptSource(concept_id=mixed_c.id, section_id=priv_s1.id))
+    db_session.flush()
+
+    client = TestClient(_app(db_session))
+
+    # /graph: source_count reflects only public sources
+    graph_resp = client.get("/graph")
+    assert graph_resp.status_code == 200
+    nodes = graph_resp.json()["nodes"]
+    mixed_node = next((n for n in nodes if n["id"] == str(mixed_c.id)), None)
+    assert mixed_node is not None, "mixed-visibility concept should appear in /graph"
+    assert mixed_node["source_count"] == 2
+
+    # /graph/concepts/{id}: exactly the 2 public sources, ordered by filename then position
+    detail_resp = client.get(f"/graph/concepts/{mixed_c.id}")
+    assert detail_resp.status_code == 200
+    sources = detail_resp.json()["sources"]
+    source_ids = [s["source_id"] for s in sources]
+    # pub_s1 (position=0) comes before pub_s2 (position=1); both in alpha.md
+    assert source_ids == [pub_s1.source_id, pub_s2.source_id]
+    # Restricted source must not appear
+    assert priv_s1.source_id not in source_ids
+
+
 # ---------------------------------------------------------------------------
 # Tests: GET /graph/concepts/{id}
 # ---------------------------------------------------------------------------
@@ -291,10 +337,11 @@ def test_graph_concept_detail_returns_correct_shape(db_session: Session) -> None
     assert body["aliases"] == ["快取"]
     assert body["cluster"] == "快取"
 
-    # sources ordered by (filename, section position)
-    source_ids = [s["section_id"] for s in body["sources"]]
-    assert str(s1.id) in source_ids
-    assert str(s2.id) in source_ids
+    # sources ordered by (filename asc, section position asc) — assert exact order
+    section_ids = [s["section_id"] for s in body["sources"]]
+    assert section_ids == [str(s1.id), str(s2.id)], (
+        "sources must be ordered by filename then position; s1 (position=0) before s2 (position=1)"
+    )
     # Check required fields present
     for src in body["sources"]:
         assert "section_id" in src

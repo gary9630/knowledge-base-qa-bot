@@ -4,12 +4,13 @@ from datetime import datetime
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.api.dependencies import get_request_db_session, get_source_principal, require_admin_access
+from app.audit import record_audit_event
 from app.background_jobs.service import TASK_CONCEPT_EXTRACTION, BackgroundJobService
 from app.document_lifecycle import active_document_filter
 from app.models.tables import (
@@ -88,29 +89,47 @@ class ExtractJobResponse(BaseModel):
 
 
 # ---------------------------------------------------------------------------
-# Helper: load visible (concept_id -> {section data, document data}) pairs
+# Helpers: visible source counts (lightweight) and full entity loading (detail)
 # ---------------------------------------------------------------------------
 
 
-def _load_visible_concept_sources(
+def _count_visible_concept_sources(
     session: Session,
     principal: SourcePrincipal,
-) -> dict[UUID, list[tuple[Section, Document]]]:
-    """Return mapping concept_id -> list of (section, document) for all visible
-    active-document sources.  One query, aggregated in Python."""
+) -> dict[UUID, int]:
+    """Return mapping concept_id -> visible source count.
+
+    Uses a count/group_by query that selects only concept_id and document_id
+    — no Section body_md or other heavy columns are loaded.
+    """
     rows = session.execute(
-        select(ConceptSource.concept_id, Section, Document)
+        select(ConceptSource.concept_id, func.count(ConceptSource.section_id))
         .join(Section, Section.id == ConceptSource.section_id)
         .join(Document, Document.id == Section.document_id)
         .where(active_document_filter())
         .where(source_visibility_filter(Document.visibility, principal))
-        .order_by(Document.filename.asc(), Section.position.asc(), Section.id.asc())
+        .group_by(ConceptSource.concept_id)
     ).all()
 
-    result: dict[UUID, list[tuple[Section, Document]]] = {}
-    for concept_id, section, document in rows:
-        result.setdefault(concept_id, []).append((section, document))
-    return result
+    return {concept_id: count for concept_id, count in rows}
+
+
+def _load_visible_concept_source_entities(
+    session: Session,
+    concept_id: UUID,
+    principal: SourcePrincipal,
+) -> list[tuple[Section, Document]]:
+    """Return ordered (section, document) pairs for a single concept's visible sources."""
+    rows = session.execute(
+        select(Section, Document)
+        .join(ConceptSource, ConceptSource.section_id == Section.id)
+        .join(Document, Document.id == Section.document_id)
+        .where(ConceptSource.concept_id == concept_id)
+        .where(active_document_filter())
+        .where(source_visibility_filter(Document.visibility, principal))
+        .order_by(Document.filename.asc(), Section.position.asc(), Section.id.asc())
+    ).all()
+    return [(section, document) for section, document in rows]
 
 
 # ---------------------------------------------------------------------------
@@ -123,7 +142,7 @@ def get_graph(
     session: Annotated[Session, Depends(get_request_db_session)],
     principal: Annotated[SourcePrincipal, Depends(get_source_principal)],
 ) -> GraphResponse:
-    visible_sources = _load_visible_concept_sources(session, principal)
+    visible_sources = _count_visible_concept_sources(session, principal)
     visible_concept_ids: set[UUID] = set(visible_sources.keys())
 
     # Load all concepts (we'll filter by visibility in Python)
@@ -140,7 +159,7 @@ def get_graph(
                 slug=concept.slug,
                 summary=concept.summary,
                 cluster_id=concept.cluster_id,
-                source_count=len(visible_sources[concept.id]),
+                source_count=visible_sources[concept.id],
             )
         )
 
@@ -204,16 +223,8 @@ def get_concept_detail(
     if concept is None:
         raise HTTPException(status_code=404, detail="Concept not found.")
 
-    # Load visible sources for this concept only
-    rows = session.execute(
-        select(Section, Document)
-        .join(ConceptSource, ConceptSource.section_id == Section.id)
-        .join(Document, Document.id == Section.document_id)
-        .where(ConceptSource.concept_id == concept_id)
-        .where(active_document_filter())
-        .where(source_visibility_filter(Document.visibility, principal))
-        .order_by(Document.filename.asc(), Section.position.asc(), Section.id.asc())
-    ).all()
+    # Load visible sources for this concept only (ordered by filename, position)
+    rows = _load_visible_concept_source_entities(session, concept_id, principal)
 
     # A concept with zero visible sources is 404 (don't leak hidden concepts)
     if not rows:
@@ -253,6 +264,7 @@ def get_concept_detail(
 
 @router.post("/graph/extract", status_code=202, response_model=ExtractJobResponse)
 def trigger_extract(
+    request: Request,
     session: Annotated[Session, Depends(get_request_db_session)],
     _: Annotated[None, Depends(require_admin_access)] = None,
 ) -> ExtractJobResponse:
@@ -261,4 +273,13 @@ def trigger_extract(
         payload={"reason": "manual"},
     )
     session.commit()
+    record_audit_event(
+        request,
+        event_type="job.enqueued",
+        actor_type="admin",
+        outcome="success",
+        resource_type="background_job",
+        resource_id=str(job.id),
+        metadata={"task_type": job.task_type},
+    )
     return ExtractJobResponse(job_id=job.id)
