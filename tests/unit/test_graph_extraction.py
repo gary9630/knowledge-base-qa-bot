@@ -3,6 +3,8 @@ from __future__ import annotations
 import json
 
 from app.graph.extraction import (
+    CLUSTER_SYSTEM_PROMPT,
+    DOCUMENT_SYSTEM_PROMPT,
     EDGE_KINDS,
     build_cluster_prompt,
     build_document_prompt,
@@ -119,9 +121,32 @@ def test_prompts_contain_payloads() -> None:
     assert "一致性雜湊" in merge_prompt and "Quorum" in merge_prompt
 
     cluster_prompt = build_cluster_prompt(
-        concept_names=["Quorum"], existing_cluster_names=["一致性"]
+        concepts=[{"name": "Quorum", "summary": "多數決讀寫。"}],
+        existing_cluster_names=["一致性"],
     )
     assert "Quorum" in cluster_prompt and "一致性" in cluster_prompt
+    assert "多數決讀寫" in cluster_prompt  # summaries travel with the names
+
+
+def test_document_prompt_excludes_entities_case_studies_and_toc() -> None:
+    # Acceptance-run hardening: the prompt must steer the model away from
+    # named entities, case-study scenarios, and table-of-contents sections.
+    assert "transferable" in DOCUMENT_SYSTEM_PROMPT
+    assert "companies" in DOCUMENT_SYSTEM_PROMPT
+    assert "Airbnb" in DOCUMENT_SYSTEM_PROMPT and "Polymarket" in DOCUMENT_SYSTEM_PROMPT
+    assert "案例" in DOCUMENT_SYSTEM_PROMPT
+    assert "table-of-contents" in DOCUMENT_SYSTEM_PROMPT
+    assert "extract nothing" in DOCUMENT_SYSTEM_PROMPT
+    # the JSON contract is unchanged
+    assert '"concepts"' in DOCUMENT_SYSTEM_PROMPT and '"edges"' in DOCUMENT_SYSTEM_PROMPT
+
+
+def test_cluster_prompt_describes_incremental_assignment() -> None:
+    # Clustering is incremental-only: the prompt assigns the GIVEN concepts to
+    # existing-or-new clusters instead of regrouping the whole graph.
+    assert "assign the given course concepts" in CLUSTER_SYSTEM_PROMPT.lower()
+    assert "existing" in CLUSTER_SYSTEM_PROMPT
+    assert "ONLY when no existing cluster fits" in CLUSTER_SYSTEM_PROMPT
 
 
 def test_edge_kinds_constant() -> None:

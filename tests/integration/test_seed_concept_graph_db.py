@@ -130,11 +130,12 @@ def test_apply_seed_graph_creates_all_rows_and_extraction_state(db_session: Sess
     assert len(clusters) == 1
     assert clusters[0].name == "快取"
 
-    # concepts
+    # concepts — seeded rows carry origin="seed" so the pipeline never prunes them
     concepts = db_session.scalars(select(Concept)).all()
     assert len(concepts) == 2
     slugs = {c.slug for c in concepts}
     assert slugs == {"consistent-hashing", "sharding"}
+    assert all(c.origin == "seed" for c in concepts)
 
     # sources
     sources = db_session.scalars(select(ConceptSource)).all()
@@ -201,6 +202,12 @@ def test_apply_seed_graph_update_updates_concept_in_place(db_session: Session) -
     seed_v1 = parse_seed_graph(payload)
     apply_seed_graph(db_session, seed_v1, strict=True)
 
+    # Simulate a concept the pipeline previously created (origin="extracted")
+    existing = db_session.scalar(select(Concept).where(Concept.slug == "consistent-hashing"))
+    assert existing is not None
+    existing.origin = "extracted"
+    db_session.flush()
+
     # Change the summary
     updated_payload = _seed_payload(sec_a.source_id, sec_b.source_id)
     updated_payload["concepts"][0]["summary"] = "新的摘要：更新後的描述。"
@@ -212,6 +219,7 @@ def test_apply_seed_graph_update_updates_concept_in_place(db_session: Session) -
     )
     assert concept is not None
     assert concept.summary == "新的摘要：更新後的描述。"
+    assert concept.origin == "seed"  # updates re-mark curated rows as seed-origin
     # Still only one row per concept
     assert len(db_session.scalars(select(Concept)).all()) == 2
 
@@ -460,8 +468,10 @@ def test_replace_mode_removes_zombie_concepts_and_edges(db_session: Session) -> 
     assert states[0].document_id == document.id
 
 
-def test_replace_mode_reflects_only_v2_documents(db_session: Session) -> None:
-    """I3: extraction state after replace contains only v2's documents."""
+def test_replace_mode_keeps_states_for_all_active_documents(db_session: Session) -> None:
+    """Extraction state after replace covers every ACTIVE document — including
+    documents the v2 seed no longer cites — so the worker never junk-extracts
+    them."""
     doc1 = _document(db_session, filename="doc1.md", content_hash="hash-doc1")
     doc2 = _document(db_session, filename="doc2.md", content_hash="hash-doc2")
     sec_a = _section(db_session, doc1, slug="sec-a", position=0)
@@ -516,10 +526,12 @@ def test_replace_mode_reflects_only_v2_documents(db_session: Session) -> None:
     seed_v2 = parse_seed_graph(v2_payload)
     apply_seed_graph(db_session, seed_v2, strict=True, replace=True)
 
-    # Only doc1's state should remain
+    # Both documents are still active, so both get fresh extraction states
     states_v2 = db_session.scalars(select(ConceptExtractionState)).all()
-    assert len(states_v2) == 1
-    assert states_v2[0].document_id == doc1.id
+    assert {state.document_id for state in states_v2} == {doc1.id, doc2.id}
+    by_doc = {state.document_id: state.content_hash for state in states_v2}
+    assert by_doc[doc1.id] == "hash-doc1"
+    assert by_doc[doc2.id] == "hash-doc2"
 
 
 # ---------------------------------------------------------------------------
@@ -573,3 +585,32 @@ def test_strict_false_skips_fully_unknown_concepts(db_session: Session) -> None:
     # "known-concept" gets 1 source; "ghost-concept" gets 0 sources
     assert len(sources) == 1
     assert counts["sources"] == 1
+
+
+# ---------------------------------------------------------------------------
+# Seeding writes extraction state for EVERY active document (cited or not)
+# ---------------------------------------------------------------------------
+
+
+def test_apply_seed_graph_writes_state_for_every_active_document(
+    db_session: Session,
+) -> None:
+    """Uncited active documents (e.g. overview/導讀 docs) must also get an
+    extraction state at their current content_hash, or the first worker run
+    junk-extracts them. Non-active documents get no state."""
+    cited = _document(db_session, filename="cited.md", content_hash="hash-cited")
+    sec_a = _section(db_session, cited, slug="consistent-hashing", position=0)
+    sec_b = _section(db_session, cited, slug="sharding", position=1)
+    uncited = _document(db_session, filename="overview.md", content_hash="hash-overview")
+    _section(db_session, uncited, slug="toc", position=0)
+    deleted = _document(db_session, filename="gone.md", content_hash="hash-gone")
+    deleted.lifecycle_status = "deleted"
+    db_session.flush()
+
+    seed = parse_seed_graph(_seed_payload(sec_a.source_id, sec_b.source_id))
+    counts = apply_seed_graph(db_session, seed, strict=True)
+
+    states = db_session.scalars(select(ConceptExtractionState)).all()
+    by_doc = {state.document_id: state.content_hash for state in states}
+    assert by_doc == {cited.id: "hash-cited", uncited.id: "hash-overview"}
+    assert counts["extraction_states"] == 2

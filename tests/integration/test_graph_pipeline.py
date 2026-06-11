@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 from app.graph.pipeline import GraphExtractionPipeline
 from app.models.tables import (
     Concept,
+    ConceptCluster,
     ConceptEdge,
     ConceptExtractionState,
     ConceptSource,
@@ -40,7 +41,7 @@ class ScriptedCaller:
         markers = {
             "extract a concept graph": "extract",
             "deduplicate concept names": "merge",
-            "group course concepts": "cluster",
+            "assign the given course concepts": "cluster",
             "Propose edges": "cluster-edges",
         }
         return [
@@ -103,7 +104,7 @@ def test_pipeline_extracts_merges_and_clusters(db_session: Session) -> None:
     )
     # no merge response queued: with no pre-existing concepts the merge call is skipped
     caller.queue(
-        "group course concepts",
+        "assign the given course concepts",
         json.dumps({"clusters": [{"name": "快取", "concepts": ["Caching", "TTL"]}]}),
     )
     caller.queue("Propose edges", json.dumps({"edges": []}))
@@ -160,7 +161,7 @@ def test_pipeline_reextracts_changed_document_and_prunes_orphans(db_session: Ses
     caller.queue("extract a concept graph", _document_response("a.md", ["Fresh"], ["s1"]))
     caller.queue("deduplicate concept names", json.dumps({"merges": []}))
     caller.queue(
-        "group course concepts",
+        "assign the given course concepts",
         json.dumps({"clusters": [{"name": "主題", "concepts": ["Fresh"]}]}),
     )
     caller.queue("Propose edges", json.dumps({"edges": []}))
@@ -197,7 +198,7 @@ def test_pipeline_merges_into_existing_concepts(db_session: Session) -> None:
         json.dumps({"merges": [{"from": "一致性雜湊", "into": "Consistent Hashing"}]}),
     )
     caller.queue(
-        "group course concepts",
+        "assign the given course concepts",
         json.dumps({"clusters": [{"name": "主題", "concepts": ["Consistent Hashing"]}]}),
     )
     caller.queue("Propose edges", json.dumps({"edges": []}))
@@ -216,3 +217,114 @@ def test_pipeline_merges_into_existing_concepts(db_session: Session) -> None:
     assert concepts[0].slug == "consistent-hashing"
     assert "一致性雜湊" in concepts[0].aliases
     assert db_session.scalars(select(ConceptSource)).all()  # sources remapped
+
+
+def test_pipeline_clusters_only_unclustered_concepts(db_session: Session) -> None:
+    # Curated taxonomy: one cluster with an assigned concept, plus an empty
+    # cluster. Incremental clustering must touch neither.
+    kept_cluster = ConceptCluster(name="既有主題", position=0)
+    empty_cluster = ConceptCluster(name="空主題", position=1)
+    db_session.add_all([kept_cluster, empty_cluster])
+    db_session.flush()
+    curated = Concept(
+        name="Caching",
+        slug="caching",
+        summary="既有概念。",
+        origin="seed",
+        cluster_id=kept_cluster.id,
+    )
+    db_session.add(curated)
+    db_session.flush()
+
+    _seed_document(db_session, filename="a.md", slugs=["s1"], content_hash="ha")
+    caller = ScriptedCaller()
+    caller.queue("extract a concept graph", _document_response("a.md", ["Fresh"], ["s1"]))
+    caller.queue("deduplicate concept names", json.dumps({"merges": []}))
+    caller.queue(
+        "assign the given course concepts",
+        json.dumps({"clusters": [{"name": "新主題", "concepts": ["Fresh"]}]}),
+    )
+    caller.queue("Propose edges", json.dumps({"edges": []}))
+    queued = caller.queued_total()
+
+    GraphExtractionPipeline(
+        session=db_session, caller=caller, max_concepts_per_doc=30, token_budget=12000
+    ).run()
+
+    assert caller.call_kinds() == ["extract", "merge", "cluster", "cluster-edges"]
+    assert len(caller.calls) == queued
+
+    # the cluster call payload contains ONLY the unclustered concept (with its
+    # summary) plus the existing cluster names — never the clustered ones
+    cluster_payloads = [
+        json.loads(user)
+        for system, user in caller.calls
+        if "assign the given course concepts" in system
+    ]
+    assert len(cluster_payloads) == 1
+    payload = cluster_payloads[0]
+    assert [concept["name"] for concept in payload["concepts"]] == ["Fresh"]
+    assert all("summary" in concept for concept in payload["concepts"])
+    assert set(payload["existing_clusters"]) == {"既有主題", "空主題"}
+
+    db_session.expire_all()
+    curated_after = db_session.scalar(select(Concept).where(Concept.slug == "caching"))
+    assert curated_after is not None
+    assert curated_after.cluster_id == kept_cluster.id  # never reassigned
+    fresh = db_session.scalar(select(Concept).where(Concept.slug == "fresh"))
+    assert fresh is not None
+    assert fresh.cluster is not None and fresh.cluster.name == "新主題"
+    cluster_names = {cluster.name for cluster in db_session.scalars(select(ConceptCluster))}
+    # the empty curated cluster survives: the pipeline never deletes clusters
+    assert cluster_names == {"既有主題", "空主題", "新主題"}
+
+
+def test_pipeline_preserves_seed_origin_concept_whose_sources_vanish(
+    db_session: Session,
+) -> None:
+    document = _seed_document(db_session, filename="a.md", slugs=["s1"], content_hash="ha-v2")
+    db_session.add(ConceptExtractionState(document_id=document.id, content_hash="ha-v1"))
+    cluster = ConceptCluster(name="快取", position=0)
+    db_session.add(cluster)
+    db_session.flush()
+    # curated concept sourced only from this document; the re-extraction below
+    # no longer cites it
+    curated = Concept(
+        name="Cache Eviction Policy",
+        slug="cache-eviction-policy",
+        summary="快取淘汰策略。",
+        origin="seed",
+        cluster_id=cluster.id,
+    )
+    db_session.add(curated)
+    db_session.flush()
+    section = db_session.scalars(select(Section)).one()
+    db_session.add(ConceptSource(concept_id=curated.id, section_id=section.id))
+    db_session.flush()
+
+    caller = ScriptedCaller()
+    caller.queue("extract a concept graph", _document_response("a.md", ["Fresh"], ["s1"]))
+    caller.queue("deduplicate concept names", json.dumps({"merges": []}))
+    caller.queue(
+        "assign the given course concepts",
+        json.dumps({"clusters": [{"name": "快取", "concepts": ["Fresh"]}]}),
+    )
+    caller.queue("Propose edges", json.dumps({"edges": []}))
+
+    stats = GraphExtractionPipeline(
+        session=db_session, caller=caller, max_concepts_per_doc=30, token_budget=12000
+    ).run()
+
+    # the seed-origin concept survives orphaning (it merely disappears from
+    # /graph, which hides zero-visible-source concepts)
+    names = {concept.name for concept in db_session.scalars(select(Concept)).all()}
+    assert names == {"Cache Eviction Policy", "Fresh"}
+    assert stats["concepts_pruned"] == 0
+    db_session.expire_all()
+    curated_after = db_session.scalar(
+        select(Concept).where(Concept.slug == "cache-eviction-policy")
+    )
+    assert curated_after is not None
+    assert curated_after.sources == []  # orphaned but alive
+    state = db_session.scalar(select(ConceptExtractionState))
+    assert state is not None and state.content_hash == "ha-v2"

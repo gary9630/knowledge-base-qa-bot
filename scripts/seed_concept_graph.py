@@ -1,8 +1,9 @@
 """Seed script for the concept graph.
 
 Reads a curated JSON dataset and loads it into the DB, writing
-ConceptExtractionState for every affected document so the incremental
-extraction pipeline skips them on the next run.
+ConceptExtractionState for EVERY active document (cited or not) so the
+incremental extraction pipeline skips them on the next run. Seeded concepts
+carry origin="seed", which exempts them from the pipeline's orphan pruning.
 
 Usage:
     uv run --python 3.12 python -m scripts.seed_concept_graph \\
@@ -28,6 +29,7 @@ from uuid import UUID
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
+from app.document_lifecycle import active_document_filter
 from app.graph.extraction import EDGE_KINDS
 from app.models.tables import (
     Concept,
@@ -250,11 +252,15 @@ def apply_seed_graph(
       (concept_sources, concept_edges, concept_extraction_state, concepts,
       concept_clusters — in FK-safe order) before applying the seed.
     - Upserts clusters by name (update position on conflict).
-    - Upserts concepts by slug (update name/summary/aliases/cluster on conflict).
+    - Upserts concepts by slug (update name/summary/aliases/cluster on conflict);
+      seeded concepts get ``origin="seed"`` on create AND update so the
+      extraction pipeline never prunes them.
     - Replaces each seeded concept's :class:`ConceptSource` rows.
     - Inserts edges idempotently (pre-checks existing triplets).
-    - Writes/updates :class:`ConceptExtractionState` for every document with
-      ≥1 cited section using the document's CURRENT ``content_hash``.
+    - Writes/updates :class:`ConceptExtractionState` for EVERY active document
+      (cited or not) using the document's CURRENT ``content_hash`` — uncited
+      documents (e.g. overviews) would otherwise stay "pending" and get
+      junk-extracted by the first worker run.
 
     Returns a dict of counts:
     ``{"clusters_created": N, "clusters_updated": N,
@@ -307,13 +313,12 @@ def apply_seed_graph(
         session.execute(delete(ConceptCluster))
         session.flush()
 
-    # Collect document ids involved (for extraction state)
-    doc_id_to_hash: dict[UUID, str] = {}
-    for section in resolved_source_map.values():
-        if section.document_id not in doc_id_to_hash:
-            doc = session.get(Document, section.document_id)
-            if doc is not None:
-                doc_id_to_hash[section.document_id] = doc.content_hash
+    # Extraction state covers EVERY active document — not just cited ones —
+    # so the incremental pipeline treats the whole current corpus as extracted.
+    doc_id_to_hash: dict[UUID, str] = {
+        document.id: document.content_hash
+        for document in session.scalars(select(Document).where(active_document_filter()))
+    }
 
     # --- Upsert clusters ---------------------------------------------------- (M1)
     cluster_name_to_obj: dict[str, ConceptCluster] = {}
@@ -353,6 +358,7 @@ def apply_seed_graph(
                 summary=seed_concept.summary,
                 aliases=seed_concept.aliases,
                 cluster_id=cluster_id,
+                origin="seed",
             )
             session.add(concept_obj)
             session.flush()
@@ -362,6 +368,7 @@ def apply_seed_graph(
             existing_concept.summary = seed_concept.summary
             existing_concept.aliases = seed_concept.aliases
             existing_concept.cluster_id = cluster_id
+            existing_concept.origin = "seed"
             concept_obj = existing_concept
             session.flush()
             concepts_updated += 1

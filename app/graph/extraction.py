@@ -10,12 +10,18 @@ EDGE_KINDS = ("prerequisite", "part_of", "related")
 
 DOCUMENT_SYSTEM_PROMPT = (
     "You extract a concept graph from course material for a learner-facing knowledge "
-    "map. Concepts are course-level ideas (e.g. 'Consistent Hashing', 'Quorum'), named "
-    "in the language the material uses (Traditional Chinese or English technical "
-    "terms). Each concept needs a 1-2 sentence Traditional Chinese summary and the "
-    "source_ids of the sections that teach it. Edges connect concepts in THIS "
-    'document: kind is one of "prerequisite" (source should be learned before '
-    'target), "part_of" (source is a component of target), "related". '
+    "map. Concepts are transferable system-design ideas a learner could apply outside "
+    "this course (e.g. 'Consistent Hashing', 'Quorum'), named in the language the "
+    "material uses (Traditional Chinese or English technical terms). Do NOT extract: "
+    "named entities such as companies, products, or people (e.g. Airbnb, Polymarket); "
+    "case-study examples or quiz scenarios (案例) — these illustrate concepts, so cite "
+    "their sections as source_ids for the concept they illustrate instead of creating "
+    "a concept; table-of-contents or overview sections that merely list course topics "
+    "— such a listing teaches no concept, extract nothing from it. Each concept needs "
+    "a 1-2 sentence Traditional Chinese summary and the source_ids of the sections "
+    "that teach it. Edges connect concepts in THIS document: kind is one of "
+    '"prerequisite" (source should be learned before target), "part_of" (source is a '
+    'component of target), "related". '
     'Return JSON: {"concepts": [{"name": str, "summary": str, "source_ids": [str]}], '
     '"edges": [{"source": str, "target": str, "kind": str}]}'
 )
@@ -28,10 +34,12 @@ MERGE_SYSTEM_PROMPT = (
 )
 
 CLUSTER_SYSTEM_PROMPT = (
-    "You group course concepts into 10-20 named topic clusters for a learner-facing "
-    "knowledge map. Cluster names are short Traditional Chinese topic labels. Reuse "
-    "the provided existing cluster names wherever they still fit. Every concept must "
-    'appear in exactly one cluster. Return JSON: {"clusters": [{"name": str, '
+    "You assign the given course concepts to named topic clusters for a "
+    "learner-facing knowledge map. Cluster names are short Traditional Chinese topic "
+    "labels. Assign each given concept to one of the provided existing clusters "
+    "whenever one fits; propose a new cluster name ONLY when no existing cluster "
+    "fits. Do not rename existing clusters. Every given concept must appear in "
+    'exactly one cluster. Return JSON: {"clusters": [{"name": str, '
     '"concepts": [str]}]}'
 )
 
@@ -105,11 +113,16 @@ def build_merge_prompt(*, new_names: list[str], existing_names: list[str]) -> st
 
 def build_cluster_prompt(
     *,
-    concept_names: list[str],
+    concepts: list[dict[str, str]],
     existing_cluster_names: list[str],
 ) -> str:
+    """Serialize the UNCLUSTERED concepts (name + summary) and the existing
+    cluster names; already-clustered concepts are never sent for reassignment."""
     return json.dumps(
-        {"concepts": sorted(concept_names), "existing_clusters": sorted(existing_cluster_names)},
+        {
+            "concepts": sorted(concepts, key=lambda concept: concept.get("name", "")),
+            "existing_clusters": sorted(existing_cluster_names),
+        },
         ensure_ascii=False,
     )
 

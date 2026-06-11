@@ -109,6 +109,39 @@ cluster-edge calls.
 - Pipeline validation with real API calls happens on a small sample (2–3 documents
   forced through extraction), not the full corpus.
 
+### 2c. Amendment (2026-06-11, post-acceptance)
+
+The real-API acceptance run (re-extracting 2 seeded documents + 1 overview
+document) exposed three containment gaps: junk concepts (named entities,
+case-study scenarios, TOC topic listings), a global re-cluster that emptied and
+deleted curated clusters, and a curated concept pruned when its document was
+re-extracted. The pipeline now differs from the text above as follows:
+
+- **Clustering is incremental-only.** The cluster LLM call receives ONLY
+  concepts that have no cluster yet (name + summary) plus the existing cluster
+  names; it assigns each one to an existing cluster, proposing a new cluster
+  name only when nothing fits. Cluster assignments are immutable once made
+  (already-clustered concepts are never reassigned), the ">30% new/changed"
+  global re-cluster trigger in step 3 is removed, and the pipeline never
+  deletes clusters — assignments never move, so no cluster can empty out.
+- **Seeded concepts are prune-protected via origin.** `concepts.origin` (Text,
+  NOT NULL, default `'extracted'`; migration 0013) records provenance. The seed
+  script writes `origin='seed'` on create AND update, and the orphan-prune step
+  skips seed-origin concepts. A curated concept whose only document is
+  re-extracted may lose all its sources, but survives; `/graph` already hides
+  concepts with zero visible sources, so it disappears from view without being
+  destroyed.
+- **Seeding marks ALL active documents as extracted.** `apply_seed_graph`
+  writes `concept_extraction_state` for every active document at its current
+  `content_hash`, cited or not. Previously, uncited overview documents (導讀)
+  stayed "pending" and were junk-extracted by the first worker run.
+- **Extraction prompt hardening.** The per-document prompt now explicitly
+  excludes named entities (companies/products/people), case-study/quiz
+  scenarios (their sections are cited as sources for the concept they
+  illustrate instead), and table-of-contents/overview topic listings; concepts
+  must be transferable system-design ideas a learner could apply outside this
+  course. The JSON contract is unchanged.
+
 ### 3. API
 
 - `GET /graph` (learner, session-gated like `/mindmap` today, same visibility

@@ -45,9 +45,11 @@ from app.provider_telemetry import (
     response_request_id,
 )
 
-# Re-cluster everything when more than this share of concepts was created or
-# changed in a single run (per design: ">30% of concepts new/changed").
-CLUSTER_REFRESH_CHANGED_RATIO = 0.3
+# Concepts created by the seed script carry this origin and are exempt from
+# orphan pruning: curated concepts may lose all sources when their document is
+# re-extracted, but must survive (the /graph API already hides concepts with
+# zero visible sources, so they disappear from view without being destroyed).
+SEED_ORIGIN = "seed"
 
 GRAPH_EXTRACTION_OPERATION = "graph_extraction"
 
@@ -99,10 +101,13 @@ class GraphExtractionPipeline:
         aliases on the canonical concept); upsert concepts (slug-keyed), replace
         each re-extracted document's concept_sources, insert edges (slug pairs ->
         concept ids, ON CONFLICT ignore via unique constraint + pre-check); 4) prune
-        concepts whose concept_sources count is now zero; 5) clustering: if any
-        concept lacks a cluster OR >30% of concepts are new/changed, ONE LLM call
-        (CLUSTER_SYSTEM_PROMPT + build_cluster_prompt with existing cluster names);
-        create/reuse clusters by name, assign concepts, drop empty clusters; 6) for
+        concepts whose concept_sources count is now zero, EXCEPT seed-origin
+        (curated) concepts, which survive orphaning; 5) clustering is
+        incremental-only: if any concept lacks a cluster, ONE LLM call
+        (CLUSTER_SYSTEM_PROMPT + build_cluster_prompt) receives ONLY the
+        unclustered concepts (name+summary) plus the existing cluster names and
+        assigns each to an existing cluster or a newly named one; already-clustered
+        concepts are never reassigned and clusters are never deleted; 6) for
         each cluster containing newly added concepts, ONE LLM call proposing edges
         (CLUSTER_EDGES_SYSTEM_PROMPT + build_cluster_edges_prompt, parsed via
         parse_edges_response over that cluster's slugs); 7) write/refresh
@@ -141,7 +146,7 @@ class GraphExtractionPipeline:
             for concept in extraction.concepts:
                 extracted_by_slug.setdefault(concept.slug, concept)
 
-        slug_to_concept, changed_ids = self._upsert_concepts(extracted_by_slug, stats)
+        slug_to_concept = self._upsert_concepts(extracted_by_slug, stats)
 
         for document_id, extraction in extractions.items():
             self._replace_document_sources(
@@ -159,7 +164,7 @@ class GraphExtractionPipeline:
             existing=edge_keys,
         )
         stats["concepts_pruned"] = self._prune_orphan_concepts()
-        receiving_cluster_ids = self._assign_clusters(changed_ids)
+        receiving_cluster_ids = self._assign_clusters()
         stats["edges_created"] += self._propose_cluster_edges(
             receiving_cluster_ids, edge_keys
         )
@@ -275,11 +280,10 @@ class GraphExtractionPipeline:
         self,
         extracted_by_slug: dict[str, ExtractedConcept],
         stats: dict[str, Any],
-    ) -> tuple[dict[str, Concept], set[UUID]]:
+    ) -> dict[str, Concept]:
         slug_to_concept: dict[str, Concept] = {}
-        changed_ids: set[UUID] = set()
         if not extracted_by_slug:
-            return slug_to_concept, changed_ids
+            return slug_to_concept
 
         existing_concepts = list(self._session.scalars(select(Concept)))
         existing_by_slug = {concept.slug: concept for concept in existing_concepts}
@@ -298,7 +302,6 @@ class GraphExtractionPipeline:
             matched.summary = extracted.summary
             _add_alias(matched, extracted.name)
             slug_to_concept[slug] = matched
-            changed_ids.add(matched.id)
 
         if remaining and concept_by_name:
             new_names = sorted({extracted.name for extracted in remaining.values()})
@@ -317,20 +320,16 @@ class GraphExtractionPipeline:
                 remaining=remaining,
                 concept_by_name=concept_by_name,
                 slug_to_concept=slug_to_concept,
-                changed_ids=changed_ids,
                 stats=stats,
             )
 
-        created: list[Concept] = []
         for slug, extracted in remaining.items():
             concept = Concept(name=extracted.name, slug=slug, summary=extracted.summary)
             self._session.add(concept)
-            created.append(concept)
             slug_to_concept[slug] = concept
             stats["concepts_created"] += 1
         self._session.flush()
-        changed_ids.update(concept.id for concept in created)
-        return slug_to_concept, changed_ids
+        return slug_to_concept
 
     def _apply_merge_mapping(
         self,
@@ -339,7 +338,6 @@ class GraphExtractionPipeline:
         remaining: dict[str, ExtractedConcept],
         concept_by_name: dict[str, Concept],
         slug_to_concept: dict[str, Concept],
-        changed_ids: set[UUID],
         stats: dict[str, Any],
     ) -> None:
         resolved = _resolve_merge_mapping(mapping)
@@ -352,7 +350,6 @@ class GraphExtractionPipeline:
                 continue
             _add_alias(concept, extracted.name)
             slug_to_concept[slug] = concept
-            changed_ids.add(concept.id)
             stats["concepts_merged"] += 1
             del remaining[slug]
 
@@ -435,9 +432,10 @@ class GraphExtractionPipeline:
         orphan_ids = list(
             self._session.scalars(
                 select(Concept.id).where(
+                    Concept.origin != SEED_ORIGIN,
                     ~select(ConceptSource.id)
                     .where(ConceptSource.concept_id == Concept.id)
-                    .exists()
+                    .exists(),
                 )
             )
         )
@@ -450,16 +448,24 @@ class GraphExtractionPipeline:
 
     # -- clustering ----------------------------------------------------------------
 
-    def _assign_clusters(self, changed_ids: set[UUID]) -> set[UUID]:
-        """Cluster concepts when needed; return ids of clusters that gained members."""
+    def _assign_clusters(self) -> set[UUID]:
+        """Assign clusters to concepts that lack one; return ids of clusters that
+        gained members.
+
+        Incremental-only by design: the LLM sees ONLY the unclustered concepts
+        (name+summary) plus the existing cluster names, and either reuses an
+        existing cluster or names a new one. Existing assignments are never
+        rewritten and clusters are never deleted (assignments never move, so no
+        cluster can empty out), keeping curated taxonomy intact.
+        """
         self._session.flush()
-        concepts = list(self._session.scalars(select(Concept).order_by(Concept.slug)))
+        unclustered = list(
+            self._session.scalars(
+                select(Concept).where(Concept.cluster_id.is_(None)).order_by(Concept.slug)
+            )
+        )
         receiving: set[UUID] = set()
-        if not concepts:
-            return receiving
-        unclustered = any(concept.cluster_id is None for concept in concepts)
-        changed_count = sum(1 for concept in concepts if concept.id in changed_ids)
-        if not unclustered and changed_count / len(concepts) <= CLUSTER_REFRESH_CHANGED_RATIO:
+        if not unclustered:
             return receiving
 
         clusters = list(
@@ -470,20 +476,23 @@ class GraphExtractionPipeline:
         raw = self._caller.complete(
             system=CLUSTER_SYSTEM_PROMPT,
             user=build_cluster_prompt(
-                concept_names=[concept.name for concept in concepts],
+                concepts=[
+                    {"name": concept.name, "summary": concept.summary}
+                    for concept in unclustered
+                ],
                 existing_cluster_names=[cluster.name for cluster in clusters],
             ),
         )
         assignments = parse_cluster_response(
-            raw, concept_names={concept.name for concept in concepts}
+            raw, concept_names={concept.name for concept in unclustered}
         )
 
         cluster_by_name = {cluster.name: cluster for cluster in clusters}
         next_position = max((cluster.position for cluster in clusters), default=-1) + 1
-        for concept in concepts:
+        for concept in unclustered:
             cluster_name = assignments.get(concept.name)
             if cluster_name is None:
-                continue
+                continue  # left unclustered; retried on the next run
             cluster = cluster_by_name.get(cluster_name)
             if cluster is None:
                 cluster = ConceptCluster(name=cluster_name, position=next_position)
@@ -491,26 +500,9 @@ class GraphExtractionPipeline:
                 self._session.add(cluster)
                 self._session.flush()
                 cluster_by_name[cluster_name] = cluster
-            if concept.cluster_id != cluster.id:
-                concept.cluster_id = cluster.id
-                receiving.add(cluster.id)
+            concept.cluster_id = cluster.id
+            receiving.add(cluster.id)
         self._session.flush()
-
-        empty_ids = list(
-            self._session.scalars(
-                select(ConceptCluster.id).where(
-                    ~select(Concept.id)
-                    .where(Concept.cluster_id == ConceptCluster.id)
-                    .exists()
-                )
-            )
-        )
-        if empty_ids:
-            self._session.execute(
-                delete(ConceptCluster).where(ConceptCluster.id.in_(empty_ids))
-            )
-            self._session.flush()
-            receiving.difference_update(empty_ids)
         return receiving
 
     def _propose_cluster_edges(

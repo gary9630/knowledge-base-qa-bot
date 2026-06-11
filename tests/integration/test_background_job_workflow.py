@@ -483,7 +483,7 @@ def test_concept_extraction_job_runs_pipeline_with_injected_caller(
                     "edges": [],
                 }
             ),
-            "group course concepts": json.dumps(
+            "assign the given course concepts": json.dumps(
                 {"clusters": [{"name": "快取", "concepts": ["Caching"]}]}
             ),
             "Propose edges": json.dumps({"edges": []}),

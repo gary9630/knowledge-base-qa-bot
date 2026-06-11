@@ -660,6 +660,11 @@ class Concept(JsonDefaultsMixin, TimestampMixin, Base):
         default=list,
         server_default=text("'[]'::jsonb"),
     )
+    # "extracted" (pipeline-created, prunable when orphaned) or "seed"
+    # (curated, never pruned by the pipeline)
+    origin: Mapped[str] = mapped_column(
+        Text, nullable=False, default="extracted", server_default=text("'extracted'")
+    )
 
     cluster: Mapped[ConceptCluster | None] = relationship(back_populates="concepts")
     sources: Mapped[list[ConceptSource]] = relationship(
