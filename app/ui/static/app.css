@@ -1663,6 +1663,7 @@ select {
 
   .tab {
     flex: 0 0 auto;
+    width: auto; /* base rule's width: 100% would give each tab the full row */
     grid-template-columns: 18px minmax(0, 1fr);
     min-height: 40px;
     padding: 6px 8px;
