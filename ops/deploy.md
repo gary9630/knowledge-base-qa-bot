@@ -122,6 +122,30 @@ make ops-check API_URL=https://your-app.example.com KB_ADMIN_API_KEY=$KB_ADMIN_A
 If running directly against a local database instead of Compose, run `make migrate` before
 starting the app process.
 
+### Knowledge Graph Release Note
+
+Deploying the knowledge graph change requires:
+
+1. `make migrate` (adds migrations 0012 and 0013 for the five concept-graph tables).
+2. `make graph-seed` once per environment to load the curated seed dataset
+   (`docs/plans/2026-06-11-concept-graph-seed.json`). This populates 125 concepts across
+   16 clusters with `origin='seed'` protection and marks all currently active documents as
+   extracted so future uploads do not re-extract seed concepts.
+
+After seeding, future document uploads auto-extract concepts via the background worker when
+`KB_ANSWER_PROVIDER=openai`. When the answer provider is `fake`, the extraction step is
+skipped without error. Provider token usage for each extraction run is recorded in the job's
+`result` field and is visible through the admin jobs API.
+
+To restore the curated graph after accidental deletion or a full re-seed:
+
+```bash
+make graph-seed --replace
+```
+
+The `--replace` flag drops existing non-seed concepts before loading the seed file,
+then re-marks all active documents as extracted.
+
 ### Context Expansion Release Note
 
 Deploying the retrieval context expansion change (tiktoken chunking, section positions,

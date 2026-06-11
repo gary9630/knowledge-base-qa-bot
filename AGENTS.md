@@ -15,7 +15,8 @@
 - Core flow: ingest PDF/Markdown/TXT/HTML, convert to canonical Markdown, index into Postgres + pgvector, answer with grounded citations.
 - Between retrieval and answering sits a context assembly layer: each retrieved chunk expands to its full section plus `KB_CONTEXT_NEIGHBOR_SECTIONS` neighbors within `KB_CONTEXT_TOKEN_BUDGET` tokens, used by chat, streaming chat, and the eval answer path.
 - MVP intentionally uses Postgres + pgvector; FAISS is not in the current path.
-- UI is a three-column workbench: left functional tabs, center chat/streaming answer, right sources/Markdown/index status.
+- Concept graph: 5 tables (`concepts`, `concept_clusters`, `concept_edges`, `concept_sources`, `document_extraction_state`). Concepts with `origin='seed'` are protected from deletion during clustering. Extraction runs as a pipeline stage chained after index rebuild; it is incremental-only (only unextracted documents are processed) and skips without error when `KB_ANSWER_PROVIDER` is not `openai`. The curated seed dataset lives at `docs/plans/2026-06-11-concept-graph-seed.json` and is loaded via `make graph-seed`, which marks all currently active documents as extracted to prevent duplicates.
+- UI is a three-column workbench: left functional tabs (including a Graph tab for the knowledge graph), center chat/streaming answer, right sources/Markdown/index status.
 - Platform auth is a single configured login for learners. It is not registration or full RBAC.
 - Admin operations are separate and require `X-KB-Admin-Key`.
 
@@ -25,6 +26,7 @@
 - Start DB: `docker compose up -d postgres`
 - Run migrations: `make migrate`
 - Seed sample docs: `uv run --python 3.12 python -m scripts.seed_sample_docs`
+- Seed concept graph: `make graph-seed`
 - Start app: `make dev`
 - Rebuild index: `make index`
 - Process one background job: `make worker-once`
@@ -54,10 +56,10 @@
 - App-native abuse controls are enabled by default: tune `KB_RATE_LIMIT_*` values and `KB_MAX_CONCURRENT_UPLOADS` for the deploy target.
 - Background worker reliability controls are `KB_BACKGROUND_JOB_STALE_AFTER_SECONDS`, `KB_BACKGROUND_JOB_RETRY_BASE_DELAY_SECONDS`, and `KB_BACKGROUND_JOB_RETRY_MAX_DELAY_SECONDS`.
 - Worker runtime supervision controls are `KB_WORKER_ID`, `KB_WORKER_HEARTBEAT_INTERVAL_SECONDS`, and `KB_WORKER_HEARTBEAT_STALE_AFTER_SECONDS`; protected `GET /admin/jobs/runtime` exposes queue depth and worker heartbeat status.
-- Source access labels are enforced across search, chat, sources, and mindmap. Learners see `public`, `role:<role>`, `user:<username>`, `cohort:<name>` from `KB_PLATFORM_COHORTS`, plus `KB_PLATFORM_EXTRA_VISIBILITY_LABELS`.
+- Source access labels are enforced across search, chat, sources, and the knowledge graph. Learners see `public`, `role:<role>`, `user:<username>`, `cohort:<name>` from `KB_PLATFORM_COHORTS`, plus `KB_PLATFORM_EXTRA_VISIBILITY_LABELS`.
 - `/ready` includes a storage check for `docs`, `raw`, and `.kb` path usability.
 - Admin/security audit events are DB-backed in `audit_events` and exposed through protected `GET /admin/audit-events`.
-- Document lifecycle is managed through protected `/admin/documents` routes. Non-active documents must stay hidden from sources, search/chat retrieval, and mindmap.
+- Document lifecycle is managed through protected `/admin/documents` routes. Non-active documents must stay hidden from sources, search/chat retrieval, and the knowledge graph.
 - Async orchestration is DB-backed in `background_jobs`; `POST /imports` enqueues `ingest.upload`, `POST /admin/jobs` can enqueue `index.rebuild`, `document.reindex`, and `eval.run`, and `python -m scripts.run_background_worker` processes them.
 - Retrieval / answer quality is app-native: `/search`, `/chat`, and `/chat/stream` expose retrieval diagnostics and answer quality metadata without adding a reranker or LLM judge.
 
@@ -85,7 +87,7 @@ intentionally deferred until traffic or multi-replica deployment requires it.
 ## Important Implementation Tips
 
 - Keep learner platform access separate from admin API key access.
-- Apply source access filtering consistently across search, chat, streaming chat, source preview, and mindmap. Admin eval routes are still admin-only and should be reviewed if learner-specific eval personas are added.
+- Apply source access filtering consistently across search, chat, streaming chat, source preview, and the knowledge graph. Admin eval routes are still admin-only and should be reviewed if learner-specific eval personas are added.
 - Preserve the retrieval quality contract: every search/chat result should keep selected source IDs, rejected source IDs, score threshold, raw/merged/accepted/rejected counts, strategy counts, top score, and score debug data available through response diagnostics.
 - Preserve the answer quality contract: every chat result should expose `answer_valid`, `citation_errors`, `selected_source_ids`, `cited_source_ids`, and `cannot_confirm_reason`.
 - Streaming chat must send retrieval diagnostics in the `sources` event and answer quality in the `done` event.

@@ -14,8 +14,8 @@ multi-course product later.
 - Use pgvector for retrieval. FAISS is intentionally not part of the current path.
 - Answer with selected source snippets through an answer provider and validate citations.
 - Stream `/chat/stream` responses from the provider when OpenAI answering is enabled.
-- Provide a three-pane workbench: left functional tabs, center chat, right source preview
-  and diagnostics.
+- Provide a three-pane workbench: left functional tabs (including a Graph tab that renders
+  the knowledge graph), center chat, right source preview and diagnostics.
 - Run app, worker, tests, backups, and deploy checks through Docker Compose and Make.
 
 ## Launch Configuration
@@ -75,6 +75,7 @@ Local Compose defaults are development-only:
 | Process one worker job | `make worker-once` |
 | Run worker loop | `make worker` |
 | Check worker runtime | `make worker-status` |
+| Seed concept graph | `make graph-seed` |
 | Seed eval cases | `make eval-seed` |
 | Run scheduled evals | `make eval-run` |
 | Unit tests | `make test-unit` |
@@ -115,6 +116,15 @@ Important provider settings:
 - `KB_OPENAI_MAX_RETRIES`
 - `KB_OPENAI_CHAT_MAX_COMPLETION_TOKENS`
 - `KB_PROVIDER_BUDGET_*`
+
+Important knowledge graph settings:
+
+- `KB_GRAPH_EXTRACTION_ENABLED=true`: auto-chains concept extraction after every index
+  rebuild. Requires `KB_ANSWER_PROVIDER=openai`; the step is skipped (not failed) when
+  the answer provider is `fake`.
+- `KB_GRAPH_MAX_CONCEPTS_PER_DOC=30`: maximum concepts extracted per document.
+- `KB_GRAPH_EXTRACTION_TOKEN_BUDGET=12000`: token budget for the extraction prompt sent
+  to the answer provider.
 
 Important retrieval and context settings:
 
@@ -180,7 +190,8 @@ Learner-facing:
 - `GET /sources`
 - `GET /sources/{document_id}`
 - `GET /sources/{document_id}/sections/{section_id}`
-- `GET /mindmap`
+- `GET /graph`
+- `GET /graph/concepts/{concept_id}`
 
 Admin-only:
 
@@ -199,6 +210,7 @@ Admin-only:
 - `POST /admin/documents/{document_id}/reindex`
 - `GET /admin/audit-events`
 - `GET /admin/provider-observability`
+- `POST /graph/extract`
 - `GET /metrics`
 
 `GET /health` is liveness. `GET /ready` checks database, pgvector, Alembic migration
@@ -233,9 +245,9 @@ in the `done` event.
 Learner platform auth is intentionally simple: one configured username and password for
 the trial course. Admin operations are separate and require `X-KB-Admin-Key`.
 
-Source visibility is enforced across search, chat, streaming chat, source preview, and
-mindmap. Canonical Markdown frontmatter can set `visibility`; omitted visibility defaults
-to `public`. Learners can see:
+Source visibility is enforced across search, chat, streaming chat, source preview, and the
+knowledge graph. Canonical Markdown frontmatter can set `visibility`; omitted visibility
+defaults to `public`. Learners can see:
 
 - `public`
 - `role:<role>`
