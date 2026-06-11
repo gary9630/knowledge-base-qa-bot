@@ -1132,6 +1132,12 @@ select {
   color: var(--muted);
 }
 
+.graph-stats {
+  font-size: 12px;
+  color: var(--muted);
+  margin: 8px 0 4px;
+}
+
 .concept-sources {
   display: grid;
   gap: 6px;

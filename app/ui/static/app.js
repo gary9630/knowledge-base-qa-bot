@@ -13,6 +13,7 @@
       },
     },
     graphLoaded: false,
+    graphStale: false,
     graphView: "cluster",
     collapsedClusters: new Set(),
     cy: null,
@@ -270,6 +271,15 @@
 
     if (tabName === "ops" && !state.providerObservability) {
       refreshProviderObservability();
+    }
+
+    if (tabName === "graph") {
+      if (state.graphStale || !state.graphLoaded) {
+        loadGraph();
+      } else if (state.cy) {
+        state.cy.resize();
+        state.cy.fit();
+      }
     }
   }
 
@@ -1273,9 +1283,11 @@
   const CLUSTER_COLORS = ["#4285f4", "#34a853", "#f9ab00", "#ea4335", "#9334e6",
     "#12a4af", "#e8710a", "#7b1fa2", "#1565c0", "#2e7d32", "#c2185b", "#5d4037"];
 
-  const GRAPH_EMPTY_TEXT = "尚未建立知識圖譜。請先建立索引並執行概念抽取。";
+  // Single source for empty-state copy — read once from DOM at bind time.
+  let GRAPH_EMPTY_TEXT = "";
 
   function bindGraph() {
+    GRAPH_EMPTY_TEXT = elements.graphEmpty.textContent || "尚未建立知識圖譜。請先建立索引並執行概念抽取。";
     elements.loadGraph.addEventListener("click", loadGraph);
     elements.graphViewCluster.addEventListener("click", () => setGraphView("cluster"));
     elements.graphViewRadial.addEventListener("click", () => setGraphView("radial"));
@@ -1285,26 +1297,37 @@
 
   async function loadGraph() {
     elements.loadGraph.disabled = true;
+    state.graphStale = false;
 
     try {
       state.graph = await getJson("/graph");
       state.graphLoaded = true;
       renderGraphView(state.graphView || "cluster");
     } catch (error) {
-      state.graphLoaded = false;
-      elements.graphEmpty.hidden = false;
-      elements.graphEmpty.textContent = `圖譜載入失敗：${errorMessage(error)}`;
+      // Keep the old canvas and loaded state if an instance already exists so
+      // the user isn't left with a blank graph after a transient failure.
+      if (!state.cy) {
+        state.graphLoaded = false;
+        elements.graphEmpty.hidden = false;
+        elements.graphEmpty.textContent = `圖譜載入失敗：${errorMessage(error)}`;
+      } else {
+        console.error("Graph reload failed (keeping previous view):", errorMessage(error));
+      }
     } finally {
       elements.loadGraph.disabled = false;
     }
   }
 
-  function graphElements() {
+  function graphElements(useCompound) {
+    const clusters = state.graph.clusters || [];
     const clusterColor = new Map();
-    (state.graph.clusters || []).forEach((cluster, index) => {
+    const clusterIndex = new Map();
+    clusters.forEach((cluster, index) => {
       clusterColor.set(cluster.id, CLUSTER_COLORS[index % CLUSTER_COLORS.length]);
+      clusterIndex.set(cluster.id, index);
     });
-    const parents = (state.graph.clusters || []).map((cluster) => ({
+    const clusterCount = clusters.length;
+    const parents = clusters.map((cluster) => ({
       data: {
         id: `cluster:${cluster.id}`,
         label: cluster.name,
@@ -1312,16 +1335,24 @@
         isCluster: true,
       },
     }));
-    const nodes = (state.graph.nodes || []).map((node) => ({
-      data: {
+    const nodes = (state.graph.nodes || []).map((node) => {
+      const idx = clusterIndex.has(node.cluster_id) ? clusterIndex.get(node.cluster_id) : 0;
+      const nodeData = {
         id: node.id,
         label: node.name,
         summary: node.summary,
-        parent: node.cluster_id ? `cluster:${node.cluster_id}` : undefined,
         color: clusterColor.get(node.cluster_id) || "#62717f",
         size: 18 + Math.min(22, node.source_count * 4),
-      },
-    }));
+        // clusterIndex used by radial layout for concentric ring assignment.
+        clusterIndex: idx,
+        clusterCount,
+      };
+      // Only attach parent when rendering compound (cluster view).
+      if (useCompound && node.cluster_id) {
+        nodeData.parent = `cluster:${node.cluster_id}`;
+      }
+      return { data: nodeData };
+    });
     const edges = (state.graph.edges || []).map((edge, index) => ({
       data: { id: `e${index}`, source: edge.source, target: edge.target, kind: edge.kind },
     }));
@@ -1330,15 +1361,35 @@
 
   const GRAPH_LAYOUTS = {
     cluster: { name: "cose", animate: false, padding: 24, nodeRepulsion: 9000 },
-    radial: { name: "concentric", animate: false, padding: 24, minNodeSpacing: 28,
-      concentric: (node) => (node.data("isCluster") ? 2 : 1), levelWidth: () => 1 },
+    // Radial: assign each cluster its own concentric ring.
+    // clusterCount - clusterIndex gives outermost ring to cluster 0's concepts;
+    // level 0 is reserved for anything without a cluster.
+    radial: {
+      name: "concentric",
+      animate: false,
+      padding: 24,
+      minNodeSpacing: 28,
+      concentric: (node) => {
+        const count = node.data("clusterCount") || 1;
+        const idx = node.data("clusterIndex") || 0;
+        return count - idx;
+      },
+      levelWidth: () => 1,
+    },
     order: { name: "dagre", rankDir: "LR", animate: false, padding: 24 },
   };
 
   function renderGraphView(view) {
     state.graphView = view;
-    document.querySelectorAll(".graph-view-button").forEach((button) => {
-      button.classList.toggle("is-active", button.id === `graph-view-${view}`);
+    // Use cached element refs; sync is-active and aria-pressed together.
+    [
+      [elements.graphViewCluster, "cluster"],
+      [elements.graphViewRadial, "radial"],
+      [elements.graphViewOrder, "order"],
+    ].forEach(([btn, btnView]) => {
+      const active = btnView === view;
+      btn.classList.toggle("is-active", active);
+      btn.setAttribute("aria-pressed", String(active));
     });
     if (!state.graphLoaded) {
       return;
@@ -1355,9 +1406,9 @@
       return;
     }
 
-    const { parents, nodes, edges } = graphElements();
     const useCompound = view === "cluster";
     const orderView = view === "order";
+    const { parents, nodes, edges } = graphElements(useCompound);
     if (state.cy) {
       state.cy.destroy();
     }
@@ -1390,9 +1441,13 @@
     state.cy.on("tap", "node[?isCluster]", (event) => toggleClusterCollapse(event.target.id()));
     applyClusterCollapse();
     filterGraphNodes();
+    renderGraphStats();
   }
 
   function setGraphView(view) {
+    if (view === state.graphView && state.cy) {
+      return;
+    }
     renderGraphView(view);
   }
 
@@ -1442,8 +1497,31 @@
     });
   }
 
+  function renderGraphStats() {
+    const stats = state.graph.stats || {};
+    const parts = [
+      `${stats.concept_count || 0} 個概念`,
+      `${stats.cluster_count || 0} 個主題`,
+      `${stats.edge_count || 0} 條關聯`,
+    ];
+    if (stats.extracted_at) {
+      try {
+        parts.push(`最後更新 ${new Date(stats.extracted_at).toLocaleString()}`);
+      } catch (_) {
+        // ignore malformed date
+      }
+    }
+    let statsEl = elements.graphCanvas.previousElementSibling;
+    if (!statsEl || !statsEl.classList.contains("graph-stats")) {
+      statsEl = document.createElement("p");
+      statsEl.className = "graph-stats";
+      elements.graphCanvas.parentNode.insertBefore(statsEl, elements.graphCanvas);
+    }
+    statsEl.textContent = parts.join(" · ");
+  }
+
   async function previewConcept(conceptId) {
-    elements.markdownPreview.textContent = "Loading concept detail...";
+    elements.markdownPreview.textContent = "載入概念中…";
 
     try {
       const detail = await getJson(`/graph/concepts/${conceptId}`);
@@ -1458,8 +1536,8 @@
     const sources = Array.isArray(detail.sources) ? detail.sources : [];
     renderPreviewSourceMeta({
       title: detail.name,
-      summary: [detail.cluster, `${sources.length} sources`].filter(Boolean).join(" · "),
-      kind: "Graph concept",
+      summary: [detail.cluster, `${sources.length} 個來源`].filter(Boolean).join(" · "),
+      kind: "知識圖譜概念",
     });
 
     const askButton = document.createElement("button");
@@ -1501,11 +1579,11 @@
   }
 
   async function previewConceptSource(source) {
-    elements.markdownPreview.textContent = "Loading source section...";
+    elements.markdownPreview.textContent = "載入來源段落中…";
     renderPreviewSourceMeta({
       title: source.heading || source.source_id,
-      summary: source.source_id || "Concept source",
-      kind: "Graph preview",
+      summary: source.source_id || "概念來源",
+      kind: "知識圖譜預覽",
     });
     try {
       const section = await getJson(
@@ -1514,7 +1592,7 @@
       renderPreviewSourceMeta({
         title: section.heading,
         summary: section.source_id,
-        kind: "Graph preview",
+        kind: "知識圖譜預覽",
       });
       elements.markdownPreview.textContent = [section.heading, section.body_md].join("\n\n");
     } catch (error) {
@@ -1528,12 +1606,16 @@
     elements.chatQuery.focus();
   }
 
-  async function refreshGraphAfterContentChange() {
-    if (!state.graphLoaded) {
-      return;
+  function refreshGraphAfterContentChange() {
+    // Mark the graph as stale so it is reloaded lazily when the user
+    // returns to the graph tab, avoiding a 0×0 cytoscape container.
+    if (state.graphLoaded || state.cy) {
+      state.graphStale = true;
     }
-
-    await loadGraph();
+    // Reload immediately only when the graph panel is already visible.
+    if (activeTabName() === "graph") {
+      loadGraph();
+    }
   }
 
   function bindAdmin() {
