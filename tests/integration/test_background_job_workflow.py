@@ -11,6 +11,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.background_jobs.service import (
+    TASK_CONCEPT_EXTRACTION,
     TASK_INDEX_REBUILD,
     BackgroundJobService,
 )
@@ -355,6 +356,53 @@ def test_admin_jobs_api_requires_admin_key(
     assert authenticated.json() == {"jobs": []}
 
 
+def test_index_rebuild_chains_concept_extraction_when_enabled(
+    db_session: Session,
+    tmp_path: Path,
+) -> None:
+    app = _jobs_app(db_session, tmp_path, graph_extraction_enabled=True)
+    service = BackgroundJobService(db_session)
+    job = service.enqueue(task_type=TASK_INDEX_REBUILD, payload={"reason": "manual"})
+    db_session.commit()
+    worker = _worker(app, db_session)
+
+    processed = worker.run_once()
+    db_session.expire_all()
+
+    assert processed is not None
+    assert processed.id == job.id
+    assert processed.status == "succeeded"
+
+    concept_extraction_jobs = db_session.scalars(
+        select(BackgroundJob).where(BackgroundJob.task_type == TASK_CONCEPT_EXTRACTION)
+    ).all()
+    assert len(concept_extraction_jobs) == 1
+    assert concept_extraction_jobs[0].status == "queued"
+    assert concept_extraction_jobs[0].payload_json["reason"] == TASK_INDEX_REBUILD
+
+
+def test_index_rebuild_does_not_chain_concept_extraction_when_disabled(
+    db_session: Session,
+    tmp_path: Path,
+) -> None:
+    app = _jobs_app(db_session, tmp_path, graph_extraction_enabled=False)
+    service = BackgroundJobService(db_session)
+    service.enqueue(task_type=TASK_INDEX_REBUILD, payload={"reason": "manual"})
+    db_session.commit()
+    worker = _worker(app, db_session)
+
+    processed = worker.run_once()
+    db_session.expire_all()
+
+    assert processed is not None
+    assert processed.status == "succeeded"
+
+    concept_extraction_jobs = db_session.scalars(
+        select(BackgroundJob).where(BackgroundJob.task_type == TASK_CONCEPT_EXTRACTION)
+    ).all()
+    assert concept_extraction_jobs == []
+
+
 def _jobs_app(
     db_session: Session,
     tmp_path: Path,
@@ -362,6 +410,7 @@ def _jobs_app(
     retry_base_delay_seconds: int = 0,
     stale_after_seconds: int = 3600,
     worker_heartbeat_stale_after_seconds: int = 120,
+    graph_extraction_enabled: bool = True,
 ) -> FastAPI:
     docs_dir = tmp_path / "docs"
     raw_dir = tmp_path / "raw"
@@ -381,6 +430,7 @@ def _jobs_app(
         background_job_retry_base_delay_seconds=retry_base_delay_seconds,
         background_job_stale_after_seconds=stale_after_seconds,
         worker_heartbeat_stale_after_seconds=worker_heartbeat_stale_after_seconds,
+        graph_extraction_enabled=graph_extraction_enabled,
     )
     return create_app(settings=settings, session_factory=_session_factory(db_session))
 

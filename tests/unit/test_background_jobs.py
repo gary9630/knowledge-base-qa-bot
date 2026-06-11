@@ -3,6 +3,7 @@ from datetime import UTC, datetime, timedelta
 from app.api.jobs import background_job_is_stale
 from app.background_jobs.service import (
     BACKGROUND_JOB_TASK_TYPES,
+    TASK_CONCEPT_EXTRACTION,
     TASK_DOCUMENT_REINDEX,
     TASK_EVAL_RUN,
     TASK_INDEX_REBUILD,
@@ -32,6 +33,7 @@ def test_background_job_task_contract_is_explicit() -> None:
         TASK_INDEX_REBUILD,
         TASK_DOCUMENT_REINDEX,
         TASK_EVAL_RUN,
+        TASK_CONCEPT_EXTRACTION,
     }
 
 

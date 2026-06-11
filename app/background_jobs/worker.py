@@ -18,6 +18,8 @@ from app.evals.runner import (
     record_failed_eval_run,
     run_eval_suite,
 )
+from app.graph.extraction import ChatCaller
+from app.graph.pipeline import GraphExtractionPipeline, OpenAIGraphCaller
 from app.indexing.service import IndexingResult, IndexingService
 from app.ingestion.pipeline import IngestionPipeline, SqlAlchemyIngestionJobStore
 from app.models.tables import BackgroundJob
@@ -25,6 +27,7 @@ from app.retrieval.embeddings import EmbeddingProvider, create_embedding_provide
 from app.retrieval.models import RetrievalStrategy
 
 from .service import (
+    TASK_CONCEPT_EXTRACTION,
     TASK_DOCUMENT_REINDEX,
     TASK_EVAL_RUN,
     TASK_INDEX_REBUILD,
@@ -43,12 +46,14 @@ class BackgroundWorker:
         settings: Settings | None = None,
         embedding_provider: EmbeddingProvider | None = None,
         answer_provider: AnswerProvider | None = None,
+        graph_caller: ChatCaller | None = None,
         worker_id: str | None = None,
     ) -> None:
         self.session_factory = session_factory
         self.settings = settings or Settings()
         self.embedding_provider = embedding_provider
         self.answer_provider = answer_provider
+        self._graph_caller_override = graph_caller
         self.worker_id = worker_id or self.settings.worker_id or f"worker-{uuid4()}"
 
     def run_once(self) -> BackgroundJob | None:
@@ -127,6 +132,8 @@ class BackgroundWorker:
             return self._run_document_reindex(payload)
         if task_type == TASK_EVAL_RUN:
             return self._run_eval(payload)
+        if task_type == TASK_CONCEPT_EXTRACTION:
+            return self._run_concept_extraction()
         raise ValueError(f"unsupported background job task: {task_type}")
 
     def _run_index_rebuild(self) -> dict[str, object]:
@@ -138,6 +145,12 @@ class BackgroundWorker:
                 embedding_provider=self._embedding_provider(),
                 token_encoding=self.settings.token_encoding,
             ).rebuild_index()
+            if self.settings.graph_extraction_enabled:
+                BackgroundJobService(session).enqueue(
+                    task_type=TASK_CONCEPT_EXTRACTION,
+                    payload={"reason": TASK_INDEX_REBUILD},
+                )
+                session.commit()
         return _indexing_result_payload(result)
 
     def _run_document_reindex(self, payload: dict[str, object]) -> dict[str, object]:
@@ -235,6 +248,19 @@ class BackgroundWorker:
                 "error": execution.error,
             }
 
+    def _run_concept_extraction(self) -> dict[str, object]:
+        with self.session_factory() as session:
+            pipeline = GraphExtractionPipeline(
+                session=session,
+                caller=self._graph_caller(),
+                max_concepts_per_doc=self.settings.graph_max_concepts_per_doc,
+                token_budget=self.settings.graph_extraction_token_budget,
+                encoding_name=self.settings.token_encoding,
+            )
+            stats = pipeline.run()
+            session.commit()
+        return dict(stats)
+
     def _embedding_provider(self) -> EmbeddingProvider:
         if self.embedding_provider is None:
             self.embedding_provider = create_embedding_provider(self.settings)
@@ -244,6 +270,38 @@ class BackgroundWorker:
         if self.answer_provider is None:
             self.answer_provider = create_answer_provider(self.settings)
         return self.answer_provider
+
+    def _graph_caller(self) -> ChatCaller:
+        if self._graph_caller_override is not None:
+            return self._graph_caller_override
+        if self.settings.answer_provider == "openai":
+            api_key = self.settings.openai_api_key
+            if not api_key:
+                raise ValueError(
+                    "OPENAI_API_KEY is required for concept extraction with answer_provider=openai"
+                )
+            model = self.settings.openai_chat_model or "gpt-4o-mini"
+            return OpenAIGraphCaller(
+                api_key=api_key,
+                model=model,
+                timeout_seconds=self.settings.openai_request_timeout_seconds,
+                max_retries=self.settings.openai_max_retries,
+            )
+        # Non-OpenAI environments (fake provider) return a no-op caller so
+        # concept extraction runs as a no-op without errors.
+        return _FakeGraphCaller()
+
+
+class _FakeGraphCaller:
+    """No-op ChatCaller used when the answer_provider is not openai.
+
+    Returns an empty JSON object so the pipeline does nothing without raising,
+    allowing concept-extraction jobs to run (and complete cleanly) in
+    non-OpenAI environments such as the docker smoke stack.
+    """
+
+    def complete(self, *, system: str, user: str) -> str:  # noqa: ARG002
+        return "{}"
 
 
 def _indexing_result_payload(result: IndexingResult) -> dict[str, object]:
