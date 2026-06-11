@@ -1147,6 +1147,13 @@ select {
   overflow-wrap: anywhere;
 }
 
+/* The graph panel gains a dynamically inserted .graph-stats line before the
+   canvas; give it its own row so the canvas keeps the stretch row instead of
+   being pushed to the panel bottom (below the fold when the inspector is tall). */
+.workspace-panel[data-panel="graph"] {
+  grid-template-rows: auto auto minmax(0, 1fr) auto;
+}
+
 .graph-canvas {
   height: 560px;
   border: 1px solid var(--border);
