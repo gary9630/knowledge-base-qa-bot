@@ -105,3 +105,27 @@ def test_deleting_concept_cascades_edges(db_session: Session) -> None:
     db_session.flush()
 
     assert db_session.scalars(select(ConceptEdge)).all() == []
+
+
+def test_deleting_cluster_nullifies_concept_cluster_id(db_session: Session) -> None:
+    cluster = ConceptCluster(name="測試叢集", position=0)
+    db_session.add(cluster)
+    db_session.flush()
+
+    concept = Concept(
+        name="Orphan",
+        slug="orphan",
+        summary="概念隸屬於即將被刪除的叢集。",
+        cluster_id=cluster.id,
+    )
+    db_session.add(concept)
+    db_session.flush()
+
+    db_session.delete(cluster)
+    db_session.flush()
+
+    db_session.refresh(concept)
+    assert concept.cluster_id is None
+    # concept itself must still exist
+    surviving = db_session.scalar(select(Concept).where(Concept.slug == "orphan"))
+    assert surviving is not None
