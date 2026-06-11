@@ -1613,9 +1613,51 @@ KB_DATABASE_URL=postgresql+psycopg://kb:kb@localhost:5432/kb KB_ANSWER_PROVIDER=
 
 ## Completion checklist (gates from the spec)
 
-- [ ] All suites green (unit/integration/e2e) + lint + docker build
-- [ ] `/graph` serves the seeded graph with visibility filtering; `/mindmap` is gone
-- [ ] Seeded: 100-200 concepts, 10-20 clusters, extraction_state rows for all 35 documents
-- [ ] Real-API sample run: 2 documents re-extracted without ballooning the concept count
-- [ ] Three views render and interact correctly in the learner UI
-- [ ] Docs updated (README, AGENTS.md, ops/deploy.md)
+- [x] All suites green (unit/integration/e2e) + lint + docker build
+- [x] `/graph` serves the seeded graph with visibility filtering; `/mindmap` is gone
+- [x] Seeded: 100-200 concepts, 10-20 clusters, extraction_state rows for all 35 documents
+- [x] Real-API sample run: 2 documents re-extracted without ballooning the concept count
+- [x] Three views render and interact correctly in the learner UI
+- [x] Docs updated (README, AGENTS.md, ops/deploy.md)
+
+---
+
+## Completion Notes (2026-06-11)
+
+All 9 tasks executed and reviewed (per-task spec + quality reviews, whole-diff final
+review, all findings fixed). Suites at completion: unit 391 / integration 124 /
+e2e 14 (+4 docker-gated skips), ruff + mypy strict clean, docker build green.
+
+### Seeded graph (curated, zero API cost)
+
+115 concepts / 16 clusters / 124 edges / 285 source links, extraction state written
+for all 35 active documents. Dataset committed at
+`docs/plans/2026-06-11-concept-graph-seed.json`; restore via the seed script's
+`--replace` mode.
+
+### Real-API acceptance (incremental pipeline)
+
+Two runs of forced re-extraction (2 seeded documents via OpenAI gpt-5.4-mini):
+
+| Gate | Run v1 (pre-containment) | Run v2 (post-fix) |
+| --- | --- | --- |
+| Net-new concepts (≤15) | +34 FAIL | **+10 PASS** |
+| Curated concepts pruned | 1 FAIL | **0 PASS** |
+| Cluster structure | 16→14 rewritten FAIL | **16 intact PASS** |
+| Junk entities (companies/cases/TOC) | present FAIL | **none PASS** |
+| Extraction states after run | — | 35/35 |
+| Provider telemetry in job result | — | 7 calls / 23,651 tokens |
+
+v1 failures led to the §2c design amendment (incremental-only clustering with
+immutable assignments, seed-origin prune protection via migration 0013, seeding
+marks all active documents extracted, prompt exclusions) plus a post-review
+deterministic name/alias merge pre-match. v2 job:
+`documents_extracted: 2, concepts_created: 10, concepts_merged: 33,
+concepts_pruned: 0, edges_created: 58, provider_failures: 0`.
+
+### Live verification
+
+`GET /graph` serves the seeded+extracted graph (16 clusters, 124 concepts after
+TTL-duplicate cleanup, 177 edges); `/graph/concepts/{id}` returns visibility-filtered
+sources; all three vendored libraries served; three view modes wired with lazy
+rendering, alias search, and cluster collapse.
