@@ -219,6 +219,161 @@ def test_pipeline_merges_into_existing_concepts(db_session: Session) -> None:
     assert db_session.scalars(select(ConceptSource)).all()  # sources remapped
 
 
+def test_pipeline_deterministically_merges_alias_match_without_llm(
+    db_session: Session,
+) -> None:
+    """An extracted name equal to an existing concept's alias merges without the
+    LLM merge call, even though the slugs differ."""
+    _seed_document(db_session, filename="a.md", slugs=["s1"], content_hash="ha")
+    cluster = ConceptCluster(name="快取", position=0)
+    db_session.add(cluster)
+    db_session.flush()
+    curated = Concept(
+        name="Cache Eviction Policy",
+        slug="cache-eviction-policy",
+        summary="快取淘汰策略。",
+        aliases=["TTL"],
+        origin="seed",
+        cluster_id=cluster.id,
+    )
+    db_session.add(curated)
+    db_session.flush()
+
+    caller = ScriptedCaller()
+    caller.queue(
+        "extract a concept graph",
+        _document_response("a.md", ["TTL"], ["s1"]),
+    )
+    # no merge response queued: the alias match resolves the only new name
+    # deterministically, so the LLM merge call must be skipped entirely
+    queued = caller.queued_total()
+
+    stats = GraphExtractionPipeline(
+        session=db_session, caller=caller, max_concepts_per_doc=30, token_budget=12000
+    ).run()
+
+    assert caller.call_kinds() == ["extract"]
+    assert len(caller.calls) == queued
+
+    concepts = db_session.scalars(select(Concept)).all()
+    assert len(concepts) == 1  # no new concept row for the duplicate
+    assert concepts[0].slug == "cache-eviction-policy"
+    assert concepts[0].aliases == ["TTL"]  # already an alias; not duplicated
+    assert concepts[0].summary == "快取淘汰策略。"  # curated summary untouched
+    sources = db_session.scalars(select(ConceptSource)).all()
+    assert {source.concept_id for source in sources} == {curated.id}
+    assert stats["concepts_merged"] == 1
+    assert stats["concepts_created"] == 0
+
+
+def test_pipeline_deterministically_merges_casefolded_name_match(
+    db_session: Session,
+) -> None:
+    """An extracted name equal (casefolded) to an existing concept's name merges
+    deterministically; the differing surface form becomes an alias."""
+    _seed_document(db_session, filename="a.md", slugs=["s1"], content_hash="ha")
+    existing = Concept(
+        name="Load Balancing",
+        slug="load-balancer",  # curated slug differs from slugify(name)
+        summary="負載平衡。",
+        origin="seed",
+    )
+    db_session.add(existing)
+    db_session.flush()
+
+    caller = ScriptedCaller()
+    caller.queue(
+        "extract a concept graph",
+        _document_response("a.md", ["load balancing"], ["s1"]),
+    )
+    caller.queue(
+        "assign the given course concepts",
+        json.dumps({"clusters": [{"name": "主題", "concepts": ["Load Balancing"]}]}),
+    )
+    caller.queue("Propose edges", json.dumps({"edges": []}))
+
+    stats = GraphExtractionPipeline(
+        session=db_session, caller=caller, max_concepts_per_doc=30, token_budget=12000
+    ).run()
+
+    assert "merge" not in caller.call_kinds()
+    concepts = db_session.scalars(select(Concept)).all()
+    assert len(concepts) == 1
+    assert concepts[0].slug == "load-balancer"
+    assert concepts[0].name == "Load Balancing"
+    assert concepts[0].aliases == ["load balancing"]  # distinct surface form kept
+    sources = db_session.scalars(select(ConceptSource)).all()
+    assert {source.concept_id for source in sources} == {existing.id}
+    assert stats["concepts_merged"] == 1
+    assert stats["concepts_created"] == 0
+
+
+def test_pipeline_keeps_curated_summary_on_slug_match(db_session: Session) -> None:
+    """Re-extraction over a seed-origin concept must not overwrite its curated
+    summary; sources are still remapped and aliases still accumulate."""
+    _seed_document(db_session, filename="a.md", slugs=["s1"], content_hash="ha")
+    curated = Concept(
+        name="Caching",
+        slug="caching",
+        summary="精修的快取摘要。",
+        origin="seed",
+    )
+    db_session.add(curated)
+    db_session.flush()
+
+    caller = ScriptedCaller()
+    caller.queue(
+        "extract a concept graph",
+        _document_response("a.md", ["caching"], ["s1"]),
+    )
+    caller.queue(
+        "assign the given course concepts",
+        json.dumps({"clusters": [{"name": "快取", "concepts": ["Caching"]}]}),
+    )
+    caller.queue("Propose edges", json.dumps({"edges": []}))
+
+    GraphExtractionPipeline(
+        session=db_session, caller=caller, max_concepts_per_doc=30, token_budget=12000
+    ).run()
+
+    db_session.expire_all()
+    concept = db_session.scalar(select(Concept).where(Concept.slug == "caching"))
+    assert concept is not None
+    assert concept.summary == "精修的快取摘要。"  # curated wording survives
+    assert concept.aliases == ["caching"]  # extracted surface form accumulated
+    assert db_session.scalars(select(ConceptSource)).all()  # sources remapped
+
+
+def test_pipeline_updates_summary_on_slug_match_for_extracted_concepts(
+    db_session: Session,
+) -> None:
+    """Non-seed concepts keep refreshing their summary from the latest extraction."""
+    _seed_document(db_session, filename="a.md", slugs=["s1"], content_hash="ha")
+    extracted = Concept(name="Caching", slug="caching", summary="舊摘要。")
+    db_session.add(extracted)
+    db_session.flush()
+
+    caller = ScriptedCaller()
+    caller.queue(
+        "extract a concept graph",
+        _document_response("a.md", ["Caching"], ["s1"]),
+    )
+    caller.queue(
+        "assign the given course concepts",
+        json.dumps({"clusters": [{"name": "快取", "concepts": ["Caching"]}]}),
+    )
+    caller.queue("Propose edges", json.dumps({"edges": []}))
+
+    GraphExtractionPipeline(
+        session=db_session, caller=caller, max_concepts_per_doc=30, token_budget=12000
+    ).run()
+
+    db_session.expire_all()
+    concept = db_session.scalar(select(Concept).where(Concept.slug == "caching"))
+    assert concept is not None
+    assert concept.summary == "Caching 摘要。"  # refreshed from extraction
+
+
 def test_pipeline_clusters_only_unclustered_concepts(db_session: Session) -> None:
     # Curated taxonomy: one cluster with an assigned concept, plus an empty
     # cluster. Incremental clustering must touch neither.

@@ -128,7 +128,7 @@ Deploying the knowledge graph change requires:
 
 1. `make migrate` (adds migrations 0012 and 0013 for the five concept-graph tables).
 2. `make graph-seed` once per environment to load the curated seed dataset
-   (`docs/plans/2026-06-11-concept-graph-seed.json`). This populates 125 concepts across
+   (`docs/plans/2026-06-11-concept-graph-seed.json`). This populates 115 concepts across
    16 clusters with `origin='seed'` protection and marks all currently active documents as
    extracted so future uploads do not re-extract seed concepts.
 
@@ -137,14 +137,18 @@ After seeding, future document uploads auto-extract concepts via the background 
 skipped without error. Provider token usage for each extraction run is recorded in the job's
 `result` field and is visible through the admin jobs API.
 
-To restore the curated graph after accidental deletion or a full re-seed:
+To restore the curated graph after accidental deletion or a full re-seed (the
+`graph-seed` make target does not accept flags, so invoke the script directly with
+`KB_DATABASE_URL` pointing at the target database, as for the other commands above):
 
 ```bash
-make graph-seed --replace
+uv run --python 3.12 python -m scripts.seed_concept_graph \
+  --file docs/plans/2026-06-11-concept-graph-seed.json --replace
 ```
 
-The `--replace` flag drops existing non-seed concepts before loading the seed file,
-then re-marks all active documents as extracted.
+The `--replace` flag wipes ALL concept-graph rows (clusters, concepts, edges, sources,
+and extraction state — including extracted, non-seed concepts) and then re-applies the
+seed, re-marking all active documents as extracted.
 
 ### Context Expansion Release Note
 

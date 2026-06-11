@@ -9,6 +9,7 @@ from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
 from app.document_lifecycle import active_document_filter
+from app.graph import SEED_ORIGIN
 from app.graph.extraction import (
     CLUSTER_EDGES_SYSTEM_PROMPT,
     CLUSTER_SYSTEM_PROMPT,
@@ -44,12 +45,6 @@ from app.provider_telemetry import (
     completion_usage,
     response_request_id,
 )
-
-# Concepts created by the seed script carry this origin and are exempt from
-# orphan pruning: curated concepts may lose all sources when their document is
-# re-extracted, but must survive (the /graph API already hides concepts with
-# zero visible sources, so they disappear from view without being destroyed).
-SEED_ORIGIN = "seed"
 
 GRAPH_EXTRACTION_OPERATION = "graph_extraction"
 
@@ -95,7 +90,8 @@ class GraphExtractionPipeline:
         allowed_source_ids = that document's section source_ids; failures (raised by
         caller) are caught per-document and recorded in stats["documents_failed"],
         leaving that document's previous state untouched; 3) global merge:
-        exact slug match against existing concepts first, then ONE LLM call
+        deterministic match against existing concepts first — exact slug, then
+        casefolded name, then casefolded alias — then ONE LLM call
         (MERGE_SYSTEM_PROMPT + build_merge_prompt) for remaining new names vs all
         existing canonical names + aliases; apply mapping (merged names become
         aliases on the canonical concept); upsert concepts (slug-keyed), replace
@@ -292,14 +288,32 @@ class GraphExtractionPipeline:
             concept_by_name.setdefault(concept.name, concept)
             for alias in concept.aliases:
                 concept_by_name.setdefault(alias, concept)
+        # Deterministic pre-match index: casefolded canonical names first, then
+        # casefolded aliases, so a name match always wins over an alias match.
+        concept_by_casefolded_name: dict[str, Concept] = {}
+        for concept in existing_concepts:
+            concept_by_casefolded_name.setdefault(concept.name.casefold(), concept)
+        for concept in existing_concepts:
+            for alias in concept.aliases:
+                concept_by_casefolded_name.setdefault(alias.casefold(), concept)
 
         remaining: dict[str, ExtractedConcept] = {}
         for slug, extracted in extracted_by_slug.items():
             matched = existing_by_slug.get(slug)
             if matched is None:
-                remaining[slug] = extracted
-                continue
-            matched.summary = extracted.summary
+                # Curated concepts may have a slug that differs from
+                # slugify_concept(name); match by casefolded name/alias before
+                # falling through to the LLM merge so exact duplicates like
+                # "TTL" never reach it.
+                matched = concept_by_casefolded_name.get(extracted.name.casefold())
+                if matched is None:
+                    remaining[slug] = extracted
+                    continue
+                stats["concepts_merged"] += 1
+            elif matched.origin != SEED_ORIGIN:
+                # Seed-origin concepts keep their curated summary wording;
+                # extracted concepts refresh from the latest extraction.
+                matched.summary = extracted.summary
             _add_alias(matched, extracted.name)
             slug_to_concept[slug] = matched
 

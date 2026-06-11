@@ -43,6 +43,7 @@ class GraphNode(BaseModel):
     name: str
     slug: str
     summary: str
+    aliases: list[str]
     cluster_id: UUID | None
     source_count: int
 
@@ -158,6 +159,7 @@ def get_graph(
                 name=concept.name,
                 slug=concept.slug,
                 summary=concept.summary,
+                aliases=list(concept.aliases),
                 cluster_id=concept.cluster_id,
                 source_count=visible_sources[concept.id],
             )

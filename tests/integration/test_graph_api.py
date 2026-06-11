@@ -164,11 +164,13 @@ def test_graph_returns_correct_shape(db_session: Session) -> None:
     assert node_c1["slug"] == "caching"
     assert node_c1["summary"] == "儲存計算結果以加速存取。"
     assert node_c1["cluster_id"] == str(cluster.id)
+    assert node_c1["aliases"] == ["快取"]  # UI search matches name OR alias
     # c1 has 2 visible sources (s1, s2), both in same public document
     assert node_c1["source_count"] == 2
 
     node_c2 = next(n for n in body["nodes"] if n["id"] == str(c2.id))
     assert node_c2["source_count"] == 1
+    assert node_c2["aliases"] == []
 
     # edges list — both endpoints visible
     assert len(body["edges"]) == 1

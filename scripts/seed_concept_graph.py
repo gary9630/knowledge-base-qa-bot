@@ -30,6 +30,7 @@ from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from app.document_lifecycle import active_document_filter
+from app.graph import SEED_ORIGIN
 from app.graph.extraction import EDGE_KINDS
 from app.models.tables import (
     Concept,
@@ -134,7 +135,6 @@ def parse_seed_graph(payload: dict[str, Any]) -> SeedGraph:  # noqa: C901
             raise ValueError(f"concepts[{idx}].summary is missing or empty.")
         if not isinstance(aliases, list):
             raise ValueError(f"concepts[{idx}].aliases must be a list.")
-        # M5: validate alias items are strings
         for alias_idx, alias in enumerate(aliases):
             if not isinstance(alias, str):
                 raise ValueError(
@@ -152,7 +152,8 @@ def parse_seed_graph(payload: dict[str, Any]) -> SeedGraph:  # noqa: C901
                 f"concepts[{idx}] ({slug!r}) must have at least one source_id in source_ids."
             )
 
-        # C1: reject duplicate source_ids within a concept
+        # Duplicate source_ids within a concept would silently collapse into one
+        # ConceptSource row; reject them so the dataset stays canonical.
         seen_sids: set[str] = set()
         for sid in source_ids:
             if sid in seen_sids:
@@ -278,7 +279,7 @@ def apply_seed_graph(
     )
     resolved_source_map: dict[str, Section] = {s.source_id: s for s in section_rows}
 
-    # Check for unknown source_ids — build per-concept mapping for actionable errors (I2)
+    # Check for unknown source_ids — grouped per concept for actionable errors
     unknown_by_concept: dict[str, list[str]] = {}
     for concept in seed.concepts:
         bad = [sid for sid in concept.source_ids if sid not in resolved_source_map]
@@ -297,7 +298,7 @@ def apply_seed_graph(
             )
         # non-strict: silently skip unknown ids (they'll just not create sources)
 
-    # --- Replace mode (I3): wipe all existing concept graph data -------------
+    # --- Replace mode: wipe all existing concept graph data ------------------
     if replace:
         # Delete in FK-safe order:
         # 1. concept_extraction_state (FK → documents, independent of concepts)
@@ -320,7 +321,7 @@ def apply_seed_graph(
         for document in session.scalars(select(Document).where(active_document_filter()))
     }
 
-    # --- Upsert clusters ---------------------------------------------------- (M1)
+    # --- Upsert clusters ------------------------------------------------------
     cluster_name_to_obj: dict[str, ConceptCluster] = {}
     clusters_created = 0
     clusters_updated = 0
@@ -340,7 +341,7 @@ def apply_seed_graph(
             clusters_updated += 1
         cluster_name_to_obj[seed_cluster.name] = cluster_obj
 
-    # --- Upsert concepts ---------------------------------------------------- (M1)
+    # --- Upsert concepts ------------------------------------------------------
     concept_slug_to_obj: dict[str, Concept] = {}
     concepts_created = 0
     concepts_updated = 0
@@ -358,7 +359,7 @@ def apply_seed_graph(
                 summary=seed_concept.summary,
                 aliases=seed_concept.aliases,
                 cluster_id=cluster_id,
-                origin="seed",
+                origin=SEED_ORIGIN,
             )
             session.add(concept_obj)
             session.flush()
@@ -368,7 +369,7 @@ def apply_seed_graph(
             existing_concept.summary = seed_concept.summary
             existing_concept.aliases = seed_concept.aliases
             existing_concept.cluster_id = cluster_id
-            existing_concept.origin = "seed"
+            existing_concept.origin = SEED_ORIGIN
             concept_obj = existing_concept
             session.flush()
             concepts_updated += 1
@@ -519,15 +520,13 @@ def main(argv: list[str] | None = None) -> int:
     )
 
     if namespace.dry_run:
-        # M2: run apply_seed_graph inside a transaction and roll back —
-        # this exercises the real validation path (including C1 fixes) and
-        # guarantees zero writes.
+        # Run apply_seed_graph inside a transaction and roll back — this
+        # exercises the real validation path while guaranteeing zero writes.
         try:
             with SessionLocal() as session:
                 try:
                     apply_seed_graph(session, seed, strict=True)
                 except ValueError as exc:
-                    # Collect unknown-source errors and report per-concept (I2)
                     print(
                         f"Dry-run: validation failed:\n{exc}",
                         file=sys.stderr,

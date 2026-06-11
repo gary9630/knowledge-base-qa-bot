@@ -1341,6 +1341,9 @@
         id: node.id,
         label: node.name,
         summary: node.summary,
+        // Newline-joined lowercase aliases so the search filter can match
+        // them without a query ever spanning two adjacent aliases.
+        aliases: (node.aliases || []).join("\n").toLowerCase(),
         color: clusterColor.get(node.cluster_id) || "#62717f",
         size: 18 + Math.min(22, node.source_count * 4),
         // clusterIndex used by radial layout for concentric ring assignment.
@@ -1491,7 +1494,10 @@
     }
     const query = elements.graphSearch.value.trim().toLowerCase();
     state.cy.nodes("[^isCluster]").forEach((node) => {
-      const match = !query || node.data("label").toLowerCase().includes(query);
+      const match =
+        !query ||
+        node.data("label").toLowerCase().includes(query) ||
+        (node.data("aliases") || "").includes(query);
       node.toggleClass("dimmed", !match);
       node.toggleClass("highlighted", Boolean(query) && match);
     });
