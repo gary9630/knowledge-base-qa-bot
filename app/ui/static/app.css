@@ -1423,6 +1423,100 @@ select {
   max-width: 1100px;
 }
 
+/* Console 總覽 dashboard */
+.stat-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: var(--space-3);
+}
+
+.stat-card {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  padding: var(--space-3) var(--space-4);
+  display: grid;
+  gap: var(--space-1);
+  align-content: start;
+}
+
+.stat-label {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+}
+
+.stat-number {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 34px;
+  line-height: 1.15;
+  color: var(--text);
+}
+
+.stat-note {
+  margin: 0;
+  font-size: 12px;
+  color: var(--text);
+}
+
+.stat-note.muted {
+  color: var(--muted);
+}
+
+.activity-list {
+  margin: var(--space-2) 0 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: var(--space-1);
+}
+
+.activity-row {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--text);
+  padding: 2px 0;
+  border-bottom: 1px dashed var(--border);
+}
+
+.activity-row:last-child {
+  border-bottom: 0;
+}
+
+.activity-row.is-danger {
+  color: var(--danger);
+}
+
+/* Shared console operation-log strip (visible across panels) */
+.console-log-strip {
+  max-width: 1100px;
+  margin-top: var(--space-4);
+  border-top: 1px solid var(--border);
+  padding-top: var(--space-2);
+  display: grid;
+  gap: var(--space-1);
+}
+
+.console-log-title {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+}
+
+.console-log-strip .operation-log {
+  max-height: 140px;
+  margin: 0;
+}
+
+.graph-extract-status {
+  max-width: 640px;
+}
+
 .console-entry:focus-visible,
 .console-nav-item:focus-visible,
 .console-key:focus-visible,

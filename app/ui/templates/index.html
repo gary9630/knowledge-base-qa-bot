@@ -263,10 +263,10 @@
     </div>
 
     <div class="console" id="console" hidden>
-      <nav class="console-nav" id="console-nav">
+      <nav class="console-nav" id="console-nav" aria-label="管理主控台導覽">
         <div class="console-brand">管理主控台</div>
         <input class="console-key" id="console-admin-key" type="password" placeholder="Admin Key" autocomplete="off" />
-        <button class="console-nav-item is-active" type="button" data-console-panel="overview">📊 總覽</button>
+        <button class="console-nav-item is-active" type="button" data-console-panel="overview" aria-current="true">📊 總覽</button>
         <div class="console-section">內容</div>
         <button class="console-nav-item" type="button" data-console-panel="uploads">📥 上傳與索引</button>
         <button class="console-nav-item" type="button" data-console-panel="documents">📄 文件生命週期</button>
@@ -286,8 +286,38 @@
             <div>
               <h2>總覽</h2>
             </div>
+            <button class="secondary-button" type="button" id="refresh-overview">重新整理</button>
           </header>
-          <p class="muted">總覽儀表板即將在此提供。</p>
+          <div class="stat-grid">
+            <article class="stat-card" id="stat-index">
+              <h3 class="stat-label">索引文件</h3>
+              <p class="stat-number">—</p>
+              <p class="stat-note muted">尚未載入。</p>
+            </article>
+            <article class="stat-card" id="stat-graph">
+              <h3 class="stat-label">知識圖譜</h3>
+              <p class="stat-number">—</p>
+              <p class="stat-note muted">尚未載入。</p>
+            </article>
+            <article class="stat-card" id="stat-jobs">
+              <h3 class="stat-label">背景任務</h3>
+              <p class="stat-number">—</p>
+              <p class="stat-note muted">尚未載入。</p>
+            </article>
+            <article class="stat-card" id="stat-tokens">
+              <h3 class="stat-label">今日 Token</h3>
+              <p class="stat-number">—</p>
+              <p class="stat-note muted">尚未載入。</p>
+            </article>
+          </div>
+          <section class="tool-section activity-card" aria-labelledby="recent-activity-heading">
+            <div class="section-heading">
+              <h3 id="recent-activity-heading">最近活動</h3>
+            </div>
+            <ol class="activity-list" id="recent-activity" aria-live="polite">
+              <li class="muted">尚未載入背景任務。</li>
+            </ol>
+          </section>
         </section>
 
         <section class="console-panel" id="panel-uploads" data-console-panel-body="uploads" data-admin-only hidden>
@@ -335,8 +365,6 @@
               <p class="muted">No import jobs loaded.</p>
             </div>
           </section>
-
-          <pre class="operation-log" id="operation-log" aria-live="polite">No admin operations yet.</pre>
         </section>
 
         <section class="console-panel" id="panel-documents" data-console-panel-body="documents" data-admin-only hidden>
@@ -360,9 +388,18 @@
           <header class="workspace-header">
             <div>
               <h2>圖譜抽取</h2>
+              <p class="workspace-subtitle">從課程文件抽取概念並更新知識圖譜。</p>
             </div>
+            <button class="secondary-button" type="button" id="refresh-graph-extract">重新整理</button>
           </header>
-          <p class="muted">概念抽取工具即將在此提供。</p>
+          <p class="muted">
+            觸發後會排入 concept_extraction 背景任務，由背景 worker 執行；
+            未啟動 worker 時任務會停留在 queued 狀態。
+          </p>
+          <div class="button-row">
+            <button class="primary-button" type="button" id="trigger-graph-extract">觸發概念抽取</button>
+          </div>
+          <pre class="operation-log graph-extract-status" id="graph-extract-status" aria-live="polite">尚未載入概念抽取任務。</pre>
         </section>
 
         <section class="console-panel" id="panel-evals" data-console-panel-body="evals" data-admin-only hidden>
@@ -623,6 +660,11 @@
             <p class="muted">No audit events loaded.</p>
           </div>
         </section>
+
+        <footer class="console-log-strip" data-admin-only>
+          <h3 class="console-log-title" id="operation-log-title">操作紀錄</h3>
+          <pre class="operation-log" id="operation-log" aria-live="polite" aria-labelledby="operation-log-title">No admin operations yet.</pre>
+        </footer>
       </main>
     </div>
   </body>

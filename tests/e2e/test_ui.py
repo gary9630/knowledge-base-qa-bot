@@ -455,6 +455,22 @@ def test_ui_admin_console_structure() -> None:
     assert "sharedAdminKey" in js_response.text
 
 
+def test_ui_console_dashboard_wiring() -> None:
+    client = TestClient(create_app())
+
+    page = client.get("/")
+    assert page.status_code == 200
+    assert 'data-console-panel-body="overview"' in page.text
+    assert 'id="stat-index"' in page.text and 'id="stat-graph"' in page.text
+    assert 'id="stat-jobs"' in page.text and 'id="stat-tokens"' in page.text
+    assert 'id="recent-activity"' in page.text
+    assert 'id="trigger-graph-extract"' in page.text
+
+    js_response = client.get("/static/app.js")
+    assert "loadConsoleOverview" in js_response.text
+    assert "/admin/jobs/runtime" in js_response.text
+
+
 def test_ui_graph_uses_theme_tokens() -> None:
     client = TestClient(create_app())
     js_response = client.get("/static/app.js")

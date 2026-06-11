@@ -137,6 +137,15 @@
     consoleAdminKey: $("#console-admin-key"),
     consoleNavItems: $$("[data-console-panel]"),
     consolePanels: $$("[data-console-panel-body]"),
+    refreshOverview: $("#refresh-overview"),
+    statIndex: $("#stat-index"),
+    statGraph: $("#stat-graph"),
+    statJobs: $("#stat-jobs"),
+    statTokens: $("#stat-tokens"),
+    recentActivity: $("#recent-activity"),
+    triggerGraphExtract: $("#trigger-graph-extract"),
+    refreshGraphExtract: $("#refresh-graph-extract"),
+    graphExtractStatus: $("#graph-extract-status"),
   };
 
   function init() {
@@ -259,6 +268,9 @@
     };
 
     const blocked = state.auth.authRequired && !state.auth.authenticated;
+    if (blocked) {
+      closeConsole();
+    }
     elements.platformLogin.hidden = !blocked;
     elements.workbench.classList.toggle("is-auth-blocked", blocked);
     elements.platformLogout.hidden = !state.auth.authRequired || !state.auth.authenticated;
@@ -379,6 +391,9 @@
     elements.consoleNavItems.forEach((item) => {
       item.addEventListener("click", () => activateConsolePanel(item.dataset.consolePanel));
     });
+    elements.refreshOverview.addEventListener("click", loadConsoleOverview);
+    elements.triggerGraphExtract.addEventListener("click", triggerGraphExtraction);
+    elements.refreshGraphExtract.addEventListener("click", refreshGraphExtractStatus);
   }
 
   function openConsole() {
@@ -394,11 +409,25 @@
 
   function activateConsolePanel(panelName) {
     elements.consoleNavItems.forEach((item) => {
-      item.classList.toggle("is-active", item.dataset.consolePanel === panelName);
+      const selected = item.dataset.consolePanel === panelName;
+      item.classList.toggle("is-active", selected);
+      if (selected) {
+        item.setAttribute("aria-current", "true");
+      } else {
+        item.removeAttribute("aria-current");
+      }
     });
     elements.consolePanels.forEach((panel) => {
       panel.hidden = panel.dataset.consolePanelBody !== panelName;
     });
+
+    if (panelName === "overview") {
+      loadConsoleOverview();
+    }
+
+    if (panelName === "graph-extract") {
+      refreshGraphExtractStatus();
+    }
 
     if (panelName === "ops" && !state.providerObservability) {
       refreshProviderObservability();
@@ -407,6 +436,215 @@
 
   function sharedAdminKey() {
     return elements.consoleAdminKey.value.trim();
+  }
+
+  // ── Console 總覽 dashboard ───────────────────────────────
+  // Four independent stat-card fetches + the recent-activity list. Each one
+  // degrades to "—" + a muted note on failure so a missing admin key (or any
+  // single endpoint outage) never breaks the rest of the dashboard.
+  async function loadConsoleOverview() {
+    await Promise.allSettled([
+      loadOverviewIndexCard(),
+      loadOverviewGraphCard(),
+      loadOverviewJobsCard(),
+      loadOverviewTokensCard(),
+      loadOverviewRecentActivity(),
+    ]);
+  }
+
+  function setStatCard(card, number, note, { failed = false } = {}) {
+    const numberNode = card.querySelector(".stat-number");
+    const noteNode = card.querySelector(".stat-note");
+    numberNode.textContent = number;
+    noteNode.textContent = note;
+    noteNode.classList.toggle("muted", failed);
+  }
+
+  function statCardUnavailable(card, note) {
+    setStatCard(card, "—", note, { failed: true });
+  }
+
+  async function loadOverviewIndexCard() {
+    try {
+      const payload = await getJson("/index/status");
+      const stats = payload.stats || {};
+      const files = stats.files_indexed;
+      const chunks = stats.chunks_indexed;
+      setStatCard(
+        elements.statIndex,
+        files == null ? "—" : formatCount(files),
+        [`索引 ${payload.status}`, chunks == null ? null : `${formatCount(chunks)} chunks`]
+          .filter(Boolean)
+          .join(" · "),
+      );
+    } catch (error) {
+      statCardUnavailable(elements.statIndex, `索引狀態無法取得：${errorMessage(error)}`);
+    }
+  }
+
+  async function loadOverviewGraphCard() {
+    try {
+      const payload = await getJson("/graph");
+      const stats = payload.stats || {};
+      setStatCard(
+        elements.statGraph,
+        formatCount(stats.concept_count || 0),
+        `${formatCount(stats.concept_count || 0)} 概念 · ${formatCount(stats.cluster_count || 0)} 主題`,
+      );
+    } catch (error) {
+      statCardUnavailable(elements.statGraph, `圖譜統計無法取得：${errorMessage(error)}`);
+    }
+  }
+
+  async function loadOverviewJobsCard() {
+    try {
+      const payload = await getJsonWithHeaders("/admin/jobs/runtime", adminHeaders());
+      const queue = payload.queue || {};
+      const queued = queue.queued || 0;
+      const running = queue.running || 0;
+      const workers = Array.isArray(payload.workers) ? payload.workers : [];
+      let heartbeat = "尚無 worker 心跳";
+      if ((payload.active_workers || 0) > 0) {
+        heartbeat = "Worker 心跳 ✓";
+      } else if (workers.length > 0) {
+        heartbeat = "Worker 心跳過期";
+      }
+      setStatCard(
+        elements.statJobs,
+        formatCount(queued),
+        `${formatCount(queued)} queued · ${formatCount(running)} running · ${heartbeat}`,
+      );
+    } catch (error) {
+      statCardUnavailable(elements.statJobs, `背景任務無法取得：${errorMessage(error)}`);
+    }
+  }
+
+  async function loadOverviewTokensCard() {
+    try {
+      const payload = await getJsonWithHeaders("/metrics", adminHeaders());
+      const usageByKey = payload.provider_usage_by_key || {};
+      let totalTokens = 0;
+      Object.values(usageByKey).forEach((usage) => {
+        totalTokens += Number(usage && usage.total_tokens) || 0;
+      });
+      const calls = Number(payload.provider_calls_total) || 0;
+      setStatCard(
+        elements.statTokens,
+        formatCount(totalTokens),
+        `${formatCount(calls)} 次 provider 呼叫 · 未提供預算上限`,
+      );
+    } catch (error) {
+      statCardUnavailable(elements.statTokens, `Token 用量無法取得：${errorMessage(error)}`);
+    }
+  }
+
+  async function loadOverviewRecentActivity() {
+    try {
+      const payload = await getJsonWithHeaders("/admin/jobs?limit=8", adminHeaders());
+      const jobs = Array.isArray(payload.jobs) ? payload.jobs : [];
+      elements.recentActivity.replaceChildren();
+      if (jobs.length === 0) {
+        const item = document.createElement("li");
+        item.className = "muted";
+        item.textContent = "尚無背景任務。";
+        elements.recentActivity.append(item);
+        return;
+      }
+      jobs.forEach((job) => {
+        const item = document.createElement("li");
+        item.className = "activity-row";
+        if (job.status === "failed") {
+          item.classList.add("is-danger");
+        }
+        item.textContent = `${formatTimeHHMM(job.created_at)} · ${job.task_type} · ${job.status}`;
+        elements.recentActivity.append(item);
+      });
+    } catch (error) {
+      const item = document.createElement("li");
+      item.className = "muted";
+      item.textContent = `最近活動無法取得：${errorMessage(error)}`;
+      elements.recentActivity.replaceChildren(item);
+    }
+  }
+
+  function formatCount(value) {
+    const number = Number(value);
+    if (!Number.isFinite(number)) {
+      return "—";
+    }
+    return number.toLocaleString("en-US");
+  }
+
+  function formatTimeHHMM(value) {
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) {
+      return "--:--";
+    }
+    const hours = String(date.getHours()).padStart(2, "0");
+    const minutes = String(date.getMinutes()).padStart(2, "0");
+    return `${hours}:${minutes}`;
+  }
+
+  // ── 圖譜抽取 panel ───────────────────────────────────────
+  function setGraphExtractStatus(message) {
+    elements.graphExtractStatus.textContent = message;
+  }
+
+  async function triggerGraphExtraction() {
+    elements.triggerGraphExtract.disabled = true;
+    try {
+      const response = await fetch("/graph/extract", {
+        method: "POST",
+        headers: adminHeaders(),
+      });
+      if (!response.ok) {
+        throw new Error(await responseError(response));
+      }
+      const payload = await response.json();
+      setGraphExtractStatus(
+        `已排入概念抽取任務：${payload.job_id}\n狀態：queued（等待背景 worker 執行）`,
+      );
+      appendOperation(`Queued concept extraction job: ${payload.job_id}`);
+    } catch (error) {
+      setGraphExtractStatus(`觸發概念抽取失敗：${errorMessage(error)}`);
+      appendOperation(`Trigger concept extraction failed: ${errorMessage(error)}`);
+    } finally {
+      elements.triggerGraphExtract.disabled = false;
+    }
+  }
+
+  async function refreshGraphExtractStatus() {
+    try {
+      const payload = await getJsonWithHeaders("/admin/jobs?limit=100", adminHeaders());
+      const jobs = Array.isArray(payload.jobs) ? payload.jobs : [];
+      const job = jobs.find((item) => item.task_type === "concept_extraction");
+      if (!job) {
+        setGraphExtractStatus("尚無概念抽取任務。");
+        return;
+      }
+      const lines = [
+        `最新概念抽取任務：${job.id}`,
+        `狀態：${job.status}${job.error ? `（${job.error}）` : ""}`,
+      ];
+      const result = job.result || {};
+      if (result.skipped) {
+        lines.push(`已略過：${result.reason || "unknown"}`);
+      }
+      const statsParts = [
+        "documents_extracted",
+        "concepts_created",
+        "concepts_merged",
+        "provider_calls",
+      ]
+        .filter((key) => result[key] != null)
+        .map((key) => `${key} ${result[key]}`);
+      if (statsParts.length > 0) {
+        lines.push(`結果：${statsParts.join(" · ")}`);
+      }
+      setGraphExtractStatus(lines.join("\n"));
+    } catch (error) {
+      setGraphExtractStatus(`概念抽取任務無法取得：${errorMessage(error)}`);
+    }
   }
 
   function bindChat() {
