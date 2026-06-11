@@ -1348,8 +1348,43 @@
   }
 
   // --- knowledge graph ---
-  const CLUSTER_COLORS = ["#4285f4", "#34a853", "#f9ab00", "#ea4335", "#9334e6",
+  // Light palette — existing saturated colours for warm paper surfaces.
+  const CLUSTER_COLORS_LIGHT = ["#4285f4", "#34a853", "#f9ab00", "#ea4335", "#9334e6",
     "#12a4af", "#e8710a", "#7b1fa2", "#1565c0", "#2e7d32", "#c2185b", "#5d4037"];
+  // Dark palette — same hue family, lightness lifted for legibility on dark canvas.
+  const CLUSTER_COLORS_DARK = ["#7da7d9", "#9fc587", "#d9b96a", "#d98a7a", "#b89ae0",
+    "#6cc6c6", "#d99e6a", "#c490c9", "#8aa7e0", "#90c9a0", "#d987a8", "#a8917a"];
+
+  function resolveGraphTheme() {
+    const styles = getComputedStyle(document.documentElement);
+    const dark = document.documentElement.getAttribute("data-theme") === "dark" ||
+      (!document.documentElement.getAttribute("data-theme") &&
+        window.matchMedia("(prefers-color-scheme: dark)").matches);
+    return {
+      clusterColors: dark ? CLUSTER_COLORS_DARK : CLUSTER_COLORS_LIGHT,
+      edge: styles.getPropertyValue("--border-strong").trim(),
+      edgeArrow: styles.getPropertyValue("--muted").trim(),
+      label: styles.getPropertyValue("--text").trim(),
+      clusterBorder: styles.getPropertyValue("--faint").trim(),
+      highlight: styles.getPropertyValue("--accent").trim(),
+    };
+  }
+
+  // Re-render (or mark stale) when the user toggles the theme. Registered once
+  // after bindGraph so state.graphLoaded/graphView are available.
+  document.addEventListener("kb-theme-changed", () => {
+    if (!state.graphLoaded) return;
+    if (activeTabName() === "graph") {
+      renderGraphView(state.graphView || "cluster");
+    } else {
+      // Graph tab not visible — defer; activateTab("graph") will reload lazily.
+      // Note: any pending focusGraphConcept target from the cross-link is lost
+      // here because renderGraphView creates a fresh cy instance. A pending focus
+      // could be preserved by storing the concept id in state before re-render
+      // and re-selecting after; not implemented — left as a comment per plan.
+      state.graphStale = true;
+    }
+  });
 
   // Single source for empty-state copy — read once from DOM at bind time.
   let GRAPH_EMPTY_TEXT = "";
@@ -1388,12 +1423,12 @@
     }
   }
 
-  function graphElements(useCompound) {
+  function graphElements(useCompound, theme) {
     const clusters = state.graph.clusters || [];
     const clusterColor = new Map();
     const clusterIndex = new Map();
     clusters.forEach((cluster, index) => {
-      clusterColor.set(cluster.id, CLUSTER_COLORS[index % CLUSTER_COLORS.length]);
+      clusterColor.set(cluster.id, theme.clusterColors[index % theme.clusterColors.length]);
       clusterIndex.set(cluster.id, index);
     });
     const clusterCount = clusters.length;
@@ -1403,6 +1438,10 @@
         label: cluster.name,
         baseLabel: cluster.name,
         isCluster: true,
+        // Explicit neutral data fields so node style rules using data() mappings
+        // (color, size) do not log warnings for compound parent nodes.
+        color: "transparent",
+        size: 40,
       },
     }));
     const nodes = (state.graph.nodes || []).map((node) => {
@@ -1414,7 +1453,7 @@
         // Newline-joined lowercase aliases so the search filter can match
         // them without a query ever spanning two adjacent aliases.
         aliases: (node.aliases || []).join("\n").toLowerCase(),
-        color: clusterColor.get(node.cluster_id) || "#62717f",
+        color: clusterColor.get(node.cluster_id) || theme.clusterColors[0],
         size: 18 + Math.min(22, node.source_count * 4),
         // clusterIndex used by radial layout for concentric ring assignment.
         clusterIndex: idx,
@@ -1481,7 +1520,8 @@
 
     const useCompound = view === "cluster";
     const orderView = view === "order";
-    const { parents, nodes, edges } = graphElements(useCompound);
+    const theme = resolveGraphTheme();
+    const { parents, nodes, edges } = graphElements(useCompound, theme);
     if (state.cy) {
       state.cy.destroy();
     }
@@ -1490,24 +1530,29 @@
       elements: [...(useCompound ? parents : []), ...nodes, ...edges],
       layout: GRAPH_LAYOUTS[view],
       style: [
-        { selector: "node", style: {
+        { selector: "node[^isCluster]", style: {
           label: "data(label)", "font-size": 11, width: "data(size)", height: "data(size)",
-          "background-color": "data(color)", "text-valign": "bottom", "text-margin-y": 4 } },
+          "background-color": "data(color)", "text-valign": "bottom", "text-margin-y": 4,
+          color: theme.label } },
+        // Compound parent nodes use a separate selector (no data() size/color
+        // mappings) to avoid Cytoscape style-mapping warnings for fields that
+        // compound nodes do not carry.
         { selector: "node[?isCluster]", style: {
-          "background-opacity": 0.08, "border-width": 1.5, "border-color": "#aaa",
+          "background-opacity": 0.08, "border-width": 1.5,
+          "border-color": theme.clusterBorder,
           label: "data(label)", "font-size": 14, "font-weight": 700,
-          "text-valign": "top", shape: "round-rectangle" } },
+          color: theme.label, "text-valign": "top", shape: "round-rectangle" } },
         { selector: "edge", style: {
-          width: 1.4, "line-color": "#c4ccd4", "curve-style": "bezier" } },
+          width: 1.4, "line-color": theme.edge, "curve-style": "bezier" } },
         { selector: 'edge[kind = "prerequisite"]', style: {
-          "target-arrow-shape": "triangle", "target-arrow-color": "#8a96a3",
-          "line-color": "#8a96a3" } },
+          "target-arrow-shape": "triangle", "target-arrow-color": theme.edgeArrow,
+          "line-color": theme.edgeArrow } },
         { selector: 'edge[kind = "part_of"]', style: { "line-style": "dashed" } },
         ...(orderView
           ? [{ selector: 'edge[kind != "prerequisite"]', style: { opacity: 0.25 } }]
           : []),
         { selector: "node.dimmed", style: { opacity: 0.15 } },
-        { selector: "node.highlighted", style: { "border-width": 3, "border-color": "#162029" } },
+        { selector: "node.highlighted", style: { "border-width": 3, "border-color": theme.highlight } },
       ],
     });
     state.cy.on("tap", "node[^isCluster]", (event) => previewConcept(event.target.id()));
@@ -1727,10 +1772,13 @@
         try {
           const detail = await getJson(`/graph/concepts/${node.id}`);
           sourceIds = (detail.sources || []).map((item) => item.source_id);
+          // Only cache on success; a failed fetch is not cached so transient
+          // errors (network blip, 5xx) retry on the next invocation.
+          state.conceptSourceCache.set(node.id, sourceIds);
         } catch (_) {
+          // Transient error: skip caching so the next call retries.
           sourceIds = [];
         }
-        state.conceptSourceCache.set(node.id, sourceIds);
       }
       if (sourceIds.includes(sourceId)) {
         return node;
@@ -1740,6 +1788,13 @@
   }
 
   function focusGraphConcept(conceptId) {
+    // Note: activateTab("graph") may trigger an async loadGraph() call when
+    // state.graphStale is true (e.g. after a theme change while the graph tab
+    // was hidden). In that case renderGraphView creates a new cy instance, so
+    // the select/center below operates on the OLD instance and silently no-ops.
+    // Preserving the pending focus across a re-render would require storing
+    // the target conceptId in state before the reload — not implemented; the
+    // user can re-click the cross-link after the graph reloads.
     activateTab("graph");
     if (!state.cy) {
       return;

@@ -414,6 +414,13 @@ def test_ui_exposes_scholarly_landing_and_sources() -> None:
     assert ".doc-row" in css_response.text
 
 
+def test_ui_graph_uses_theme_tokens() -> None:
+    client = TestClient(create_app())
+    js_response = client.get("/static/app.js")
+    assert "resolveGraphTheme" in js_response.text
+    assert 'addEventListener("kb-theme-changed"' in js_response.text
+
+
 def test_ui_exposes_graph_tab_wiring() -> None:
     client = TestClient(create_app())
 
