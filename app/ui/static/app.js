@@ -15,6 +15,8 @@
     graphLoaded: false,
     graphStale: false,
     graphView: "cluster",
+    // concept id -> array of source_ids, filled lazily by findConceptForSource.
+    conceptSourceCache: new Map(),
     collapsedClusters: new Set(),
     cy: null,
     importJobs: [],
@@ -594,34 +596,40 @@
     label.className = "message-label";
     label.textContent = role === "user" ? "You" : "Course Assistant";
 
+    const card = document.createElement("div");
+    card.className = role === "user" ? "user-bubble" : "answer-card";
+
     const body = document.createElement("p");
     body.textContent = text;
 
-    wrapper.append(label, body);
+    card.append(body);
+    wrapper.append(label, card);
     elements.chatLog.append(wrapper);
     elements.chatLog.scrollTop = elements.chatLog.scrollHeight;
     return body;
   }
 
   function renderAnswerFooter(answerNode, payload) {
-    const wrapper = answerNode.closest(".message");
-    if (!wrapper) {
+    const card = answerNode.closest(".answer-card");
+    if (!card) {
       return;
     }
 
     renderAnswerCitations(answerNode, state.selectedSources);
-    wrapper.querySelector(".answer-footer")?.remove();
-    const footer = document.createElement("div");
-    footer.className = "answer-footer";
+    card.querySelector(".trust-badge")?.remove();
+    card.querySelector(".answer-footer")?.remove();
 
     const trust = document.createElement("span");
     const trustState = answerTrustState(payload);
-    trust.className = `answer-trust is-${trustState}`;
+    trust.className = `trust-badge is-${trustState}`;
     trust.textContent = answerTrustText(payload, state.selectedSources);
-    footer.append(trust);
+    card.prepend(trust);
+
+    const footer = document.createElement("div");
+    footer.className = "answer-footer";
     renderSourceChips(footer, state.selectedSources);
-    renderAnswerFeedback(footer, payload, state.selectedSources);
-    wrapper.append(footer);
+    renderFeedbackRow(footer, payload, state.selectedSources);
+    card.append(footer);
   }
 
   function renderAnswerCitations(answerNode, sources) {
@@ -678,8 +686,8 @@
   function inlineCitationButton(source, displayIndex) {
     const button = document.createElement("button");
     button.type = "button";
-    button.className = "inline-citation";
-    button.textContent = `[${displayIndex}]`;
+    button.className = "citation-pill";
+    button.textContent = String(displayIndex);
     button.title = source.source_id || citationLabelForSource(source, displayIndex);
     button.setAttribute(
       "aria-label",
@@ -717,7 +725,7 @@
     }
   }
 
-  function renderAnswerFeedback(wrapper, payload, sources) {
+  function renderFeedbackRow(wrapper, payload, sources) {
     if (!payload.assistant_message_id) {
       return;
     }
@@ -729,17 +737,17 @@
     const actions = document.createElement("div");
     actions.className = "feedback-actions";
     actions.append(
-      feedbackActionButton("Helpful", () =>
+      feedbackActionButton("有幫助", () =>
         submitAnswerFeedback(panel, payload, {
           rating: 1,
           reason: "helpful",
           expectedSource: feedbackExpectedSource(sources, payload.answer_quality),
         }),
       ),
-      feedbackActionButton("Not helpful", () =>
+      feedbackActionButton("沒有幫助", () =>
         showFeedbackDetails(panel, payload, sources, "not_helpful"),
       ),
-      feedbackActionButton("Answer missing", () =>
+      feedbackActionButton("找不到我要的", () =>
         showFeedbackDetails(panel, payload, sources, "answer_missing"),
       ),
     );
@@ -861,22 +869,20 @@
   function answerTrustText(payload, sources) {
     const quality = payload.answer_quality || {};
     if (quality.cannot_confirm_reason === "not_indexed") {
-      return "The course knowledge base is not indexed yet.";
+      return "課程知識庫尚未建立索引";
     }
     if (quality.answer_valid === false) {
-      return "Answer needs source review.";
+      return "回答需要來源審查";
     }
     if (quality.cannot_confirm_reason || payload.decision === "cannot_confirm") {
-      return "The knowledge base could not confirm this.";
+      return "知識庫無法確認這個問題";
     }
 
     const sourceCount = Array.isArray(sources) ? sources.length : 0;
     if (sourceCount > 0) {
-      return sourceCount === 1
-        ? "Answered from 1 course source."
-        : `Answered from ${sourceCount} course sources.`;
+      return `✓ 依據 ${sourceCount} 個課程段落回答`;
     }
-    return "Answered without selected course sources.";
+    return "回答未引用課程段落";
   }
 
   function answerTrustState(payload) {
@@ -885,9 +891,9 @@
       return "danger";
     }
     if (quality.cannot_confirm_reason || payload.decision === "cannot_confirm") {
-      return "warning";
+      return "warn";
     }
-    return "valid";
+    return "ok";
   }
 
   function setSelectedSources(sources) {
@@ -896,7 +902,7 @@
     elements.selectedSourceCount.textContent = String(state.selectedSources.length);
 
     if (state.selectedSources.length === 0) {
-      elements.selectedSources.append(emptyText("No answer sources for the latest response."));
+      elements.selectedSources.append(emptyText("這次回答沒有引用來源。"));
       resetPreviewSourceMeta();
       elements.markdownPreview.textContent = "Select a source to preview markdown.";
       return;
@@ -905,7 +911,8 @@
     state.selectedSources.forEach((source, index) => {
       const row = document.createElement("button");
       row.type = "button";
-      row.className = "selected-source";
+      row.className = "source-row";
+      row.dataset.sourceId = source.source_id || "";
       row.addEventListener("click", () => previewCandidate(source));
 
       const title = document.createElement("strong");
@@ -964,7 +971,7 @@
     renderPreviewSourceMeta({
       title: heading,
       summary: source.source_id || source.filename || "Answer source",
-      kind: "Answer source",
+      kind: "引用來源",
     });
     elements.markdownPreview.textContent = [
       heading,
@@ -973,6 +980,14 @@
     ]
       .filter(Boolean)
       .join("\n\n");
+    setActiveSourceRow(source.source_id);
+    renderGraphCrossLink(source.source_id, heading, body);
+  }
+
+  function setActiveSourceRow(sourceId) {
+    $$("#answer-sources .source-row").forEach((row) => {
+      row.classList.toggle("is-active", Boolean(sourceId) && row.dataset.sourceId === sourceId);
+    });
   }
 
   function renderAnswerQuality(payload) {
@@ -1335,6 +1350,8 @@
     try {
       state.graph = await getJson("/graph");
       state.graphLoaded = true;
+      // Concept extraction may have changed concept→source mappings.
+      state.conceptSourceCache.clear();
       renderGraphView(state.graphView || "cluster");
     } catch (error) {
       // Keep the old canvas and loaded state if an instance already exists so
@@ -1634,9 +1651,86 @@
         kind: "知識圖譜預覽",
       });
       elements.markdownPreview.textContent = [section.heading, section.body_md].join("\n\n");
+      renderGraphCrossLink(section.source_id, section.heading, section.body_md);
     } catch (error) {
       elements.markdownPreview.textContent = `Source preview unavailable: ${errorMessage(error)}`;
     }
+  }
+
+  // Guards async cross-link rendering against stale previews: only the most
+  // recent renderGraphCrossLink call may append its button.
+  let graphCrossLinkToken = 0;
+
+  async function renderGraphCrossLink(sourceId, headingText, bodyText) {
+    const token = ++graphCrossLinkToken;
+    elements.previewSourceMeta.querySelector(".graph-cross-link")?.remove();
+    if (!state.graphLoaded || !sourceId) {
+      return;
+    }
+
+    const concept = await findConceptForSource(sourceId, headingText, bodyText);
+    if (!concept || token !== graphCrossLinkToken) {
+      return;
+    }
+
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "graph-cross-link";
+    button.textContent = `🗺 在知識圖譜中查看「${concept.name}」`;
+    button.addEventListener("click", () => focusGraphConcept(concept.id));
+    elements.previewSourceMeta.append(button);
+  }
+
+  // Heuristic mapping from a previewed section to a graph concept. The /graph
+  // payload carries no concept→source lists and adding a backend lookup is out
+  // of scope, so: take graph nodes whose name or alias appears in the section
+  // heading/body (max 3 candidates), lazily fetch /graph/concepts/{id} for
+  // each (results cached in state.conceptSourceCache), and return the first
+  // concept whose sources include the previewed source_id.
+  async function findConceptForSource(sourceId, headingText, bodyText) {
+    const haystack = `${headingText || ""}\n${bodyText || ""}`.toLowerCase();
+    const candidates = (state.graph.nodes || [])
+      .filter((node) => {
+        const name = (node.name || "").toLowerCase();
+        if (name && haystack.includes(name)) {
+          return true;
+        }
+        return (node.aliases || []).some(
+          (alias) => alias && haystack.includes(alias.toLowerCase()),
+        );
+      })
+      .slice(0, 3);
+
+    for (const node of candidates) {
+      let sourceIds = state.conceptSourceCache.get(node.id);
+      if (!sourceIds) {
+        try {
+          const detail = await getJson(`/graph/concepts/${node.id}`);
+          sourceIds = (detail.sources || []).map((item) => item.source_id);
+        } catch (_) {
+          sourceIds = [];
+        }
+        state.conceptSourceCache.set(node.id, sourceIds);
+      }
+      if (sourceIds.includes(sourceId)) {
+        return node;
+      }
+    }
+    return null;
+  }
+
+  function focusGraphConcept(conceptId) {
+    activateTab("graph");
+    if (!state.cy) {
+      return;
+    }
+    const node = state.cy.$id(conceptId);
+    if (node.empty()) {
+      return;
+    }
+    state.cy.elements().unselect();
+    node.select();
+    state.cy.center(node);
   }
 
   function askAboutConcept(name) {

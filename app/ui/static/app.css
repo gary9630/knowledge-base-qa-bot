@@ -423,10 +423,10 @@ textarea:disabled {
 .primary-button:focus-visible,
 .secondary-button:focus-visible,
 .source-row:focus-visible,
-.selected-source:focus-visible,
 .source-chip:focus-visible,
-.inline-citation:focus-visible,
+.citation-pill:focus-visible,
 .feedback-button:focus-visible,
+.graph-cross-link:focus-visible,
 .graph-view-button:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
@@ -516,8 +516,6 @@ textarea:disabled {
   overflow: auto;
 }
 
-.source-row,
-.selected-source,
 .job-row,
 .document-row,
 .audit-row,
@@ -534,15 +532,32 @@ textarea:disabled {
   box-shadow: var(--shadow);
 }
 
-button.source-row,
-button.selected-source {
+.source-row {
+  display: grid;
+  gap: 4px;
   width: 100%;
+  border: 1px solid var(--border);
+  border-left: 3px solid transparent;
+  border-radius: var(--radius-sm);
+  background: var(--surface);
   color: inherit;
+  padding: var(--space-2) var(--space-3);
+  font-size: 13px;
   text-align: left;
+  cursor: pointer;
+}
+
+.source-row:hover {
+  border-color: var(--border-strong);
+  border-left-color: var(--border-strong);
+}
+
+.source-row.is-active {
+  border-color: var(--border-strong);
+  border-left-color: var(--accent);
 }
 
 .source-row strong,
-.selected-source strong,
 .job-row strong,
 .document-row strong,
 .eval-row strong,
@@ -860,38 +875,46 @@ button.selected-source {
   width: min(100%, 720px);
 }
 
-.message.user p {
-  border: 1px solid var(--user-bubble-border);
-  border-radius: 8px;
+.message.user .message-label {
+  justify-self: end;
+}
+
+.user-bubble {
   background: var(--user-bubble);
-  padding: 10px 12px;
+  border: 1px solid var(--user-bubble-border);
+  border-radius: var(--radius-lg) var(--radius-lg) 4px var(--radius-lg);
+  padding: var(--space-3) var(--space-4);
+  margin-left: auto;
+  max-width: 70%;
 }
 
-.message.assistant p {
-  border: 1px solid var(--border);
-  border-radius: 8px;
+.answer-card {
   background: var(--surface);
-  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 4px var(--radius-lg) var(--radius-lg) var(--radius-lg);
+  box-shadow: var(--shadow);
+  padding: var(--space-4) var(--space-5);
+  line-height: 1.75;
+  max-width: 92%;
 }
 
-.inline-citation {
-  display: inline-grid;
-  min-width: 24px;
-  min-height: 22px;
-  place-items: center;
+.citation-pill {
+  display: inline-block;
+  min-width: 18px;
+  text-align: center;
   border: 0;
-  border-radius: 6px;
-  background: transparent;
-  color: var(--accent-strong);
-  font-size: 0.78em;
-  font-weight: 800;
-  line-height: 1;
-  padding: 0 2px;
-  vertical-align: baseline;
+  padding: 1px 8px;
+  border-radius: var(--radius-pill);
+  background: var(--accent);
+  color: var(--accent-contrast);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.4;
+  cursor: pointer;
 }
 
-.inline-citation:hover {
-  background: var(--surface-muted);
+.citation-pill:hover {
+  background: var(--accent-strong);
 }
 
 .message-label {
@@ -904,37 +927,36 @@ button.selected-source {
 
 .answer-footer {
   display: grid;
-  gap: 8px;
+  gap: var(--space-2);
   justify-items: start;
-}
-
-.answer-trust {
-  display: inline-grid;
-  min-height: 28px;
-  align-items: center;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  background: var(--surface);
+  border-top: 1px solid var(--border);
+  margin-top: var(--space-3);
+  padding-top: var(--space-2);
+  font-size: 13px;
   color: var(--muted);
-  font-size: 12px;
-  font-weight: 700;
-  padding: 4px 8px;
 }
 
-.answer-trust.is-valid {
-  border-color: var(--success);
+.trust-badge {
+  display: inline-block;
+  padding: 3px 10px;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  font-size: 13px;
+  margin-bottom: var(--space-3);
+}
+
+.trust-badge.is-ok {
   background: var(--success-bg);
   color: var(--success);
+  border-color: color-mix(in srgb, var(--success) 30%, transparent);
 }
 
-.answer-trust.is-warning {
-  border-color: var(--warning);
+.trust-badge.is-warn {
   background: var(--warning-bg);
   color: var(--warning);
 }
 
-.answer-trust.is-danger {
-  border-color: var(--danger);
+.trust-badge.is-danger {
   background: var(--danger-bg);
   color: var(--danger);
 }
@@ -979,17 +1001,18 @@ button.selected-source {
 
 .feedback-button {
   min-height: 30px;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  background: var(--surface);
-  color: var(--text);
-  padding: 4px 8px;
-  font-size: 12px;
-  font-weight: 700;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--muted);
+  padding: 2px 8px;
+  font-size: 13px;
+  font-weight: 600;
 }
 
 .feedback-button:hover {
   background: var(--surface-muted);
+  color: var(--text);
 }
 
 .feedback-detail textarea {
@@ -1215,6 +1238,24 @@ select {
   display: grid;
   gap: 6px;
   margin-top: 8px;
+}
+
+.graph-cross-link {
+  width: 100%;
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface-muted);
+  color: var(--accent-strong);
+  font-size: 13px;
+  font-weight: 600;
+  padding: var(--space-2) var(--space-3);
+  text-align: left;
+  cursor: pointer;
+}
+
+.graph-cross-link:hover {
+  border-style: solid;
+  background: var(--surface);
 }
 
 .upload-form,

@@ -13,7 +13,7 @@ def test_ui_serves_three_column_workbench() -> None:
     assert "知識圖譜" in response.text
     assert "Admin Uploads" in response.text
     assert "Feedback / Evals" in response.text
-    assert "answer sources" in response.text.lower()
+    assert "引用來源" in response.text
     assert 'role="tabpanel"' in response.text
     assert 'aria-controls="panel-chat"' in response.text
 
@@ -309,8 +309,8 @@ def test_ui_exposes_learner_chat_polish_wiring() -> None:
     assert "updateLearnerChatStatus" in js_response.text
     assert "scrollIntoView" in js_response.text
     assert "Looking through course sources" in js_response.text
-    assert "Answered from" in js_response.text
-    assert "could not confirm" in js_response.text
+    assert "個課程段落回答" in js_response.text
+    assert "知識庫無法確認這個問題" in js_response.text
     assert "previewCandidate(source)" in js_response.text
     assert "renderAnswerCitations" in js_response.text
     assert "mergeCitedSources(payload.sources)" in js_response.text
@@ -324,8 +324,8 @@ def test_ui_exposes_learner_chat_polish_wiring() -> None:
     assert ".sample-prompt-grid" in css_response.text
     assert ".answer-footer" in css_response.text
     assert ".source-chip" in css_response.text
-    assert ".answer-trust" in css_response.text
-    assert ".inline-citation" in css_response.text
+    assert ".trust-badge" in css_response.text
+    assert ".citation-pill" in css_response.text
     assert ".answer-feedback" in css_response.text
 
 
@@ -337,11 +337,11 @@ def test_ui_separates_answer_sources_from_previewed_source() -> None:
     css_response = client.get("/static/app.css")
 
     assert response.status_code == 200
-    assert "Answer Sources" in response.text
+    assert "引用來源" in response.text
     assert 'id="answer-sources"' in response.text
     assert 'id="preview-source-meta"' in response.text
     assert "Previewed Source" in response.text
-    assert "No answer sources for the latest response." in response.text
+    assert "這次回答沒有引用來源。" in response.text
 
     assert js_response.status_code == 200
     assert "documentDisplayTitle" in js_response.text
@@ -372,6 +372,20 @@ def test_ui_exposes_dual_theme_wiring() -> None:
     css_response = _client.get("/static/app.css")
     assert '[data-theme="dark"]' in css_response.text
     assert "--font-display" in css_response.text
+
+
+def test_ui_exposes_scholarly_chat_styling() -> None:
+    client = TestClient(create_app())
+
+    css_response = client.get("/static/app.css")
+    assert ".answer-card" in css_response.text
+    assert ".trust-badge" in css_response.text
+    assert ".citation-pill" in css_response.text
+    assert ".source-row" in css_response.text
+
+    js_response = client.get("/static/app.js")
+    assert "renderFeedbackRow" in js_response.text
+    assert "graph-cross-link" in js_response.text
 
 
 def test_ui_exposes_graph_tab_wiring() -> None:

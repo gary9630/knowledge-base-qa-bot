@@ -155,7 +155,9 @@
             <div class="chat-empty-state" id="chat-empty-state">
               <div class="message assistant">
                 <span class="message-label">Course Assistant</span>
-                <p>Ask a question about the course materials. Answers cite the indexed sources used.</p>
+                <div class="answer-card">
+                  <p>Ask a question about the course materials. Answers cite the indexed sources used.</p>
+                </div>
               </div>
               <div class="sample-prompt-grid" aria-label="Sample course questions">
                 <button type="button" data-sample-prompt="課程網站在哪裡？">課程網站在哪裡？</button>
@@ -543,11 +545,11 @@
       <aside class="inspector" aria-label="Context inspector">
         <section class="inspector-section">
           <div class="section-heading">
-            <h2>Answer Sources</h2>
+            <h2>引用來源</h2>
             <span class="count-pill" id="selected-source-count">0</span>
           </div>
           <div class="selected-sources" id="answer-sources">
-            <p class="muted">No answer sources for the latest response.</p>
+            <p class="muted">這次回答沒有引用來源。</p>
           </div>
         </section>
 
