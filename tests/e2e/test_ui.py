@@ -46,7 +46,7 @@ def test_ui_exposes_eval_workbench_wiring() -> None:
     js_response = client.get("/static/app.js")
 
     assert response.status_code == 200
-    assert 'id="tab-evals"' in response.text
+    assert 'data-console-panel="evals"' in response.text  # evals moved into the admin console
     assert 'id="panel-evals"' in response.text
     assert 'id="eval-form"' in response.text
     assert 'id="eval-status"' in response.text
@@ -78,8 +78,7 @@ def test_ui_exposes_platform_login_wiring() -> None:
     assert 'id="platform-username"' in response.text
     assert 'id="platform-password"' in response.text
     assert 'id="platform-logout"' in response.text
-    assert 'id="admin-key"' in response.text
-    assert 'id="eval-admin-key"' in response.text
+    assert 'id="console-admin-key"' in response.text  # single shared admin key field
     assert "getJsonWithHeaders(\"/auth/session\"" in js_response.text
     assert "fetch(\"/auth/login\"" in js_response.text
     assert "fetch(\"/auth/logout\"" in js_response.text
@@ -100,23 +99,20 @@ def test_ui_serves_student_landing_page_and_marks_admin_surfaces() -> None:
     assert 'id="tab-chat"' in response.text
     assert 'id="tab-graph"' in response.text
     assert 'id="tab-sources"' in response.text
+    # admin tabs no longer exist in the learner tab row; the console entry is admin-only
     for tab_id in ("tab-uploads", "tab-ops", "tab-audit", "tab-evals"):
-        tab_markup = response.text.split(f'id="{tab_id}"', 1)[1].split(">", 1)[0]
-        assert "data-admin-only" in tab_markup
+        assert f'id="{tab_id}"' not in response.text
+    console_entry_markup = response.text.split('id="console-entry"', 1)[1].split(">", 1)[0]
+    assert "data-admin-only" in console_entry_markup
 
     for panel_id in ("panel-uploads", "panel-ops", "panel-audit", "panel-evals"):
         panel_markup = response.text.split(f'id="{panel_id}"', 1)[1].split(">", 1)[0]
         assert "data-admin-only" in panel_markup
 
-    document_form_markup = response.text.split('id="document-lifecycle-form"', 1)[1].split(
-        ">",
-        1,
-    )[0]
     document_section_markup = response.text.split('id="admin-documents-section"', 1)[1].split(
         ">",
         1,
     )[0]
-    assert "data-admin-only" in document_form_markup
     assert "data-admin-only" in document_section_markup
 
     assert css_response.status_code == 200
@@ -150,9 +146,9 @@ def test_ui_exposes_audit_log_wiring() -> None:
     js_response = client.get("/static/app.js")
 
     assert response.status_code == 200
-    assert 'id="tab-audit"' in response.text
+    assert 'data-console-panel="audit"' in response.text  # audit moved into the admin console
     assert 'id="panel-audit"' in response.text
-    assert 'id="audit-admin-key"' in response.text
+    assert 'id="audit-admin-key"' not in response.text  # replaced by shared console key
     assert 'id="audit-event-type"' in response.text
     assert 'id="audit-outcome"' in response.text
     assert 'id="audit-actor-type"' in response.text
@@ -161,7 +157,7 @@ def test_ui_exposes_audit_log_wiring() -> None:
     assert 'id="audit-events"' in response.text
     assert "fetch(`/admin/audit-events?${params}`" in js_response.text
     assert "renderAuditEvents" in js_response.text
-    assert "elements.auditAdminKey" in js_response.text
+    assert "sharedAdminKey()" in js_response.text
 
 
 def test_ui_exposes_document_lifecycle_wiring() -> None:
@@ -171,7 +167,8 @@ def test_ui_exposes_document_lifecycle_wiring() -> None:
     js_response = client.get("/static/app.js")
 
     assert response.status_code == 200
-    assert 'id="document-admin-key"' in response.text
+    assert 'id="document-admin-key"' not in response.text  # replaced by shared console key
+    assert 'data-console-panel-body="documents"' in response.text  # lifecycle lives in console
     assert 'id="refresh-documents"' in response.text
     assert 'id="admin-documents"' in response.text
     assert "fetch(\"/admin/documents\"" in js_response.text
@@ -179,7 +176,7 @@ def test_ui_exposes_document_lifecycle_wiring() -> None:
     assert "fetch(`/admin/documents/${documentId}`" in js_response.text
     assert "fetch(`/admin/documents/${documentId}/reindex`" in js_response.text
     assert "renderAdminDocuments" in js_response.text
-    assert "elements.documentAdminKey" in js_response.text
+    assert "sharedAdminKey" in js_response.text
 
 
 def test_ui_exposes_background_jobs_wiring() -> None:
@@ -224,9 +221,9 @@ def test_ui_exposes_provider_observability_wiring() -> None:
     js_response = client.get("/static/app.js")
 
     assert response.status_code == 200
-    assert 'id="tab-ops"' in response.text
+    assert 'data-console-panel="ops"' in response.text  # ops moved into the admin console
     assert 'id="panel-ops"' in response.text
-    assert 'id="ops-admin-key"' in response.text
+    assert 'id="ops-admin-key"' not in response.text  # replaced by shared console key
     assert 'id="refresh-provider-observability"' in response.text
     assert 'id="provider-summary"' in response.text
     assert 'id="provider-budget"' in response.text
@@ -412,6 +409,50 @@ def test_ui_exposes_scholarly_landing_and_sources() -> None:
     assert ".landing-card" in css_response.text
     # Sources reading-list style
     assert ".doc-row" in css_response.text
+
+
+def test_ui_admin_console_structure() -> None:
+    client = TestClient(create_app())
+
+    page = client.get("/")
+    assert page.status_code == 200
+    # learner sidebar: exactly the three learner tabs remain as tabs
+    assert 'id="tab-uploads"' not in page.text  # admin tabs no longer in learner tab row
+    assert 'id="tab-ops"' not in page.text
+    assert 'id="tab-audit"' not in page.text
+    assert 'id="tab-evals"' not in page.text
+    assert 'id="console-nav"' in page.text
+    assert 'id="console-entry"' in page.text
+    assert 'data-console-panel="uploads"' in page.text
+    assert 'id="console-admin-key"' in page.text
+
+    # every console nav entry has a matching panel body
+    for panel in (
+        "overview",
+        "uploads",
+        "documents",
+        "graph-extract",
+        "evals",
+        "jobs",
+        "ops",
+        "audit",
+    ):
+        assert f'data-console-panel="{panel}"' in page.text
+        assert f'data-console-panel-body="{panel}"' in page.text
+
+    # the per-panel admin key inputs are replaced by the single console key
+    for key_id in (
+        "admin-key",
+        "ops-admin-key",
+        "audit-admin-key",
+        "eval-admin-key",
+        "document-admin-key",
+    ):
+        assert f'id="{key_id}"' not in page.text
+
+    js_response = client.get("/static/app.js")
+    assert "bindConsole" in js_response.text
+    assert "sharedAdminKey" in js_response.text
 
 
 def test_ui_graph_uses_theme_tokens() -> None:

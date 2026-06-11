@@ -283,7 +283,7 @@ textarea:disabled {
 
 .sidebar {
   display: grid;
-  grid-template-rows: auto auto minmax(0, 1fr);
+  grid-template-rows: auto auto minmax(0, 1fr) auto;
   gap: 16px;
   border-width: 0 1px 0 0;
   padding: 16px;
@@ -1312,6 +1312,123 @@ select {
   letter-spacing: 0.08em;
   text-transform: uppercase;
   color: var(--faint);
+}
+
+/* ── Admin console ───────────────────────────────────── */
+.console-entry {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-muted);
+  color: var(--text);
+  padding: var(--space-2) var(--space-3);
+  text-align: left;
+  font-size: 13px;
+}
+
+.console-entry:hover {
+  border-color: var(--border-strong);
+  background: var(--surface);
+}
+
+.console {
+  display: flex;
+  min-height: 100vh;
+  background: var(--bg);
+}
+
+/* Console nav stays dark slate in BOTH themes (per spec). */
+.console-nav {
+  width: 210px;
+  flex-shrink: 0;
+  background: #1f2a38;
+  color: #aeb6c2;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: var(--space-4) var(--space-3);
+}
+
+.console-brand {
+  font-family: var(--font-display);
+  color: #d4b876;
+  font-weight: 700;
+  padding: 0 var(--space-2) var(--space-3);
+  border-bottom: 1px solid #2e3a4a;
+  margin-bottom: var(--space-2);
+}
+
+.console-nav-item {
+  text-align: left;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  font-size: 14px;
+}
+
+.console-nav-item:hover {
+  background: #273445;
+  color: #e7ebf2;
+}
+
+.console-nav-item.is-active {
+  background: #2e3d52;
+  color: #fff;
+  font-weight: 600;
+}
+
+.console-section {
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  color: #6b7686;
+  padding: var(--space-3) var(--space-3) var(--space-1);
+}
+
+.console-key {
+  margin: 0 var(--space-2) var(--space-2);
+  padding: 6px 8px;
+  border-radius: var(--radius-sm);
+  border: 1px solid #2e3a4a;
+  background: #16202c;
+  color: #d5dae3;
+  font-size: 12px;
+}
+
+.console-main {
+  flex: 1;
+  padding: var(--space-5) var(--space-6);
+  overflow-y: auto;
+}
+
+.console-back {
+  margin-top: auto;
+  border: 0;
+  background: transparent;
+  color: #6b7686;
+  text-align: left;
+  padding: var(--space-2) var(--space-3);
+  cursor: pointer;
+}
+
+.console-back:hover {
+  color: #aeb6c2;
+}
+
+.console-panel {
+  display: grid;
+  align-content: start;
+  gap: var(--space-4);
+  max-width: 1100px;
+}
+
+.console-entry:focus-visible,
+.console-nav-item:focus-visible,
+.console-key:focus-visible,
+.console-back:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 
 .muted {

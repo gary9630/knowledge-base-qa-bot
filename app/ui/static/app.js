@@ -65,7 +65,6 @@
     previewSourceMeta: $("#preview-source-meta"),
     sourceList: $("#source-list"),
     sourceTable: $("#source-table"),
-    documentAdminKey: $("#document-admin-key"),
     refreshDocuments: $("#refresh-documents"),
     adminDocuments: $("#admin-documents"),
     graphCanvas: $("#graph-canvas"),
@@ -80,15 +79,12 @@
     statusPill: $("#index-status-pill"),
     statusGrid: $("#index-status"),
     uploadForm: $("#upload-form"),
-    adminKey: $("#admin-key"),
-    auditAdminKey: $("#audit-admin-key"),
     auditEventType: $("#audit-event-type"),
     auditOutcome: $("#audit-outcome"),
     auditActorType: $("#audit-actor-type"),
     auditLimit: $("#audit-limit"),
     refreshAudit: $("#refresh-audit"),
     auditEvents: $("#audit-events"),
-    evalAdminKey: $("#eval-admin-key"),
     uploadFile: $("#upload-file"),
     refreshImports: $("#refresh-imports"),
     importDiagnosticsSummary: $("#import-diagnostics-summary"),
@@ -102,7 +98,6 @@
     backgroundJobLimit: $("#background-job-limit"),
     workerRuntime: $("#worker-runtime"),
     backgroundJobs: $("#background-jobs"),
-    opsAdminKey: $("#ops-admin-key"),
     refreshProviderObservability: $("#refresh-provider-observability"),
     providerSummary: $("#provider-summary"),
     providerBudget: $("#provider-budget"),
@@ -136,6 +131,12 @@
     themeToggle: $("#theme-toggle"),
     workbench: $("[data-app]"),
     adminOnlySurfaces: $$("[data-admin-only]"),
+    console: $("#console"),
+    consoleEntry: $("#console-entry"),
+    consoleBack: $("#console-back"),
+    consoleAdminKey: $("#console-admin-key"),
+    consoleNavItems: $$("[data-console-panel]"),
+    consolePanels: $$("[data-console-panel-body]"),
   };
 
   function init() {
@@ -147,6 +148,7 @@
     bindGraph();
     bindAdmin();
     bindEvals();
+    bindConsole();
     bindThemeToggle();
     refreshAuthSession();
   }
@@ -304,10 +306,6 @@
       panel.hidden = !selected;
     });
 
-    if (tabName === "ops" && !state.providerObservability) {
-      refreshProviderObservability();
-    }
-
     if (tabName === "graph") {
       if (state.graphStale || !state.graphLoaded) {
         loadGraph();
@@ -360,15 +358,55 @@
   function applyAccessPolicy() {
     const restricted = isRestrictedLearner();
     elements.adminOnlySurfaces.forEach((surface) => {
-      if (restricted || !surface.matches("[data-panel]")) {
+      if (restricted || !surface.matches("[data-panel], [data-console-panel-body]")) {
         surface.hidden = restricted;
       }
       surface.setAttribute("aria-hidden", String(restricted));
     });
 
+    if (restricted) {
+      closeConsole();
+    }
+
     if (restricted && !tabIsAvailable(activeTabName())) {
       activateTab("chat");
     }
+  }
+
+  function bindConsole() {
+    elements.consoleEntry.addEventListener("click", openConsole);
+    elements.consoleBack.addEventListener("click", closeConsole);
+    elements.consoleNavItems.forEach((item) => {
+      item.addEventListener("click", () => activateConsolePanel(item.dataset.consolePanel));
+    });
+  }
+
+  function openConsole() {
+    elements.workbench.hidden = true;
+    elements.console.hidden = false;
+    activateConsolePanel("overview");
+  }
+
+  function closeConsole() {
+    elements.console.hidden = true;
+    elements.workbench.hidden = false;
+  }
+
+  function activateConsolePanel(panelName) {
+    elements.consoleNavItems.forEach((item) => {
+      item.classList.toggle("is-active", item.dataset.consolePanel === panelName);
+    });
+    elements.consolePanels.forEach((panel) => {
+      panel.hidden = panel.dataset.consolePanelBody !== panelName;
+    });
+
+    if (panelName === "ops" && !state.providerObservability) {
+      refreshProviderObservability();
+    }
+  }
+
+  function sharedAdminKey() {
+    return elements.consoleAdminKey.value.trim();
   }
 
   function bindChat() {
@@ -3012,9 +3050,7 @@
       if (!response.ok) {
         throw new Error(await responseError(response));
       }
-      const adminKey = elements.evalAdminKey.value;
       elements.evalForm.reset();
-      elements.evalAdminKey.value = adminKey;
       setEvalStatus(`Eval case added: ${name}`);
       appendOperation(`Eval case added: ${name}`);
       await refreshEvals();
@@ -3413,14 +3449,7 @@
   }
 
   function adminHeaders() {
-    const adminKey = (
-      elements.adminKey.value ||
-      elements.documentAdminKey.value ||
-      elements.auditAdminKey.value ||
-      elements.opsAdminKey.value ||
-      elements.evalAdminKey.value ||
-      ""
-    ).trim();
+    const adminKey = sharedAdminKey();
     return authHeaders(true, adminKey ? { "X-KB-Admin-Key": adminKey } : {});
   }
 

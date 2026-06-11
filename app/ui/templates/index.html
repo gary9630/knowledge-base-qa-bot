@@ -86,35 +86,11 @@
             </svg>
             知識圖譜
           </button>
-          <button class="tab" id="tab-uploads" type="button" role="tab" aria-selected="false" aria-controls="panel-uploads" tabindex="-1" data-tab="uploads" data-admin-only>
-            <svg aria-hidden="true" viewBox="0 0 24 24">
-              <path d="M12 15V4m0 0 4 4m-4-4-4 4M5 15v3a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-3" />
-            </svg>
-            Admin Uploads
-          </button>
-          <button class="tab" id="tab-ops" type="button" role="tab" aria-selected="false" aria-controls="panel-ops" tabindex="-1" data-tab="ops" data-admin-only>
-            <svg aria-hidden="true" viewBox="0 0 24 24">
-              <path d="M4 19V5m0 14h16M8 16v-5m4 5V8m4 8v-3m3-7-5 5-3-3-4 4" />
-            </svg>
-            Provider Ops
-          </button>
-          <button class="tab" id="tab-audit" type="button" role="tab" aria-selected="false" aria-controls="panel-audit" tabindex="-1" data-tab="audit" data-admin-only>
-            <svg aria-hidden="true" viewBox="0 0 24 24">
-              <path d="M6 3h12l1 4v13H5V7zm0 4h12M9 11h6M9 15h4" />
-            </svg>
-            Audit Log
-          </button>
           <button class="tab" id="tab-sources" type="button" role="tab" aria-selected="false" aria-controls="panel-sources" tabindex="-1" data-tab="sources">
             <svg aria-hidden="true" viewBox="0 0 24 24">
               <path d="M6 5h12M6 12h12M6 19h12" />
             </svg>
             Sources
-          </button>
-          <button class="tab" id="tab-evals" type="button" role="tab" aria-selected="false" aria-controls="panel-evals" tabindex="-1" data-tab="evals" data-admin-only>
-            <svg aria-hidden="true" viewBox="0 0 24 24">
-              <path d="M5 12h4l2 6 4-12 2 6h2M4 4h16v16H4z" />
-            </svg>
-            Feedback / Evals
           </button>
         </nav>
 
@@ -127,6 +103,8 @@
             <p class="muted">No sources loaded</p>
           </div>
         </section>
+
+        <button class="console-entry" id="console-entry" type="button" data-admin-only>⚙ 管理主控台</button>
       </aside>
 
       <main class="workspace" aria-live="polite">
@@ -194,234 +172,6 @@
           <p class="graph-empty" id="graph-empty">尚未建立知識圖譜。請先建立索引並執行概念抽取。</p>
         </section>
 
-        <section class="workspace-panel" id="panel-uploads" role="tabpanel" tabindex="0" data-panel="uploads" aria-labelledby="tab-uploads" data-admin-only hidden>
-          <header class="workspace-header">
-            <div>
-              <h2>Admin Uploads</h2>
-            </div>
-            <button class="secondary-button" type="button" id="rebuild-index">Rebuild Index</button>
-          </header>
-
-          <form class="upload-form" id="upload-form">
-            <label for="admin-key">Admin Key</label>
-            <input id="admin-key" name="admin-key" type="password" autocomplete="current-password" />
-            <label for="upload-file">Document</label>
-            <input id="upload-file" name="file" type="file" accept=".md,.txt,.html,.pdf,text/*,application/pdf" />
-            <button class="primary-button" type="submit">Upload</button>
-          </form>
-
-          <section class="tool-section" aria-labelledby="import-jobs-heading">
-            <div class="section-heading">
-              <h3 id="import-jobs-heading">Import Jobs</h3>
-              <button class="text-button" type="button" id="refresh-imports">Refresh</button>
-            </div>
-            <div class="ops-summary" id="import-diagnostics-summary" aria-live="polite">
-              <div class="ops-summary-card">
-                <span>Loaded</span>
-                <strong>0</strong>
-              </div>
-              <div class="ops-summary-card">
-                <span>Active</span>
-                <strong>0</strong>
-              </div>
-              <div class="ops-summary-card">
-                <span>Failed</span>
-                <strong>0</strong>
-              </div>
-              <div class="ops-summary-card">
-                <span>Warnings</span>
-                <strong>0</strong>
-              </div>
-              <div class="ops-summary-card">
-                <span>Duplicates</span>
-                <strong>0</strong>
-              </div>
-            </div>
-            <div class="import-jobs" id="import-jobs" aria-live="polite">
-              <p class="muted">No import jobs loaded.</p>
-            </div>
-          </section>
-
-          <section class="tool-section" aria-labelledby="background-jobs-heading">
-            <div class="section-heading">
-              <h3 id="background-jobs-heading">Background Jobs</h3>
-              <div class="button-row">
-                <button class="text-button" type="button" id="queue-index-job">Queue Index</button>
-                <button class="text-button" type="button" id="recover-stale-jobs">Recover Stale</button>
-                <button class="text-button" type="button" id="refresh-background-jobs">Refresh</button>
-              </div>
-            </div>
-            <div class="ops-summary" id="background-job-summary" aria-live="polite">
-              <div class="ops-summary-card">
-                <span>Total</span>
-                <strong>0</strong>
-              </div>
-              <div class="ops-summary-card">
-                <span>Queued</span>
-                <strong>0</strong>
-              </div>
-              <div class="ops-summary-card">
-                <span>Running</span>
-                <strong>0</strong>
-              </div>
-              <div class="ops-summary-card">
-                <span>Needs Action</span>
-                <strong>0</strong>
-              </div>
-            </div>
-            <div class="job-controls" aria-label="Background job filters">
-              <label class="inline-control" for="background-job-status-filter">
-                Status
-                <select id="background-job-status-filter" name="background-job-status-filter">
-                  <option value="">All</option>
-                  <option value="queued">Queued</option>
-                  <option value="running">Running</option>
-                  <option value="succeeded">Succeeded</option>
-                  <option value="failed">Failed</option>
-                  <option value="canceled">Canceled</option>
-                </select>
-              </label>
-              <label class="inline-control" for="background-job-limit">
-                Limit
-                <select id="background-job-limit" name="background-job-limit">
-                  <option value="10">10</option>
-                  <option value="25">25</option>
-                  <option value="50" selected>50</option>
-                  <option value="100">100</option>
-                </select>
-              </label>
-            </div>
-            <div class="worker-runtime" id="worker-runtime" aria-live="polite">
-              <p class="muted">No worker runtime status loaded.</p>
-            </div>
-            <div class="background-jobs" id="background-jobs" aria-live="polite">
-              <p class="muted">No background jobs loaded.</p>
-            </div>
-          </section>
-
-          <pre class="operation-log" id="operation-log" aria-live="polite">No admin operations yet.</pre>
-        </section>
-
-        <section class="workspace-panel" id="panel-ops" role="tabpanel" tabindex="0" data-panel="ops" aria-labelledby="tab-ops" data-admin-only hidden>
-          <header class="workspace-header">
-            <div>
-              <h2>Provider Ops</h2>
-              <p class="workspace-subtitle">OpenAI/provider reliability, usage, and answer trace health.</p>
-            </div>
-            <button class="secondary-button" type="button" id="refresh-provider-observability">Refresh</button>
-          </header>
-
-          <form class="audit-form" id="provider-observability-form">
-            <label for="ops-admin-key">Admin Key</label>
-            <input id="ops-admin-key" name="ops-admin-key" type="password" autocomplete="current-password" />
-          </form>
-
-          <section class="tool-section" aria-labelledby="provider-summary-heading">
-            <div class="section-heading">
-              <h3 id="provider-summary-heading">Provider Summary</h3>
-            </div>
-            <div class="ops-summary" id="provider-summary" aria-live="polite">
-              <div class="ops-summary-card">
-                <span>Calls</span>
-                <strong>0</strong>
-              </div>
-              <div class="ops-summary-card">
-                <span>Errors</span>
-                <strong>0</strong>
-              </div>
-              <div class="ops-summary-card">
-                <span>Error Rate</span>
-                <strong>0%</strong>
-              </div>
-              <div class="ops-summary-card">
-                <span>Tokens</span>
-                <strong>0</strong>
-              </div>
-            </div>
-          </section>
-
-          <section class="tool-section" aria-labelledby="provider-budget-heading">
-            <div class="section-heading">
-              <h3 id="provider-budget-heading">Budget Guardrails</h3>
-            </div>
-            <div class="provider-budget" id="provider-budget" aria-live="polite">
-              <p class="muted">No provider budget loaded.</p>
-            </div>
-          </section>
-
-          <section class="tool-section" aria-labelledby="provider-usage-heading">
-            <div class="section-heading">
-              <h3 id="provider-usage-heading">Usage By Operation</h3>
-            </div>
-            <div class="provider-usage" id="provider-usage" aria-live="polite">
-              <p class="muted">No provider usage loaded.</p>
-            </div>
-          </section>
-
-          <section class="tool-section" aria-labelledby="provider-latest-calls-heading">
-            <div class="section-heading">
-              <h3 id="provider-latest-calls-heading">Latest Provider Calls</h3>
-            </div>
-            <div class="provider-calls" id="provider-latest-calls" aria-live="polite">
-              <p class="muted">No provider calls loaded.</p>
-            </div>
-          </section>
-
-          <section class="tool-section" aria-labelledby="provider-traces-heading">
-            <div class="section-heading">
-              <h3 id="provider-traces-heading">Answer Traces</h3>
-            </div>
-            <div class="provider-traces" id="provider-traces" aria-live="polite">
-              <p class="muted">No provider traces loaded.</p>
-            </div>
-          </section>
-        </section>
-
-        <section class="workspace-panel" id="panel-audit" role="tabpanel" tabindex="0" data-panel="audit" aria-labelledby="tab-audit" data-admin-only hidden>
-          <header class="workspace-header">
-            <div>
-              <h2>Audit Log</h2>
-            </div>
-            <button class="secondary-button" type="button" id="refresh-audit">Refresh</button>
-          </header>
-
-          <form class="audit-form" id="audit-filters">
-            <label for="audit-admin-key">Admin Key</label>
-            <input id="audit-admin-key" name="audit-admin-key" type="password" autocomplete="current-password" />
-            <label for="audit-event-type">Event Type</label>
-            <select id="audit-event-type" name="audit-event-type">
-              <option value="">Any</option>
-              <option value="auth.login_failed">auth.login_failed</option>
-              <option value="auth.login_succeeded">auth.login_succeeded</option>
-              <option value="auth.logout">auth.logout</option>
-              <option value="admin.access_denied">admin.access_denied</option>
-              <option value="admin.access_granted">admin.access_granted</option>
-              <option value="security.rate_limited">security.rate_limited</option>
-              <option value="security.upload_concurrency_limited">security.upload_concurrency_limited</option>
-            </select>
-            <label for="audit-outcome">Outcome</label>
-            <select id="audit-outcome" name="audit-outcome">
-              <option value="">Any</option>
-              <option value="success">success</option>
-              <option value="failure">failure</option>
-              <option value="blocked">blocked</option>
-            </select>
-            <label for="audit-actor-type">Actor Type</label>
-            <select id="audit-actor-type" name="audit-actor-type">
-              <option value="">Any</option>
-              <option value="platform">platform</option>
-              <option value="admin">admin</option>
-              <option value="client">client</option>
-            </select>
-            <label for="audit-limit">Limit</label>
-            <input id="audit-limit" name="audit-limit" type="number" min="1" max="100" value="50" />
-          </form>
-
-          <div class="audit-events" id="audit-events" aria-live="polite">
-            <p class="muted">No audit events loaded.</p>
-          </div>
-        </section>
-
         <section class="workspace-panel" id="panel-sources" role="tabpanel" tabindex="0" data-panel="sources" aria-labelledby="tab-sources" hidden>
           <header class="workspace-header">
             <div>
@@ -429,106 +179,10 @@
             </div>
             <div class="button-row">
               <button class="secondary-button" type="button" id="refresh-status">更新狀態</button>
-              <button class="secondary-button" type="button" id="refresh-documents">更新文件</button>
             </div>
           </header>
           <div class="source-table" id="source-table">
             <p class="muted">尚未找到已索引的來源。</p>
-          </div>
-          <section class="tool-section admin-ops-section" id="admin-documents-section" aria-labelledby="admin-documents-heading" data-admin-only>
-            <div class="section-heading admin-ops-heading">
-              <h3 id="admin-documents-heading">管理操作</h3>
-            </div>
-            <form class="document-form" id="document-lifecycle-form" data-admin-only>
-              <label for="document-admin-key">管理員金鑰</label>
-              <input id="document-admin-key" name="document-admin-key" type="password" autocomplete="current-password" />
-            </form>
-            <div class="admin-documents" id="admin-documents" aria-live="polite">
-              <p class="muted">尚未載入文件管理資料。</p>
-            </div>
-          </section>
-        </section>
-
-        <section class="workspace-panel" id="panel-evals" role="tabpanel" tabindex="0" data-panel="evals" aria-labelledby="tab-evals" data-admin-only hidden>
-          <header class="workspace-header">
-            <div>
-              <h2>Feedback / Evals</h2>
-            </div>
-            <div class="button-row">
-              <button class="secondary-button" type="button" id="refresh-evals">Refresh</button>
-              <button class="secondary-button" type="button" id="seed-evals">Seed Baseline</button>
-              <button class="primary-button" type="button" id="run-evals">Run Evals</button>
-            </div>
-          </header>
-
-          <form class="eval-form" id="eval-form">
-            <label for="eval-admin-key">Admin Key</label>
-            <input id="eval-admin-key" name="eval-admin-key" type="password" autocomplete="current-password" />
-            <label for="eval-name">Name</label>
-            <input id="eval-name" name="name" type="text" />
-            <label for="eval-query">Query</label>
-            <textarea id="eval-query" name="query" rows="3"></textarea>
-            <label for="eval-decision">Expected Decision</label>
-            <select id="eval-decision" name="decision">
-              <option value="can_answer">Can answer</option>
-              <option value="cannot_confirm">Cannot confirm</option>
-            </select>
-            <label for="eval-sources">Expected Sources</label>
-            <input id="eval-sources" name="sources" type="text" />
-            <label for="eval-tags">Tags</label>
-            <input id="eval-tags" name="tags" type="text" />
-            <button class="primary-button" type="submit">Add Case</button>
-          </form>
-          <pre class="eval-status" id="eval-status" aria-live="polite">No eval activity yet.</pre>
-
-          <section class="tool-section" aria-labelledby="eval-report-heading">
-            <div class="section-heading">
-              <h3 id="eval-report-heading">Eval Report</h3>
-            </div>
-            <div class="eval-report" id="eval-report">
-              <p class="muted">No eval report loaded.</p>
-            </div>
-            <div class="report-sections">
-              <section class="report-section" aria-labelledby="recent-runs-heading">
-                <h4 id="recent-runs-heading">Recent Runs</h4>
-                <div class="eval-report" id="eval-recent-runs">
-                  <p class="muted">No recent runs loaded.</p>
-                </div>
-              </section>
-              <section class="report-section" aria-labelledby="worst-cases-heading">
-                <h4 id="worst-cases-heading">Worst Cases</h4>
-                <div class="eval-report" id="eval-worst-cases">
-                  <p class="muted">No worst cases loaded.</p>
-                </div>
-              </section>
-            </div>
-          </section>
-
-          <div class="eval-grid">
-            <section class="tool-section" aria-labelledby="eval-cases-heading">
-              <div class="section-heading">
-                <h3 id="eval-cases-heading">Eval Cases</h3>
-              </div>
-              <div class="eval-cases" id="eval-cases">
-                <p class="muted">No eval cases loaded.</p>
-              </div>
-            </section>
-            <section class="tool-section" aria-labelledby="eval-results-heading">
-              <div class="section-heading">
-                <h3 id="eval-results-heading">Latest Results</h3>
-              </div>
-              <div class="eval-results" id="eval-results">
-                <p class="muted">No eval run loaded.</p>
-              </div>
-            </section>
-            <section class="tool-section" aria-labelledby="feedback-promotions-heading">
-              <div class="section-heading">
-                <h3 id="feedback-promotions-heading">Feedback Promotions</h3>
-              </div>
-              <div class="feedback-promotions" id="feedback-promotions">
-                <p class="muted">No feedback loaded.</p>
-              </div>
-            </section>
           </div>
         </section>
       </main>
@@ -606,6 +260,370 @@
           </dl>
         </section>
       </aside>
+    </div>
+
+    <div class="console" id="console" hidden>
+      <nav class="console-nav" id="console-nav">
+        <div class="console-brand">管理主控台</div>
+        <input class="console-key" id="console-admin-key" type="password" placeholder="Admin Key" autocomplete="off" />
+        <button class="console-nav-item is-active" type="button" data-console-panel="overview">📊 總覽</button>
+        <div class="console-section">內容</div>
+        <button class="console-nav-item" type="button" data-console-panel="uploads">📥 上傳與索引</button>
+        <button class="console-nav-item" type="button" data-console-panel="documents">📄 文件生命週期</button>
+        <button class="console-nav-item" type="button" data-console-panel="graph-extract">🗺 圖譜抽取</button>
+        <div class="console-section">品質</div>
+        <button class="console-nav-item" type="button" data-console-panel="evals">🧪 評估與回饋</button>
+        <div class="console-section">維運</div>
+        <button class="console-nav-item" type="button" data-console-panel="jobs">⚙️ 背景任務</button>
+        <button class="console-nav-item" type="button" data-console-panel="ops">📡 Provider 用量</button>
+        <button class="console-nav-item" type="button" data-console-panel="audit">🔒 審計日誌</button>
+        <button class="console-back" id="console-back" type="button">← 回到課程</button>
+      </nav>
+
+      <main class="console-main" id="console-main">
+        <section class="console-panel" id="panel-console-overview" data-console-panel-body="overview" data-admin-only>
+          <header class="workspace-header">
+            <div>
+              <h2>總覽</h2>
+            </div>
+          </header>
+          <p class="muted">總覽儀表板即將在此提供。</p>
+        </section>
+
+        <section class="console-panel" id="panel-uploads" data-console-panel-body="uploads" data-admin-only hidden>
+          <header class="workspace-header">
+            <div>
+              <h2>Admin Uploads</h2>
+            </div>
+            <button class="secondary-button" type="button" id="rebuild-index">Rebuild Index</button>
+          </header>
+
+          <form class="upload-form" id="upload-form">
+            <label for="upload-file">Document</label>
+            <input id="upload-file" name="file" type="file" accept=".md,.txt,.html,.pdf,text/*,application/pdf" />
+            <button class="primary-button" type="submit">Upload</button>
+          </form>
+
+          <section class="tool-section" aria-labelledby="import-jobs-heading">
+            <div class="section-heading">
+              <h3 id="import-jobs-heading">Import Jobs</h3>
+              <button class="text-button" type="button" id="refresh-imports">Refresh</button>
+            </div>
+            <div class="ops-summary" id="import-diagnostics-summary" aria-live="polite">
+              <div class="ops-summary-card">
+                <span>Loaded</span>
+                <strong>0</strong>
+              </div>
+              <div class="ops-summary-card">
+                <span>Active</span>
+                <strong>0</strong>
+              </div>
+              <div class="ops-summary-card">
+                <span>Failed</span>
+                <strong>0</strong>
+              </div>
+              <div class="ops-summary-card">
+                <span>Warnings</span>
+                <strong>0</strong>
+              </div>
+              <div class="ops-summary-card">
+                <span>Duplicates</span>
+                <strong>0</strong>
+              </div>
+            </div>
+            <div class="import-jobs" id="import-jobs" aria-live="polite">
+              <p class="muted">No import jobs loaded.</p>
+            </div>
+          </section>
+
+          <pre class="operation-log" id="operation-log" aria-live="polite">No admin operations yet.</pre>
+        </section>
+
+        <section class="console-panel" id="panel-documents" data-console-panel-body="documents" data-admin-only hidden>
+          <header class="workspace-header">
+            <div>
+              <h2>文件生命週期</h2>
+            </div>
+            <button class="secondary-button" type="button" id="refresh-documents">更新文件</button>
+          </header>
+          <section class="tool-section admin-ops-section" id="admin-documents-section" aria-labelledby="admin-documents-heading" data-admin-only>
+            <div class="section-heading admin-ops-heading">
+              <h3 id="admin-documents-heading">管理操作</h3>
+            </div>
+            <div class="admin-documents" id="admin-documents" aria-live="polite">
+              <p class="muted">尚未載入文件管理資料。</p>
+            </div>
+          </section>
+        </section>
+
+        <section class="console-panel" id="panel-graph-extract" data-console-panel-body="graph-extract" data-admin-only hidden>
+          <header class="workspace-header">
+            <div>
+              <h2>圖譜抽取</h2>
+            </div>
+          </header>
+          <p class="muted">概念抽取工具即將在此提供。</p>
+        </section>
+
+        <section class="console-panel" id="panel-evals" data-console-panel-body="evals" data-admin-only hidden>
+          <header class="workspace-header">
+            <div>
+              <h2>Feedback / Evals</h2>
+            </div>
+            <div class="button-row">
+              <button class="secondary-button" type="button" id="refresh-evals">Refresh</button>
+              <button class="secondary-button" type="button" id="seed-evals">Seed Baseline</button>
+              <button class="primary-button" type="button" id="run-evals">Run Evals</button>
+            </div>
+          </header>
+
+          <form class="eval-form" id="eval-form">
+            <label for="eval-name">Name</label>
+            <input id="eval-name" name="name" type="text" />
+            <label for="eval-query">Query</label>
+            <textarea id="eval-query" name="query" rows="3"></textarea>
+            <label for="eval-decision">Expected Decision</label>
+            <select id="eval-decision" name="decision">
+              <option value="can_answer">Can answer</option>
+              <option value="cannot_confirm">Cannot confirm</option>
+            </select>
+            <label for="eval-sources">Expected Sources</label>
+            <input id="eval-sources" name="sources" type="text" />
+            <label for="eval-tags">Tags</label>
+            <input id="eval-tags" name="tags" type="text" />
+            <button class="primary-button" type="submit">Add Case</button>
+          </form>
+          <pre class="eval-status" id="eval-status" aria-live="polite">No eval activity yet.</pre>
+
+          <section class="tool-section" aria-labelledby="eval-report-heading">
+            <div class="section-heading">
+              <h3 id="eval-report-heading">Eval Report</h3>
+            </div>
+            <div class="eval-report" id="eval-report">
+              <p class="muted">No eval report loaded.</p>
+            </div>
+            <div class="report-sections">
+              <section class="report-section" aria-labelledby="recent-runs-heading">
+                <h4 id="recent-runs-heading">Recent Runs</h4>
+                <div class="eval-report" id="eval-recent-runs">
+                  <p class="muted">No recent runs loaded.</p>
+                </div>
+              </section>
+              <section class="report-section" aria-labelledby="worst-cases-heading">
+                <h4 id="worst-cases-heading">Worst Cases</h4>
+                <div class="eval-report" id="eval-worst-cases">
+                  <p class="muted">No worst cases loaded.</p>
+                </div>
+              </section>
+            </div>
+          </section>
+
+          <div class="eval-grid">
+            <section class="tool-section" aria-labelledby="eval-cases-heading">
+              <div class="section-heading">
+                <h3 id="eval-cases-heading">Eval Cases</h3>
+              </div>
+              <div class="eval-cases" id="eval-cases">
+                <p class="muted">No eval cases loaded.</p>
+              </div>
+            </section>
+            <section class="tool-section" aria-labelledby="eval-results-heading">
+              <div class="section-heading">
+                <h3 id="eval-results-heading">Latest Results</h3>
+              </div>
+              <div class="eval-results" id="eval-results">
+                <p class="muted">No eval run loaded.</p>
+              </div>
+            </section>
+            <section class="tool-section" aria-labelledby="feedback-promotions-heading">
+              <div class="section-heading">
+                <h3 id="feedback-promotions-heading">Feedback Promotions</h3>
+              </div>
+              <div class="feedback-promotions" id="feedback-promotions">
+                <p class="muted">No feedback loaded.</p>
+              </div>
+            </section>
+          </div>
+        </section>
+
+        <section class="console-panel" id="panel-jobs" data-console-panel-body="jobs" data-admin-only hidden>
+          <header class="workspace-header">
+            <div>
+              <h2>背景任務</h2>
+            </div>
+          </header>
+
+          <section class="tool-section" aria-labelledby="background-jobs-heading">
+            <div class="section-heading">
+              <h3 id="background-jobs-heading">Background Jobs</h3>
+              <div class="button-row">
+                <button class="text-button" type="button" id="queue-index-job">Queue Index</button>
+                <button class="text-button" type="button" id="recover-stale-jobs">Recover Stale</button>
+                <button class="text-button" type="button" id="refresh-background-jobs">Refresh</button>
+              </div>
+            </div>
+            <div class="ops-summary" id="background-job-summary" aria-live="polite">
+              <div class="ops-summary-card">
+                <span>Total</span>
+                <strong>0</strong>
+              </div>
+              <div class="ops-summary-card">
+                <span>Queued</span>
+                <strong>0</strong>
+              </div>
+              <div class="ops-summary-card">
+                <span>Running</span>
+                <strong>0</strong>
+              </div>
+              <div class="ops-summary-card">
+                <span>Needs Action</span>
+                <strong>0</strong>
+              </div>
+            </div>
+            <div class="job-controls" aria-label="Background job filters">
+              <label class="inline-control" for="background-job-status-filter">
+                Status
+                <select id="background-job-status-filter" name="background-job-status-filter">
+                  <option value="">All</option>
+                  <option value="queued">Queued</option>
+                  <option value="running">Running</option>
+                  <option value="succeeded">Succeeded</option>
+                  <option value="failed">Failed</option>
+                  <option value="canceled">Canceled</option>
+                </select>
+              </label>
+              <label class="inline-control" for="background-job-limit">
+                Limit
+                <select id="background-job-limit" name="background-job-limit">
+                  <option value="10">10</option>
+                  <option value="25">25</option>
+                  <option value="50" selected>50</option>
+                  <option value="100">100</option>
+                </select>
+              </label>
+            </div>
+            <div class="worker-runtime" id="worker-runtime" aria-live="polite">
+              <p class="muted">No worker runtime status loaded.</p>
+            </div>
+            <div class="background-jobs" id="background-jobs" aria-live="polite">
+              <p class="muted">No background jobs loaded.</p>
+            </div>
+          </section>
+        </section>
+
+        <section class="console-panel" id="panel-ops" data-console-panel-body="ops" data-admin-only hidden>
+          <header class="workspace-header">
+            <div>
+              <h2>Provider Ops</h2>
+              <p class="workspace-subtitle">OpenAI/provider reliability, usage, and answer trace health.</p>
+            </div>
+            <button class="secondary-button" type="button" id="refresh-provider-observability">Refresh</button>
+          </header>
+
+          <section class="tool-section" aria-labelledby="provider-summary-heading">
+            <div class="section-heading">
+              <h3 id="provider-summary-heading">Provider Summary</h3>
+            </div>
+            <div class="ops-summary" id="provider-summary" aria-live="polite">
+              <div class="ops-summary-card">
+                <span>Calls</span>
+                <strong>0</strong>
+              </div>
+              <div class="ops-summary-card">
+                <span>Errors</span>
+                <strong>0</strong>
+              </div>
+              <div class="ops-summary-card">
+                <span>Error Rate</span>
+                <strong>0%</strong>
+              </div>
+              <div class="ops-summary-card">
+                <span>Tokens</span>
+                <strong>0</strong>
+              </div>
+            </div>
+          </section>
+
+          <section class="tool-section" aria-labelledby="provider-budget-heading">
+            <div class="section-heading">
+              <h3 id="provider-budget-heading">Budget Guardrails</h3>
+            </div>
+            <div class="provider-budget" id="provider-budget" aria-live="polite">
+              <p class="muted">No provider budget loaded.</p>
+            </div>
+          </section>
+
+          <section class="tool-section" aria-labelledby="provider-usage-heading">
+            <div class="section-heading">
+              <h3 id="provider-usage-heading">Usage By Operation</h3>
+            </div>
+            <div class="provider-usage" id="provider-usage" aria-live="polite">
+              <p class="muted">No provider usage loaded.</p>
+            </div>
+          </section>
+
+          <section class="tool-section" aria-labelledby="provider-latest-calls-heading">
+            <div class="section-heading">
+              <h3 id="provider-latest-calls-heading">Latest Provider Calls</h3>
+            </div>
+            <div class="provider-calls" id="provider-latest-calls" aria-live="polite">
+              <p class="muted">No provider calls loaded.</p>
+            </div>
+          </section>
+
+          <section class="tool-section" aria-labelledby="provider-traces-heading">
+            <div class="section-heading">
+              <h3 id="provider-traces-heading">Answer Traces</h3>
+            </div>
+            <div class="provider-traces" id="provider-traces" aria-live="polite">
+              <p class="muted">No provider traces loaded.</p>
+            </div>
+          </section>
+        </section>
+
+        <section class="console-panel" id="panel-audit" data-console-panel-body="audit" data-admin-only hidden>
+          <header class="workspace-header">
+            <div>
+              <h2>Audit Log</h2>
+            </div>
+            <button class="secondary-button" type="button" id="refresh-audit">Refresh</button>
+          </header>
+
+          <form class="audit-form" id="audit-filters">
+            <label for="audit-event-type">Event Type</label>
+            <select id="audit-event-type" name="audit-event-type">
+              <option value="">Any</option>
+              <option value="auth.login_failed">auth.login_failed</option>
+              <option value="auth.login_succeeded">auth.login_succeeded</option>
+              <option value="auth.logout">auth.logout</option>
+              <option value="admin.access_denied">admin.access_denied</option>
+              <option value="admin.access_granted">admin.access_granted</option>
+              <option value="security.rate_limited">security.rate_limited</option>
+              <option value="security.upload_concurrency_limited">security.upload_concurrency_limited</option>
+            </select>
+            <label for="audit-outcome">Outcome</label>
+            <select id="audit-outcome" name="audit-outcome">
+              <option value="">Any</option>
+              <option value="success">success</option>
+              <option value="failure">failure</option>
+              <option value="blocked">blocked</option>
+            </select>
+            <label for="audit-actor-type">Actor Type</label>
+            <select id="audit-actor-type" name="audit-actor-type">
+              <option value="">Any</option>
+              <option value="platform">platform</option>
+              <option value="admin">admin</option>
+              <option value="client">client</option>
+            </select>
+            <label for="audit-limit">Limit</label>
+            <input id="audit-limit" name="audit-limit" type="number" min="1" max="100" value="50" />
+          </form>
+
+          <div class="audit-events" id="audit-events" aria-live="polite">
+            <p class="muted">No audit events loaded.</p>
+          </div>
+        </section>
+      </main>
     </div>
   </body>
 </html>
