@@ -5,6 +5,7 @@ import os
 import sys
 from collections.abc import Mapping
 from pathlib import PurePosixPath
+from urllib.parse import unquote, urlsplit
 
 from app.retrieval.dimensions import PGVECTOR_EMBEDDING_DIMENSION
 
@@ -16,6 +17,7 @@ REQUIRED_SETTINGS = (
     "KB_ADMIN_USERNAME",
     "KB_ADMIN_PASSWORD",
     "KB_ADMIN_API_KEY",
+    "KB_POSTGRES_PASSWORD",
     "KB_DATABASE_URL",
     "KB_DOCS_DIR",
     "KB_RAW_DIR",
@@ -89,6 +91,22 @@ def collect_deploy_env_errors(
         or env.get("KB_ANSWER_PROVIDER") == "openai"
     ) and not env.get("OPENAI_API_KEY"):
         errors.append("OPENAI_API_KEY is required when an OpenAI provider is enabled.")
+
+    database_url = env.get("KB_DATABASE_URL", "")
+    postgres_password = env.get("KB_POSTGRES_PASSWORD", "")
+    if database_url and postgres_password:
+        try:
+            parsed_url = urlsplit(database_url)
+            database_password = unquote(parsed_url.password or "")
+        except ValueError:
+            database_password = ""
+        if not database_password:
+            errors.append("KB_DATABASE_URL must include the Postgres password.")
+        elif database_password != postgres_password:
+            errors.append(
+                "KB_DATABASE_URL password must match KB_POSTGRES_PASSWORD; "
+                "URL-encode special characters in the URL password."
+            )
 
     return errors
 

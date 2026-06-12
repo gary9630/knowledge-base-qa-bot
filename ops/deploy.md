@@ -70,6 +70,11 @@ KB_APP_PORT=127.0.0.1:8000
 KB_POSTGRES_PORT=127.0.0.1:5432
 ```
 
+Set one Postgres password and use the same value in both `KB_POSTGRES_PASSWORD` and
+the password portion of `KB_DATABASE_URL`. URL-encode special characters in
+`KB_DATABASE_URL`; for example `/` becomes `%2F` and `#` becomes `%23`. A mismatch here
+causes migration failures such as `FATAL: password authentication failed for user "kb"`.
+
 Use `ops/nginx/kb.conf.example` as the Nginx site template, replacing
 `example.com` with the production domain. After DNS points at the Droplet, enable
 HTTPS with Certbot's Nginx installer.
