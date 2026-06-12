@@ -39,6 +39,17 @@ def test_ui_serves_three_column_workbench() -> None:
     assert 'id="refresh-imports"' in response.text
 
 
+def test_ui_uses_root_relative_static_asset_paths() -> None:
+    client = TestClient(create_app())
+
+    response = client.get("/")
+
+    assert response.status_code == 200
+    assert 'href="/static/app.css"' in response.text
+    assert 'src="/static/app.js"' in response.text
+    assert "http://testserver/static" not in response.text
+
+
 def test_ui_exposes_eval_workbench_wiring() -> None:
     client = TestClient(create_app())
 
