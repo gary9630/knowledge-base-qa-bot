@@ -114,7 +114,8 @@ deploy-check-ci:
 	KB_ADMIN_USERNAME=ci-admin \
 	KB_ADMIN_PASSWORD=ci-admin-password \
 	KB_ADMIN_API_KEY=ci-admin-api-key \
-	KB_DATABASE_URL=postgresql+psycopg://kb:kb@postgres:5432/kb \
+	KB_POSTGRES_PASSWORD=ci-postgres-password \
+	KB_DATABASE_URL=postgresql+psycopg://kb:ci-postgres-password@postgres:5432/kb \
 	KB_DOCS_DIR=/app/docs \
 	KB_RAW_DIR=/app/raw \
 	KB_KB_DIR=/app/.kb \

@@ -10,7 +10,8 @@ def valid_env() -> dict[str, str]:
         "KB_ADMIN_USERNAME": "course-admin",
         "KB_ADMIN_PASSWORD": "admin-password-123",
         "KB_ADMIN_API_KEY": "admin-key-123456789",
-        "KB_DATABASE_URL": "postgresql+psycopg://kb:kb@postgres:5432/kb",
+        "KB_POSTGRES_PASSWORD": "db-password-123",
+        "KB_DATABASE_URL": "postgresql+psycopg://kb:db-password-123@postgres:5432/kb",
         "KB_DOCS_DIR": "/app/docs",
         "KB_RAW_DIR": "/app/raw",
         "KB_KB_DIR": "/app/.kb",
@@ -22,7 +23,30 @@ def valid_env() -> dict[str, str]:
 
 
 def test_deploy_env_validation_accepts_production_ready_settings() -> None:
-    assert collect_deploy_env_errors(valid_env()) == []
+    env = valid_env()
+    env["KB_DATABASE_URL"] = "postgresql+psycopg://kb:db-password-123@postgres:5432/kb"
+
+    assert collect_deploy_env_errors(env) == []
+
+
+def test_deploy_env_validation_rejects_mismatched_postgres_passwords() -> None:
+    env = valid_env()
+    env["KB_DATABASE_URL"] = "postgresql+psycopg://kb:different-password@postgres:5432/kb"
+
+    errors = collect_deploy_env_errors(env)
+
+    assert any(
+        "KB_DATABASE_URL password must match KB_POSTGRES_PASSWORD" in error
+        for error in errors
+    )
+
+
+def test_deploy_env_validation_accepts_url_encoded_postgres_password() -> None:
+    env = valid_env()
+    env["KB_POSTGRES_PASSWORD"] = "db/password#123"
+    env["KB_DATABASE_URL"] = "postgresql+psycopg://kb:db%2Fpassword%23123@postgres:5432/kb"
+
+    assert collect_deploy_env_errors(env) == []
 
 
 def test_deploy_env_validation_rejects_missing_and_development_defaults() -> None:
