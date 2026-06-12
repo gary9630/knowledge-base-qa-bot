@@ -242,3 +242,5 @@ sample-docs/
 tmp/
 # Session handoff notes (local only)
 handoff.md
+
+connect-server.sh

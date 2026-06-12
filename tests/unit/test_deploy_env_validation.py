@@ -7,6 +7,8 @@ def valid_env() -> dict[str, str]:
         "KB_AUTH_SECRET_KEY": "x" * 32,
         "KB_PLATFORM_USERNAME": "course-user",
         "KB_PLATFORM_PASSWORD": "course-password-123",
+        "KB_ADMIN_USERNAME": "course-admin",
+        "KB_ADMIN_PASSWORD": "admin-password-123",
         "KB_ADMIN_API_KEY": "admin-key-123456789",
         "KB_DATABASE_URL": "postgresql+psycopg://kb:kb@postgres:5432/kb",
         "KB_DOCS_DIR": "/app/docs",
@@ -28,6 +30,8 @@ def test_deploy_env_validation_rejects_missing_and_development_defaults() -> Non
     env["KB_AUTH_SECRET_KEY"] = "short"
     env["KB_PLATFORM_USERNAME"] = "student"
     env["KB_PLATFORM_PASSWORD"] = "student-password"
+    env["KB_ADMIN_USERNAME"] = "admin"
+    env["KB_ADMIN_PASSWORD"] = "admin-password"
     env["KB_ADMIN_API_KEY"] = "local-admin-key"
     env["KB_ANSWER_PROVIDER"] = "openai"
     env.pop("OPENAI_API_KEY")
@@ -37,6 +41,8 @@ def test_deploy_env_validation_rejects_missing_and_development_defaults() -> Non
     assert any("KB_AUTH_SECRET_KEY" in error for error in errors)
     assert any("KB_PLATFORM_USERNAME" in error for error in errors)
     assert any("KB_PLATFORM_PASSWORD" in error for error in errors)
+    assert any("KB_ADMIN_USERNAME" in error for error in errors)
+    assert any("KB_ADMIN_PASSWORD" in error for error in errors)
     assert any("KB_ADMIN_API_KEY" in error for error in errors)
     assert any("OPENAI_API_KEY" in error for error in errors)
 

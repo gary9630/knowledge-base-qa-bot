@@ -13,6 +13,8 @@ REQUIRED_SETTINGS = (
     "KB_AUTH_SECRET_KEY",
     "KB_PLATFORM_USERNAME",
     "KB_PLATFORM_PASSWORD",
+    "KB_ADMIN_USERNAME",
+    "KB_ADMIN_PASSWORD",
     "KB_ADMIN_API_KEY",
     "KB_DATABASE_URL",
     "KB_DOCS_DIR",
@@ -27,6 +29,8 @@ LOCAL_DEFAULTS = {
     "KB_AUTH_SECRET_KEY": {"local-auth-secret"},
     "KB_PLATFORM_USERNAME": {"student"},
     "KB_PLATFORM_PASSWORD": {"student-password"},
+    "KB_ADMIN_USERNAME": {"admin"},
+    "KB_ADMIN_PASSWORD": {"admin-password"},
     "KB_ADMIN_API_KEY": {"local-admin-key"},
 }
 

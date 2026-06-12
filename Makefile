@@ -43,6 +43,7 @@ BACKUP_FILES_FILE ?= $(BACKUP_DIR)/runtime-files.tar.gz
 RESTORE_DB_FILE ?= $(BACKUP_DB_FILE)
 RESTORE_FILES_FILE ?= $(BACKUP_FILES_FILE)
 REAL_CONTENT_SOURCE_DIR ?= course-materials-md
+REAL_CONTENT_SOURCE_PATH := $(if $(filter /%,$(REAL_CONTENT_SOURCE_DIR)),$(REAL_CONTENT_SOURCE_DIR),$(CURDIR)/$(REAL_CONTENT_SOURCE_DIR))
 REAL_CONTENT_CASES ?= ops/real-content-acceptance-cases.json
 REAL_CONTENT_REPORT ?= tmp/real-content-acceptance-report.json
 REAL_CONTENT_BACKUP_DIR ?= backups/real-content-$(shell date -u +%Y%m%dT%H%M%SZ)
@@ -81,9 +82,9 @@ real-content-env-check:
 	@test "$(REAL_CONTENT_EMBEDDING_PROVIDER)" != "openai" || test -n "$$OPENAI_API_KEY" || (echo "OPENAI_API_KEY is required when REAL_CONTENT_EMBEDDING_PROVIDER=openai."; exit 1)
 
 real-content-prepare:
-	@test -d "$(REAL_CONTENT_SOURCE_DIR)" || (echo "Missing REAL_CONTENT_SOURCE_DIR=$(REAL_CONTENT_SOURCE_DIR)"; exit 1)
+	@test -d "$(REAL_CONTENT_SOURCE_PATH)" || (echo "Missing REAL_CONTENT_SOURCE_DIR=$(REAL_CONTENT_SOURCE_DIR)"; exit 1)
 	$(REAL_CONTENT_COMPOSE) build app
-	$(REAL_CONTENT_COMPOSE) run --rm --no-deps --volume "$(CURDIR)/$(REAL_CONTENT_SOURCE_DIR):/real-content:ro" app python -m scripts.prepare_real_content --source-dir /real-content --docs-dir /app/docs
+	$(REAL_CONTENT_COMPOSE) run --rm --no-deps --volume "$(REAL_CONTENT_SOURCE_PATH):/real-content:ro" app python -m scripts.prepare_real_content --source-dir /real-content --docs-dir /app/docs
 
 real-content-index: real-content-env-check
 	$(REAL_CONTENT_COMPOSE_ENV) $(REAL_CONTENT_COMPOSE) build app
@@ -110,6 +111,8 @@ deploy-check-ci:
 	KB_AUTH_SECRET_KEY=ci-auth-secret-000000000000000000 \
 	KB_PLATFORM_USERNAME=ci-learner \
 	KB_PLATFORM_PASSWORD=ci-platform-password \
+	KB_ADMIN_USERNAME=ci-admin \
+	KB_ADMIN_PASSWORD=ci-admin-password \
 	KB_ADMIN_API_KEY=ci-admin-api-key \
 	KB_DATABASE_URL=postgresql+psycopg://kb:kb@postgres:5432/kb \
 	KB_DOCS_DIR=/app/docs \
