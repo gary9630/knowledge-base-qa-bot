@@ -4,6 +4,7 @@ set -Eeuo pipefail
 ENV_FILE="${KB_PRODUCTION_ENV_FILE:-/etc/kb/production.env}"
 APP_DIR="${KB_APP_DIR:-$(pwd)}"
 requested_kb_image="${KB_IMAGE:-}"
+requested_kb_image_archive="${KB_IMAGE_ARCHIVE:-}"
 
 if [ ! -f "$ENV_FILE" ]; then
   echo "Missing production env file: $ENV_FILE" >&2
@@ -19,6 +20,9 @@ set +a
 if [ -n "$requested_kb_image" ]; then
   KB_IMAGE="$requested_kb_image"
 fi
+if [ -n "$requested_kb_image_archive" ]; then
+  KB_IMAGE_ARCHIVE="$requested_kb_image_archive"
+fi
 
 : "${KB_IMAGE:?Set KB_IMAGE to the image tag that should be deployed.}"
 : "${KB_ADMIN_API_KEY:?Set KB_ADMIN_API_KEY in the production environment.}"
@@ -32,8 +36,17 @@ compose=(docker compose --env-file "$ENV_FILE" -f docker-compose.yml -f docker-c
 echo "Validating production compose configuration..."
 "${compose[@]}" config >/dev/null
 
-echo "Pulling production image: $KB_IMAGE"
-"${compose[@]}" pull app migrate worker eval-runner
+if [ -n "${KB_IMAGE_ARCHIVE:-}" ]; then
+  if [ ! -f "$KB_IMAGE_ARCHIVE" ]; then
+    echo "Missing KB_IMAGE_ARCHIVE: $KB_IMAGE_ARCHIVE" >&2
+    exit 1
+  fi
+
+  echo "Loading production image archive: $KB_IMAGE_ARCHIVE"
+  gzip -dc "$KB_IMAGE_ARCHIVE" | docker load >/dev/null
+else
+  echo "Skipping image pull; expecting image to exist locally: $KB_IMAGE"
+fi
 
 echo "Starting Postgres..."
 "${compose[@]}" up -d postgres

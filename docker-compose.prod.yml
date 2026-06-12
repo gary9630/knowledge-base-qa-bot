@@ -1,6 +1,6 @@
 x-production-image: &production-image
   image: ${KB_IMAGE:?Set KB_IMAGE to the production image tag}
-  pull_policy: always
+  pull_policy: never
 
 x-production-env-file: &production-env-file
   - ${KB_PRODUCTION_ENV_FILE:-/etc/kb/production.env}

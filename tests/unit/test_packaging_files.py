@@ -103,11 +103,11 @@ def test_compose_defines_app_postgres_and_worker_contracts() -> None:
     assert "nocopy: true" not in compose
 
 
-def test_production_compose_override_uses_registry_image_and_loopback_ports() -> None:
+def test_production_compose_override_uses_loaded_image_and_loopback_ports() -> None:
     compose = read_project_file("docker-compose.prod.yml")
 
     assert "image: ${KB_IMAGE:" in compose
-    assert "pull_policy: always" in compose
+    assert "pull_policy: never" in compose
     assert "restart: unless-stopped" in compose
     assert "${KB_POSTGRES_PORT:-127.0.0.1:5432}:5432" in compose
     assert "${KB_APP_PORT:-127.0.0.1:8000}:8000" in compose
@@ -244,12 +244,13 @@ def test_production_deploy_runbook_documents_release_sequence() -> None:
     assert "ops/live-answer-acceptance.md" in runbook
     assert "KB_POSTGRES_PORT=55432" in runbook
     assert "docker-compose.prod.yml" in runbook
-    assert "DigitalOcean Container Registry" in runbook
+    assert "docker save" in runbook
+    assert "docker load" in runbook
     assert ".github/workflows/deploy.yml" in runbook
     assert "scripts/scp_knowledge_files_to_server.sh" in runbook
 
 
-def test_deploy_workflow_pushes_docr_image_and_runs_remote_deploy() -> None:
+def test_deploy_workflow_copies_image_archive_and_runs_remote_deploy() -> None:
     workflow = read_project_file(".github/workflows/deploy.yml")
 
     assert "name: Deploy Production" in workflow
@@ -258,10 +259,16 @@ def test_deploy_workflow_pushes_docr_image_and_runs_remote_deploy() -> None:
     assert "branches: [main]" in workflow
     assert "workflow_dispatch:" in workflow
     assert "environment: production" in workflow
-    assert "digitalocean/action-doctl@v2" in workflow
-    assert "doctl registry login" in workflow
-    assert "registry.digitalocean.com/${{ secrets.DOCR_REGISTRY }}" in workflow
-    assert "docker push" in workflow
+    assert "digitalocean/action-doctl@v2" not in workflow
+    assert "doctl registry login" not in workflow
+    assert "DOCR_REGISTRY" not in workflow
+    assert "DIGITALOCEAN_ACCESS_TOKEN" not in workflow
+    assert "registry.digitalocean.com" not in workflow
+    assert "docker push" not in workflow
+    assert "docker save" in workflow
+    assert "gzip" in workflow
+    assert "scp " in workflow
+    assert "KB_IMAGE_ARCHIVE" in workflow
     assert "DEPLOY_SSH_PRIVATE_KEY" in workflow
     assert "DEPLOY_SSH_KNOWN_HOSTS" in workflow
     assert "scripts/deploy_production.sh" in workflow
@@ -275,9 +282,12 @@ def test_remote_deploy_script_uses_production_compose_without_rebuilding() -> No
     assert "/etc/kb/production.env" in script
     assert "docker-compose.prod.yml" in script
     assert "requested_kb_image" in script
+    assert "KB_IMAGE_ARCHIVE" in script
+    assert "docker load" in script
     assert "${KB_IMAGE:?" in script
     assert "docker compose" in script
-    assert "pull app migrate worker eval-runner" in script
+    assert "pull app migrate worker eval-runner" not in script
+    assert "Skipping image pull" in script
     assert "run --rm migrate" in script
     assert "up -d --no-build app" in script
     assert "--profile worker up -d --no-build worker" in script

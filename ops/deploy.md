@@ -77,15 +77,13 @@ HTTPS with Certbot's Nginx installer.
 ## Automated DigitalOcean Deployment
 
 `.github/workflows/deploy.yml` promotes only commits that already passed the `CI`
-workflow on `main`. It builds the app image, pushes it to DigitalOcean Container Registry,
-SSHes to the Droplet, checks out the exact commit, and runs
+workflow on `main`. It builds the app image on the GitHub runner, runs `docker save`,
+compresses the archive with `gzip`, copies it to the Droplet with `scp`, SSHes to the
+Droplet, checks out the exact commit, loads the archive with `docker load`, and runs
 `scripts/deploy_production.sh`.
 
 Configure these GitHub repository or environment secrets:
 
-- `DIGITALOCEAN_ACCESS_TOKEN`
-- `DOCR_REGISTRY` - registry name only, for
-  `registry.digitalocean.com/<registry>/knowledge-base-qa-bot:<tag>`
 - `DEPLOY_SSH_HOST`
 - `DEPLOY_SSH_USER`
 - `DEPLOY_SSH_PRIVATE_KEY`
@@ -102,7 +100,8 @@ cd /opt/kb/knowledge-base-qa-bot
 set -a
 . /etc/kb/production.env
 set +a
-KB_IMAGE=registry.digitalocean.com/<registry>/knowledge-base-qa-bot:<commit-sha> \
+KB_IMAGE=knowledge-base-qa-bot:<commit-sha> \
+KB_IMAGE_ARCHIVE=/tmp/knowledge-base-qa-bot-image-<commit-sha>.tar.gz \
   scripts/deploy_production.sh
 ```
 
@@ -113,8 +112,9 @@ docker compose --env-file /etc/kb/production.env \
   -f docker-compose.yml -f docker-compose.prod.yml
 ```
 
-It pulls the pushed image, starts Postgres, runs migrations, starts the app and worker
-with `--no-build`, then verifies `/health`, `/ready`, and worker runtime.
+It loads the copied image archive when `KB_IMAGE_ARCHIVE` is set, starts Postgres, runs
+migrations, starts the app and worker with `--no-build`, then verifies `/health`,
+`/ready`, and worker runtime.
 
 ## Upload Local Knowledge Files
 
@@ -208,8 +208,6 @@ For the Compose deployment model:
 set -a
 . /etc/kb/production.env
 set +a
-docker compose --env-file /etc/kb/production.env \
-  -f docker-compose.yml -f docker-compose.prod.yml pull app migrate worker eval-runner
 docker compose --env-file /etc/kb/production.env \
   -f docker-compose.yml -f docker-compose.prod.yml up -d postgres
 docker compose --env-file /etc/kb/production.env \
