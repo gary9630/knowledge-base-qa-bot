@@ -7,8 +7,13 @@ from alembic.config import Config
 from sqlalchemy import Engine, create_engine
 from sqlalchemy.orm import Session
 
-from app.core.config import Settings
-from app.core.database_urls import validate_test_database_url
+from app.core.config import Settings  # noqa: E402
+from app.core.database_urls import validate_test_database_url  # noqa: E402
+
+# 測試必須與本機 .env 無關（CI 也沒有 .env）：例如 .env 設定了
+# 平台/管理帳密時，Settings() 會自動載入而讓假設匿名的測試全變 401。
+# 需要特定設定的測試一律顯式傳入 Settings 參數。
+Settings.model_config["env_file"] = None
 
 
 @pytest.fixture(scope="session")

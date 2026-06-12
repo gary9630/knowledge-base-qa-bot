@@ -15,7 +15,17 @@ def read_project_file(path: str) -> str:
 
 
 def test_packaging_files_exist() -> None:
-    for path in ("Dockerfile", "docker-compose.yml", "Makefile", ".dockerignore"):
+    for path in (
+        "Dockerfile",
+        "docker-compose.yml",
+        "docker-compose.prod.yml",
+        "Makefile",
+        ".dockerignore",
+        ".github/workflows/deploy.yml",
+        "scripts/deploy_production.sh",
+        "scripts/scp_knowledge_files_to_server.sh",
+        "ops/nginx/kb.conf.example",
+    ):
         assert (ROOT / path).is_file(), f"{path} should exist for deploy packaging"
 
 
@@ -71,7 +81,11 @@ def test_compose_defines_app_postgres_and_worker_contracts() -> None:
     assert re.search(r"^\s+migrate:\s*$", compose, re.MULTILINE)
     assert "pgvector/pgvector" in compose
     assert '"${KB_POSTGRES_PORT:-5432}:5432"' in compose
-    assert "KB_DATABASE_URL=postgresql+psycopg://kb:kb@postgres:5432/kb" in compose
+    assert (
+        "KB_DATABASE_URL=${KB_DATABASE_URL:-postgresql+psycopg://kb:kb@postgres:5432/kb}"
+        in compose
+    )
+    assert "POSTGRES_PASSWORD: ${KB_POSTGRES_PASSWORD:-kb}" in compose
     assert "KB_ADMIN_API_KEY=${KB_ADMIN_API_KEY:-local-admin-key}" in compose
     assert compose.count("alembic upgrade head") == 1
     assert "uvicorn app.main:app" in compose
@@ -87,6 +101,18 @@ def test_compose_defines_app_postgres_and_worker_contracts() -> None:
     assert "source: raw_data" in compose
     assert "target: /app/raw" in compose
     assert "nocopy: true" not in compose
+
+
+def test_production_compose_override_uses_loaded_image_and_loopback_ports() -> None:
+    compose = read_project_file("docker-compose.prod.yml")
+
+    assert "image: ${KB_IMAGE:" in compose
+    assert "pull_policy: never" in compose
+    assert "restart: unless-stopped" in compose
+    assert "${KB_POSTGRES_PORT:-127.0.0.1:5432}:5432" in compose
+    assert "${KB_APP_PORT:-127.0.0.1:8000}:8000" in compose
+    assert "POSTGRES_PASSWORD: ${KB_POSTGRES_PASSWORD:" in compose
+    assert "KB_DATABASE_URL: ${KB_DATABASE_URL:" in compose
 
 
 def test_compose_test_profile_uses_isolated_test_environment() -> None:
@@ -175,6 +201,7 @@ def test_makefile_exposes_dev_test_lint_migration_and_docker_targets() -> None:
     assert "python -m scripts.rebuild_index" in makefile
     assert "python -m scripts.real_content_acceptance" in makefile
     assert 'test -n "$$OPENAI_API_KEY"' in makefile
+    assert "REAL_CONTENT_SOURCE_PATH" in makefile
     assert 'BACKUP_DB_FILE="$(REAL_CONTENT_BACKUP_DIR)/postgres.dump"' in makefile
     assert (
         'BACKUP_FILES_FILE="$(REAL_CONTENT_BACKUP_DIR)/runtime-files.tar.gz"'
@@ -216,6 +243,70 @@ def test_production_deploy_runbook_documents_release_sequence() -> None:
     assert "make real-content-package" in runbook
     assert "ops/live-answer-acceptance.md" in runbook
     assert "KB_POSTGRES_PORT=55432" in runbook
+    assert "docker-compose.prod.yml" in runbook
+    assert "docker save" in runbook
+    assert "docker load" in runbook
+    assert ".github/workflows/deploy.yml" in runbook
+    assert "scripts/scp_knowledge_files_to_server.sh" in runbook
+
+
+def test_deploy_workflow_copies_image_archive_and_runs_remote_deploy() -> None:
+    workflow = read_project_file(".github/workflows/deploy.yml")
+
+    assert "name: Deploy Production" in workflow
+    assert "workflow_run:" in workflow
+    assert "workflows: [\"CI\"]" in workflow
+    assert "branches: [main]" in workflow
+    assert "workflow_dispatch:" in workflow
+    assert "environment: production" in workflow
+    assert "digitalocean/action-doctl@v2" not in workflow
+    assert "doctl registry login" not in workflow
+    assert "DOCR_REGISTRY" not in workflow
+    assert "DIGITALOCEAN_ACCESS_TOKEN" not in workflow
+    assert "registry.digitalocean.com" not in workflow
+    assert "docker push" not in workflow
+    assert "docker save" in workflow
+    assert "gzip" in workflow
+    assert "scp " in workflow
+    assert "KB_IMAGE_ARCHIVE" in workflow
+    assert "DEPLOY_SSH_PRIVATE_KEY" in workflow
+    assert "DEPLOY_SSH_KNOWN_HOSTS" in workflow
+    assert "scripts/deploy_production.sh" in workflow
+    assert "--force" not in workflow
+
+
+def test_remote_deploy_script_uses_production_compose_without_rebuilding() -> None:
+    script = read_project_file("scripts/deploy_production.sh")
+
+    assert "set -Eeuo pipefail" in script
+    assert "/etc/kb/production.env" in script
+    assert "docker-compose.prod.yml" in script
+    assert "requested_kb_image" in script
+    assert "KB_IMAGE_ARCHIVE" in script
+    assert "docker load" in script
+    assert "${KB_IMAGE:?" in script
+    assert "docker compose" in script
+    assert "pull app migrate worker eval-runner" not in script
+    assert "Skipping image pull" in script
+    assert "run --rm migrate" in script
+    assert "up -d --no-build app" in script
+    assert "--profile worker up -d --no-build worker" in script
+    assert "/ready" in script
+    assert "/admin/jobs/runtime" in script
+    assert "git checkout --force" not in script
+
+
+def test_knowledge_upload_script_uses_connect_server_and_versioned_remote_directory() -> None:
+    script = read_project_file("scripts/scp_knowledge_files_to_server.sh")
+
+    assert "connect-server.sh" in script
+    assert "course-materials-md" in script
+    assert "REMOTE_UPLOAD_ROOT" in script
+    assert "knowledge-uploads" in script
+    assert "scp" in script
+    assert "tar -xzf" in script
+    assert "REAL_CONTENT_SOURCE_DIR" in script
+    assert "rm -rf" not in script
 
 
 def test_live_answer_acceptance_runbook_documents_required_cases() -> None:

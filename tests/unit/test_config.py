@@ -193,7 +193,7 @@ def test_settings_openai_reliability_defaults_are_production_safe() -> None:
 
     assert settings.openai_request_timeout_seconds == 30.0
     assert settings.openai_max_retries == 2
-    assert settings.openai_chat_max_completion_tokens == 1024
+    assert settings.openai_chat_max_completion_tokens == 4096
 
 
 def test_settings_openai_reliability_values_can_be_overridden_by_env(

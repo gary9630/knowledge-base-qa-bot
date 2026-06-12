@@ -6,7 +6,7 @@ from collections.abc import Callable, Iterator, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
-from typing import cast
+from typing import Any, cast
 from uuid import UUID
 
 import pytest
@@ -27,6 +27,24 @@ class IndexedSampleDocsApp:
     test_client: TestClient
 
 
+def _settings_without_auth(**overrides: object) -> Settings:
+    """Chat-flow settings with logins explicitly off.
+
+    These tests exercise the chat pipeline, not authentication; without this a
+    local .env with platform/admin credentials would turn every request 401.
+    """
+    base: dict[str, Any] = {
+        "embedding_provider": "fake",
+        "answer_provider": "fake",
+        "platform_username": None,
+        "platform_password": None,
+        "admin_username": None,
+        "admin_password": None,
+    }
+    base.update(overrides)
+    return Settings(**base)
+
+
 @pytest.fixture
 def app_with_indexed_sample_docs(
     db_session: Session,
@@ -45,17 +63,16 @@ def app_with_indexed_sample_docs(
         encoding="utf-8",
     )
 
-    settings = Settings(
+    settings = _settings_without_auth(
         docs_dir=str(docs_dir),
         raw_dir=str(raw_dir),
         kb_dir=str(kb_dir),
-        embedding_provider="fake",
-        answer_provider="fake",
+        admin_api_key="test-admin-key",
     )
     app = create_app(settings=settings, session_factory=_session_factory(db_session))
     client = TestClient(app)
 
-    index_response = client.post("/index")
+    index_response = client.post("/index", headers={"X-KB-Admin-Key": "test-admin-key"})
     assert index_response.status_code == 200
     assert index_response.json()["status"] == "succeeded"
 
@@ -63,12 +80,7 @@ def app_with_indexed_sample_docs(
 
 
 def test_chat_stream_validates_request_payload() -> None:
-    app = create_app(
-        settings=Settings(
-            embedding_provider="fake",
-            answer_provider="fake",
-        )
-    )
+    app = create_app(settings=_settings_without_auth())
     client = TestClient(app)
 
     response = client.post("/chat/stream", json={})
@@ -78,10 +90,7 @@ def test_chat_stream_validates_request_payload() -> None:
 
 def test_chat_stream_missing_conversation_returns_404(db_session: Session) -> None:
     app = create_app(
-        settings=Settings(
-            embedding_provider="fake",
-            answer_provider="fake",
-        ),
+        settings=_settings_without_auth(),
         session_factory=_session_factory(db_session),
     )
     client = TestClient(app)
@@ -154,12 +163,10 @@ def test_chat_stream_provider_error_records_stream_failure(
         encoding="utf-8",
     )
     app = create_app(
-        settings=Settings(
+        settings=_settings_without_auth(
             docs_dir=str(docs_dir),
             raw_dir=str(raw_dir),
             kb_dir=str(kb_dir),
-            embedding_provider="fake",
-            answer_provider="fake",
         ),
         session_factory=_session_factory(db_session),
         answer_provider=FailingAnswerProvider(),
@@ -207,12 +214,10 @@ def test_chat_stream_provider_budget_block_returns_stable_error(
     )
     answer_provider = TrackingStreamingAnswerProvider()
     app = create_app(
-        settings=Settings(
+        settings=_settings_without_auth(
             docs_dir=str(docs_dir),
             raw_dir=str(raw_dir),
             kb_dir=str(kb_dir),
-            embedding_provider="fake",
-            answer_provider="fake",
             provider_budget_daily_call_limit=1,
             provider_budget_block_on_exceeded=True,
         ),
@@ -351,3 +356,50 @@ def _session_factory(db_session: Session) -> Callable[[], Session]:
         )
 
     return create_session
+
+
+def test_chat_report_records_audit_event_for_session(
+    app_with_indexed_sample_docs: IndexedSampleDocsApp,
+    db_session: Session,
+) -> None:
+    client = app_with_indexed_sample_docs.test_client
+
+    chat_response = client.post("/chat", json={"query": "課程網站在哪裡？"})
+    assert chat_response.status_code == 200
+    conversation_id = chat_response.json()["conversation_id"]
+
+    report_response = client.post(
+        "/chat/report",
+        json={"conversation_id": conversation_id, "note": "答案看起來不對"},
+    )
+
+    assert report_response.status_code == 200
+    payload = report_response.json()
+    assert payload["status"] == "reported"
+    assert payload["conversation_id"] == conversation_id
+
+    audit_response = client.get(
+        "/admin/audit-events?event_type=chat.session_reported",
+        headers={"X-KB-Admin-Key": "test-admin-key"},
+    )
+    assert audit_response.status_code == 200
+    events = audit_response.json()["events"]
+    assert len(events) == 1
+    event = events[0]
+    assert event["resource_type"] == "conversation"
+    assert event["resource_id"] == conversation_id
+    assert event["metadata"]["note"] == "答案看起來不對"
+    assert event["metadata"]["message_count"] == 2
+
+
+def test_chat_report_unknown_conversation_returns_404(
+    app_with_indexed_sample_docs: IndexedSampleDocsApp,
+) -> None:
+    client = app_with_indexed_sample_docs.test_client
+
+    response = client.post(
+        "/chat/report",
+        json={"conversation_id": "00000000-0000-0000-0000-000000000001"},
+    )
+
+    assert response.status_code == 404

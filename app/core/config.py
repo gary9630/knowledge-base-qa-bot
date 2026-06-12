@@ -21,6 +21,8 @@ class Settings(BaseSettings):
     auth_secret_key: str | None = None
     platform_username: str | None = None
     platform_password: str | None = None
+    admin_username: str | None = None
+    admin_password: str | None = None
     platform_cohorts: str = ""
     platform_extra_visibility_labels: str = ""
     platform_session_ttl_seconds: int = 86_400
@@ -49,7 +51,12 @@ class Settings(BaseSettings):
     openai_chat_model: str | None = None
     openai_request_timeout_seconds: float = Field(default=30.0, gt=0)
     openai_max_retries: int = Field(default=2, ge=0)
-    openai_chat_max_completion_tokens: int = Field(default=1024, ge=1)
+    openai_chat_max_completion_tokens: int = Field(default=4096, ge=1)
+    openai_chat_temperature: float | None = Field(default=None, ge=0.0, le=2.0)
+    # 難題改用較強模型；router 用輕量模型做 guardrail 與難度分級
+    openai_chat_model_hard: str | None = None
+    openai_router_model: str | None = None
+    query_router_enabled: bool = True
     provider_budget_enabled: bool = True
     provider_budget_daily_token_limit: int = Field(default=0, ge=0)
     provider_budget_daily_call_limit: int = Field(default=0, ge=0)

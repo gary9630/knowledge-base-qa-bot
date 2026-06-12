@@ -75,6 +75,12 @@ class AnswerService:
                 )
             )
 
+        partial = _partially_grounded_result(
+            retry_answer, answer_sources, retry_validation
+        ) or _partially_grounded_result(first_answer, answer_sources, first_validation)
+        if partial is not None:
+            return self._with_provider_calls(partial)
+
         return self._with_provider_calls(
             AnswerResult(
                 answer=CANNOT_CONFIRM_ANSWER,
@@ -134,6 +140,10 @@ class AnswerService:
                 _result_from_valid_answer(answer, answer_sources, validation)
             )
 
+        partial = _partially_grounded_result(answer, answer_sources, validation)
+        if partial is not None:
+            return self._with_provider_calls(partial)
+
         return self._with_provider_calls(
             AnswerResult(
                 answer=CANNOT_CONFIRM_ANSWER,
@@ -166,6 +176,32 @@ class AnswerService:
 
     def _with_provider_calls(self, result: AnswerResult) -> AnswerResult:
         return _replace_provider_calls(result, self.provider_call_payloads())
+
+
+def _partially_grounded_result(
+    answer: str,
+    sources: Sequence[AnswerSource],
+    validation: CitationValidationResult,
+) -> AnswerResult | None:
+    """Accept an answer whose citations resolve to at least one selected source.
+
+    Stray citations are recorded as warnings instead of discarding the whole
+    answer; only the resolvable citations are surfaced as sources.
+    """
+    if not validation.cited_source_ids:
+        return None
+    if validation.citations_on_cannot_confirm:
+        return None
+
+    cited_sources = [
+        source for source in sources if source.source_id in validation.cited_source_ids
+    ]
+    return AnswerResult(
+        answer=answer,
+        sources=cited_sources,
+        valid=True,
+        citation_errors=_citation_errors(validation),
+    )
 
 
 def _result_from_valid_answer(

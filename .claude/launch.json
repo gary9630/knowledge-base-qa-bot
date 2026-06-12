@@ -12,6 +12,17 @@
       "port": 8000
     },
     {
+      "name": "api-preview",
+      "runtimeExecutable": "env",
+      "runtimeArgs": [
+        "KB_DATABASE_URL=postgresql+psycopg://kb:kb@localhost:5432/kb",
+        "uv", "run", "--python", "3.12",
+        "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8013"
+      ],
+      "port": 8013,
+      "autoPort": false
+    },
+    {
       "name": "api-smoke",
       "runtimeExecutable": "env",
       "runtimeArgs": [

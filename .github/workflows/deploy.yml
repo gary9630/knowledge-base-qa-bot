@@ -1,0 +1,114 @@
+name: Deploy Production
+
+on:
+  workflow_run:
+    workflows: ["CI"]
+    branches: [main]
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: Local Docker image tag to use for this deployment.
+        required: false
+        type: string
+
+concurrency:
+  group: production-deploy
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    name: Build, push, and deploy
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: production
+
+    steps:
+      - name: Resolve deploy metadata
+        id: meta
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_run" ]; then
+            deploy_sha="${{ github.event.workflow_run.head_sha }}"
+          else
+            deploy_sha="${GITHUB_SHA}"
+          fi
+
+          requested_tag="${{ github.event.inputs.image_tag }}"
+          if [ -n "$requested_tag" ]; then
+            image_tag="$requested_tag"
+          else
+            image_tag="$deploy_sha"
+          fi
+
+          image="knowledge-base-qa-bot:${image_tag}"
+          main_image="knowledge-base-qa-bot:main"
+          archive_path="${RUNNER_TEMP}/knowledge-base-qa-bot-image.tar.gz"
+          remote_archive_path="/tmp/knowledge-base-qa-bot-image-${deploy_sha}.tar.gz"
+
+          {
+            echo "deploy_sha=$deploy_sha"
+            echo "image=$image"
+            echo "main_image=$main_image"
+            echo "archive_path=$archive_path"
+            echo "remote_archive_path=$remote_archive_path"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.meta.outputs.deploy_sha }}
+
+      - name: Build production image
+        run: |
+          docker build \
+            --target app \
+            --tag "${{ steps.meta.outputs.image }}" \
+            --tag "${{ steps.meta.outputs.main_image }}" \
+            .
+
+      - name: Save production image archive
+        run: |
+          docker save \
+            "${{ steps.meta.outputs.image }}" \
+            "${{ steps.meta.outputs.main_image }}" \
+            | gzip > "${{ steps.meta.outputs.archive_path }}"
+
+      - name: Configure SSH
+        shell: bash
+        run: |
+          mkdir -p "$HOME/.ssh"
+          printf '%s\n' "${{ secrets.DEPLOY_SSH_PRIVATE_KEY }}" > "$HOME/.ssh/deploy_key"
+          chmod 600 "$HOME/.ssh/deploy_key"
+          printf '%s\n' "${{ secrets.DEPLOY_SSH_KNOWN_HOSTS }}" > "$HOME/.ssh/known_hosts"
+          chmod 600 "$HOME/.ssh/known_hosts"
+
+      - name: Copy image archive to Droplet
+        shell: bash
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_SSH_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_SSH_USER }}
+        run: |
+          scp -i "$HOME/.ssh/deploy_key" \
+            "${{ steps.meta.outputs.archive_path }}" \
+            "$DEPLOY_USER@$DEPLOY_HOST:${{ steps.meta.outputs.remote_archive_path }}"
+
+      - name: Deploy on Droplet
+        shell: bash
+        env:
+          DEPLOY_SHA: ${{ steps.meta.outputs.deploy_sha }}
+          KB_IMAGE: ${{ steps.meta.outputs.image }}
+          KB_IMAGE_ARCHIVE: ${{ steps.meta.outputs.remote_archive_path }}
+          DEPLOY_HOST: ${{ secrets.DEPLOY_SSH_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_SSH_USER }}
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+        run: |
+          ssh -i "$HOME/.ssh/deploy_key" "$DEPLOY_USER@$DEPLOY_HOST" \
+            "cd '$DEPLOY_PATH' \
+              && git fetch --depth=1 origin '$DEPLOY_SHA' \
+              && git checkout --detach '$DEPLOY_SHA' \
+              && KB_IMAGE='$KB_IMAGE' KB_IMAGE_ARCHIVE='$KB_IMAGE_ARCHIVE' scripts/deploy_production.sh"

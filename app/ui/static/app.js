@@ -15,6 +15,7 @@
     graphLoaded: false,
     graphStale: false,
     graphView: "cluster",
+    graphConceptDetail: null,
     // concept id -> array of source_ids, filled lazily by findConceptForSource.
     conceptSourceCache: new Map(),
     collapsedClusters: new Set(),
@@ -30,16 +31,19 @@
     evalReport: null,
     feedbackItems: [],
     selectedSources: [],
-    retrievalDiagnostics: null,
-    answerQuality: null,
     chatBusy: false,
-    indexStatus: null,
+    // 持續同一個對話：done 事件回傳的 conversation_id 會帶到後續訊息，
+    // 讓整個 session 可以在 DB 端追蹤（retrieval_events / provider_call_logs）。
+    conversationId: null,
+    transcript: [],
     auth: {
       authRequired: false,
       authenticated: true,
       username: null,
+      role: null,
       csrfToken: null,
     },
+    runtimeSettings: null,
   };
 
   const $ = (selector) => document.querySelector(selector);
@@ -50,34 +54,35 @@
     panels: $$("[data-panel]"),
     chatForm: $("#chat-form"),
     chatQuery: $("#chat-query"),
-    chatLimit: $("#chat-limit"),
-    chatStrategy: $("#chat-strategy"),
     chatLog: $("#chat-log"),
     chatEmptyState: $("#chat-empty-state"),
     chatComposerStatus: $("#chat-composer-status"),
     chatSubmit: $("#chat-submit"),
     learnerChatStatus: $("#learner-chat-status"),
+    chatClear: $("#chat-clear"),
+    chatExport: $("#chat-export"),
+    chatReport: $("#chat-report"),
     samplePrompts: $$("[data-sample-prompt]"),
     selectedSources: $("#answer-sources"),
     selectedSourceCount: $("#selected-source-count"),
-    answerQuality: $("#answer-quality"),
+    citationDisclosure: $("#citation-disclosure"),
     markdownPreview: $("#markdown-preview"),
     previewSourceMeta: $("#preview-source-meta"),
-    sourceList: $("#source-list"),
     sourceTable: $("#source-table"),
+    sourceReader: $("#source-reader"),
+    sourceReaderBack: $("#source-reader-back"),
+    sourceReaderBody: $("#source-reader-body"),
     refreshDocuments: $("#refresh-documents"),
     adminDocuments: $("#admin-documents"),
     graphCanvas: $("#graph-canvas"),
     graphEmpty: $("#graph-empty"),
+    graphStats: $("#graph-stats"),
     graphSearch: $("#graph-search"),
     loadGraph: $("#load-graph"),
     graphViewCluster: $("#graph-view-cluster"),
     graphViewRadial: $("#graph-view-radial"),
     graphViewOrder: $("#graph-view-order"),
     refreshSources: $("#refresh-sources"),
-    refreshStatus: $("#refresh-status"),
-    statusPill: $("#index-status-pill"),
-    statusGrid: $("#index-status"),
     uploadForm: $("#upload-form"),
     auditEventType: $("#audit-event-type"),
     auditOutcome: $("#audit-outcome"),
@@ -128,6 +133,10 @@
     platformPassword: $("#platform-password"),
     platformAuthStatus: $("#platform-auth-status"),
     platformLogout: $("#platform-logout"),
+    landingLoginOpen: $("#landing-login-open"),
+    landingCtaLogin: $("#landing-cta-login"),
+    landingLoginOverlay: $("#landing-login-overlay"),
+    landingLoginClose: $("#landing-login-close"),
     themeToggle: $("#theme-toggle"),
     workbench: $("[data-app]"),
     adminOnlySurfaces: $$("[data-admin-only]"),
@@ -146,6 +155,24 @@
     triggerGraphExtract: $("#trigger-graph-extract"),
     refreshGraphExtract: $("#refresh-graph-extract"),
     graphExtractStatus: $("#graph-extract-status"),
+    runtimeSettingsForm: $("#runtime-settings-form"),
+    refreshRuntimeSettings: $("#refresh-runtime-settings"),
+    resetRuntimeSettings: $("#reset-runtime-settings"),
+    runtimeSettingsStatus: $("#runtime-settings-status"),
+    refreshEditorDocuments: $("#refresh-editor-documents"),
+    editorDocumentSelect: $("#editor-document-select"),
+    editorLoadContent: $("#editor-load-content"),
+    editorContent: $("#editor-content"),
+    editorSaveContent: $("#editor-save-content"),
+    editorNewFilename: $("#editor-new-filename"),
+    editorNewContent: $("#editor-new-content"),
+    editorCreateDocument: $("#editor-create-document"),
+    editorStatus: $("#editor-status"),
+    refreshHealth: $("#refresh-health"),
+    healthSummary: $("#health-summary"),
+    healthChecks: $("#health-checks"),
+    providerLogs: $("#provider-logs"),
+    refreshProviderLogs: $("#refresh-provider-logs"),
   };
 
   function init() {
@@ -196,6 +223,28 @@
   function bindAuth() {
     elements.platformLoginForm.addEventListener("submit", loginPlatform);
     elements.platformLogout.addEventListener("click", logoutPlatform);
+    elements.landingLoginOpen.addEventListener("click", openLoginOverlay);
+    elements.landingCtaLogin.addEventListener("click", openLoginOverlay);
+    elements.landingLoginClose.addEventListener("click", closeLoginOverlay);
+    elements.landingLoginOverlay.addEventListener("click", (event) => {
+      if (event.target === elements.landingLoginOverlay) {
+        closeLoginOverlay();
+      }
+    });
+    document.addEventListener("keydown", (event) => {
+      if (event.key === "Escape" && !elements.landingLoginOverlay.hidden) {
+        closeLoginOverlay();
+      }
+    });
+  }
+
+  function openLoginOverlay() {
+    elements.landingLoginOverlay.hidden = false;
+    elements.platformUsername.focus();
+  }
+
+  function closeLoginOverlay() {
+    elements.landingLoginOverlay.hidden = true;
   }
 
   async function refreshAuthSession() {
@@ -207,6 +256,7 @@
         auth_required: true,
         authenticated: false,
         username: null,
+        role: null,
         csrf_token: null,
       });
       elements.platformAuthStatus.textContent = `Auth unavailable: ${errorMessage(error)}`;
@@ -264,12 +314,15 @@
       authRequired: Boolean(payload.auth_required),
       authenticated: Boolean(payload.authenticated),
       username: payload.username || null,
+      role: payload.role || null,
       csrfToken: payload.csrf_token || null,
     };
 
     const blocked = state.auth.authRequired && !state.auth.authenticated;
     if (blocked) {
       closeConsole();
+    } else {
+      closeLoginOverlay();
     }
     elements.platformLogin.hidden = !blocked;
     elements.workbench.classList.toggle("is-auth-blocked", blocked);
@@ -364,7 +417,13 @@
   }
 
   function isRestrictedLearner() {
-    return state.auth.authRequired && state.auth.authenticated;
+    // Admin sessions see the console entry and admin-only surfaces; everyone
+    // else (students, legacy platform sessions) gets the learner experience.
+    return (
+      state.auth.authRequired &&
+      state.auth.authenticated &&
+      state.auth.role !== "admin"
+    );
   }
 
   function applyAccessPolicy() {
@@ -394,6 +453,15 @@
     elements.refreshOverview.addEventListener("click", loadConsoleOverview);
     elements.triggerGraphExtract.addEventListener("click", triggerGraphExtraction);
     elements.refreshGraphExtract.addEventListener("click", refreshGraphExtractStatus);
+    elements.runtimeSettingsForm.addEventListener("submit", saveRuntimeSettings);
+    elements.refreshRuntimeSettings.addEventListener("click", loadRuntimeSettings);
+    elements.resetRuntimeSettings.addEventListener("click", resetRuntimeSettings);
+    elements.refreshEditorDocuments.addEventListener("click", refreshEditorDocuments);
+    elements.editorLoadContent.addEventListener("click", loadEditorContent);
+    elements.editorSaveContent.addEventListener("click", saveEditorContent);
+    elements.editorCreateDocument.addEventListener("click", createEditorDocument);
+    elements.refreshHealth.addEventListener("click", loadSystemHealth);
+    elements.refreshProviderLogs.addEventListener("click", refreshProviderLogs);
   }
 
   function openConsole() {
@@ -432,6 +500,422 @@
     if (panelName === "ops" && !state.providerObservability) {
       refreshProviderObservability();
     }
+
+    if (panelName === "settings") {
+      loadRuntimeSettings();
+    }
+
+    if (panelName === "editor") {
+      refreshEditorDocuments();
+    }
+
+    if (panelName === "health") {
+      loadSystemHealth();
+    }
+
+    if (panelName === "ops") {
+      refreshProviderLogs();
+    }
+  }
+
+  // ── 系統設定（runtime overrides） ────────────────────────
+  // 表單欄位留空（或選「使用預設」）代表沿用 .env 預設值；
+  // 填值即建立覆寫，儲存後立即生效。
+  const RUNTIME_NUMBER_FIELDS = new Set([
+    "openai_chat_max_completion_tokens",
+    "openai_chat_temperature",
+    "provider_budget_daily_token_limit",
+    "provider_budget_daily_call_limit",
+  ]);
+  const RUNTIME_BOOLEAN_FIELDS = new Set([
+    "provider_budget_enabled",
+    "provider_budget_block_on_exceeded",
+  ]);
+
+  function runtimeSettingsFields() {
+    return Array.from(
+      elements.runtimeSettingsForm.querySelectorAll("input[name], select[name]"),
+    );
+  }
+
+  function setRuntimeSettingsStatus(message, { failed = false } = {}) {
+    elements.runtimeSettingsStatus.textContent = message;
+    elements.runtimeSettingsStatus.classList.toggle("is-danger", failed);
+  }
+
+  async function loadRuntimeSettings() {
+    try {
+      const payload = await getJsonWithHeaders("/admin/settings", adminHeaders());
+      renderRuntimeSettings(payload);
+      setRuntimeSettingsStatus("已載入目前設定。");
+    } catch (error) {
+      setRuntimeSettingsStatus(`系統設定無法載入：${errorMessage(error)}`, { failed: true });
+    }
+  }
+
+  function renderRuntimeSettings(payload) {
+    state.runtimeSettings = payload || null;
+    const overrides = (payload && payload.overrides) || {};
+    const defaults = (payload && payload.defaults) || {};
+
+    runtimeSettingsFields().forEach((field) => {
+      const key = field.name;
+      const overrideValue = overrides[key];
+      field.value = overrideValue == null ? "" : String(overrideValue);
+    });
+
+    $$("#runtime-settings-form .settings-default").forEach((node) => {
+      const key = node.dataset.defaultFor;
+      const defaultValue = defaults[key];
+      node.textContent = `預設：${formatRuntimeDefault(defaultValue)}`;
+    });
+  }
+
+  function formatRuntimeDefault(value) {
+    if (value == null || value === "") {
+      return "未設定";
+    }
+    if (value === true) {
+      return "開啟";
+    }
+    if (value === false) {
+      return "關閉";
+    }
+    return String(value);
+  }
+
+  function collectRuntimeOverrides() {
+    const overrides = {};
+    runtimeSettingsFields().forEach((field) => {
+      const key = field.name;
+      const raw = field.value.trim();
+      if (!raw) {
+        return;
+      }
+      if (RUNTIME_BOOLEAN_FIELDS.has(key)) {
+        overrides[key] = raw === "true";
+        return;
+      }
+      if (RUNTIME_NUMBER_FIELDS.has(key)) {
+        overrides[key] = Number(raw);
+        return;
+      }
+      overrides[key] = raw;
+    });
+    return overrides;
+  }
+
+  async function saveRuntimeSettings(event) {
+    event.preventDefault();
+    await submitRuntimeOverrides(collectRuntimeOverrides(), "設定已儲存並立即生效。");
+  }
+
+  async function resetRuntimeSettings() {
+    await submitRuntimeOverrides({}, "已清除全部覆寫，恢復 .env 預設值。");
+  }
+
+  async function submitRuntimeOverrides(overrides, successMessage) {
+    setRuntimeSettingsStatus("儲存中…");
+    try {
+      const response = await fetch("/admin/settings", {
+        method: "PUT",
+        headers: jsonAdminHeaders(),
+        body: JSON.stringify({ overrides }),
+      });
+      if (!response.ok) {
+        throw new Error(await responseError(response));
+      }
+      renderRuntimeSettings(await response.json());
+      setRuntimeSettingsStatus(successMessage);
+      appendOperation("Runtime settings updated.");
+    } catch (error) {
+      setRuntimeSettingsStatus(`儲存失敗：${errorMessage(error)}`, { failed: true });
+    }
+  }
+
+  // ── 教材編輯（markdown CRUD）─────────────────────────────
+  function setEditorStatus(message, { failed = false } = {}) {
+    elements.editorStatus.textContent = message;
+    elements.editorStatus.classList.toggle("is-danger", failed);
+  }
+
+  async function refreshEditorDocuments() {
+    try {
+      const payload = await getJsonWithHeaders("/admin/documents?status=active", adminHeaders());
+      const documents = (payload.documents || []).filter((doc) =>
+        (doc.filename || "").toLowerCase().endsWith(".md"),
+      );
+      const previous = elements.editorDocumentSelect.value;
+      elements.editorDocumentSelect.replaceChildren();
+      const placeholder = document.createElement("option");
+      placeholder.value = "";
+      placeholder.textContent = "選擇要編輯的教材…";
+      elements.editorDocumentSelect.append(placeholder);
+      documents.forEach((doc) => {
+        const option = document.createElement("option");
+        option.value = doc.id;
+        option.textContent = doc.title ? `${doc.title}（${doc.filename}）` : doc.filename;
+        elements.editorDocumentSelect.append(option);
+      });
+      if (previous && documents.some((doc) => doc.id === previous)) {
+        elements.editorDocumentSelect.value = previous;
+      }
+      setEditorStatus(`已載入 ${documents.length} 份 markdown 教材。`);
+    } catch (error) {
+      setEditorStatus(`教材清單無法載入：${errorMessage(error)}`, { failed: true });
+    }
+  }
+
+  async function loadEditorContent() {
+    const documentId = elements.editorDocumentSelect.value;
+    if (!documentId) {
+      setEditorStatus("請先選擇要編輯的教材。", { failed: true });
+      return;
+    }
+    setEditorStatus("載入內容中…");
+    try {
+      const payload = await getJsonWithHeaders(
+        `/admin/documents/${documentId}/content`,
+        adminHeaders(),
+      );
+      elements.editorContent.value = payload.content;
+      setEditorStatus(`已載入「${payload.filename}」，編輯後請儲存。`);
+    } catch (error) {
+      setEditorStatus(`內容無法載入：${errorMessage(error)}`, { failed: true });
+    }
+  }
+
+  async function saveEditorContent() {
+    const documentId = elements.editorDocumentSelect.value;
+    const content = elements.editorContent.value;
+    if (!documentId) {
+      setEditorStatus("請先選擇要編輯的教材。", { failed: true });
+      return;
+    }
+    if (!content.trim()) {
+      setEditorStatus("內容不可為空。", { failed: true });
+      return;
+    }
+    elements.editorSaveContent.disabled = true;
+    setEditorStatus("儲存並重新索引中…");
+    try {
+      const response = await fetch(`/admin/documents/${documentId}/content`, {
+        method: "PUT",
+        headers: jsonAdminHeaders(),
+        body: JSON.stringify({ content }),
+      });
+      if (!response.ok) {
+        throw new Error(await responseError(response));
+      }
+      const payload = await response.json();
+      setEditorStatus(
+        `已儲存「${payload.filename}」並重新索引（${payload.section_count} 段落 · ${payload.chunk_count} chunks）。`,
+      );
+      appendOperation(`Document content updated: ${payload.filename}`);
+      await refreshSources();
+      refreshGraphAfterContentChange();
+    } catch (error) {
+      setEditorStatus(`儲存失敗：${errorMessage(error)}`, { failed: true });
+    } finally {
+      elements.editorSaveContent.disabled = false;
+    }
+  }
+
+  async function createEditorDocument() {
+    const rawFilename = elements.editorNewFilename.value.trim();
+    const content = elements.editorNewContent.value;
+    if (!rawFilename) {
+      setEditorStatus("請輸入新教材的檔名。", { failed: true });
+      return;
+    }
+    if (!content.trim()) {
+      setEditorStatus("新教材內容不可為空。", { failed: true });
+      return;
+    }
+    const filename = rawFilename.toLowerCase().endsWith(".md")
+      ? rawFilename
+      : `${rawFilename}.md`;
+    elements.editorCreateDocument.disabled = true;
+    setEditorStatus("建立並索引中…");
+    try {
+      const formData = new FormData();
+      formData.append(
+        "file",
+        new File([content], filename, { type: "text/markdown" }),
+      );
+      const response = await fetch("/imports", {
+        method: "POST",
+        headers: adminHeaders(),
+        body: formData,
+      });
+      if (!response.ok) {
+        throw new Error(await responseError(response));
+      }
+      const payload = await response.json();
+      setEditorStatus(`已建立「${payload.filename}」（${payload.status}）。`);
+      appendOperation(`Document created from editor: ${payload.filename}`);
+      elements.editorNewFilename.value = "";
+      elements.editorNewContent.value = "";
+      await refreshEditorDocuments();
+      await refreshSources();
+      refreshGraphAfterContentChange();
+    } catch (error) {
+      setEditorStatus(`建立失敗：${errorMessage(error)}`, { failed: true });
+    } finally {
+      elements.editorCreateDocument.disabled = false;
+    }
+  }
+
+  // ── 服務狀態（health/status）────────────────────────────
+  async function loadSystemHealth() {
+    elements.healthSummary.textContent = "檢查中…";
+    try {
+      const payload = await getJsonWithHeaders("/admin/system-status", adminHeaders());
+      renderSystemHealth(payload);
+    } catch (error) {
+      elements.healthSummary.textContent = `服務狀態無法取得：${errorMessage(error)}`;
+      elements.healthChecks.replaceChildren(
+        emptyText(`服務狀態無法取得：${errorMessage(error)}`),
+      );
+    }
+  }
+
+  const HEALTH_STATUS_LABEL = { ok: "正常", warning: "注意", failed: "異常" };
+
+  function renderSystemHealth(payload) {
+    const overall = payload.overall || "unknown";
+    const uptime = formatUptime(payload.uptime_seconds);
+    elements.healthSummary.textContent = [
+      `整體狀態：${HEALTH_STATUS_LABEL[overall] || overall}`,
+      uptime ? `已運行 ${uptime}` : null,
+      payload.checked_at ? `檢查於 ${formatDateTime(payload.checked_at)}` : null,
+    ]
+      .filter(Boolean)
+      .join(" · ");
+
+    elements.healthChecks.replaceChildren();
+    (payload.checks || []).forEach((check) => {
+      const card = document.createElement("article");
+      card.className = `health-card is-${check.status}`;
+      const heading = document.createElement("div");
+      heading.className = "health-card-heading";
+      const title = document.createElement("strong");
+      title.textContent = check.label || check.name;
+      const badge = document.createElement("span");
+      badge.className = `status-badge is-${check.status === "ok" ? "succeeded" : check.status === "warning" ? "warning" : "failed"}`;
+      badge.textContent = HEALTH_STATUS_LABEL[check.status] || check.status;
+      heading.append(title, badge);
+      const detail = document.createElement("p");
+      detail.className = "source-meta";
+      detail.textContent = [
+        check.detail,
+        check.latency_ms != null ? `${check.latency_ms} ms` : null,
+      ]
+        .filter(Boolean)
+        .join(" · ") || "—";
+      card.append(heading, detail);
+      elements.healthChecks.append(card);
+    });
+  }
+
+  function formatUptime(seconds) {
+    const value = Number(seconds);
+    if (!Number.isFinite(value) || value < 0) {
+      return null;
+    }
+    if (value < 90) {
+      return `${Math.round(value)} 秒`;
+    }
+    if (value < 5400) {
+      return `${Math.round(value / 60)} 分鐘`;
+    }
+    if (value < 172800) {
+      return `${(value / 3600).toFixed(1)} 小時`;
+    }
+    return `${(value / 86400).toFixed(1)} 天`;
+  }
+
+  // ── LLM 呼叫紀錄（provider_call_logs）───────────────────
+  async function refreshProviderLogs() {
+    try {
+      const payload = await getJsonWithHeaders("/admin/provider-logs?limit=50", adminHeaders());
+      renderProviderLogs(payload.logs || []);
+    } catch (error) {
+      elements.providerLogs.replaceChildren(
+        emptyText(`LLM 呼叫紀錄無法載入：${errorMessage(error)}`),
+      );
+    }
+  }
+
+  function renderProviderLogs(logs) {
+    elements.providerLogs.replaceChildren();
+    if (logs.length === 0) {
+      elements.providerLogs.append(emptyText("尚無 LLM 呼叫紀錄。"));
+      return;
+    }
+
+    const table = document.createElement("table");
+    table.className = "admin-table";
+    const head = document.createElement("thead");
+    const headRow = document.createElement("tr");
+    ["時間", "操作", "模型", "狀態", "延遲", "tokens", "詳細"].forEach((label) => {
+      const cell = document.createElement("th");
+      cell.textContent = label;
+      headRow.append(cell);
+    });
+    head.append(headRow);
+    table.append(head);
+
+    const body = document.createElement("tbody");
+    logs.forEach((log) => {
+      const row = document.createElement("tr");
+      row.className = log.status === "failed" ? "is-failed" : "";
+
+      const cells = [
+        formatDateTime(log.created_at) || "--",
+        log.operation,
+        log.model,
+        log.status + (log.error_type ? ` (${log.error_type})` : ""),
+        log.latency_ms != null ? `${log.latency_ms} ms` : "--",
+        log.usage && log.usage.total_tokens != null ? String(log.usage.total_tokens) : "--",
+      ];
+      cells.forEach((value) => {
+        const cell = document.createElement("td");
+        cell.textContent = String(value);
+        row.append(cell);
+      });
+
+      const detailCell = document.createElement("td");
+      const toggle = document.createElement("button");
+      toggle.type = "button";
+      toggle.className = "text-button";
+      toggle.textContent = "展開";
+      detailCell.append(toggle);
+      row.append(detailCell);
+      body.append(row);
+
+      const detailRow = document.createElement("tr");
+      detailRow.className = "provider-log-detail";
+      detailRow.hidden = true;
+      const detailContent = document.createElement("td");
+      detailContent.colSpan = 7;
+      const pre = document.createElement("pre");
+      pre.textContent = JSON.stringify(
+        { request: log.request, response: log.response, usage: log.usage },
+        null,
+        2,
+      );
+      detailContent.append(pre);
+      detailRow.append(detailContent);
+      body.append(detailRow);
+
+      toggle.addEventListener("click", () => {
+        detailRow.hidden = !detailRow.hidden;
+        toggle.textContent = detailRow.hidden ? "展開" : "收合";
+      });
+    });
+    table.append(body);
+    elements.providerLogs.append(table);
   }
 
   function sharedAdminKey() {
@@ -651,6 +1135,9 @@
 
   function bindChat() {
     elements.chatQuery.addEventListener("keydown", handleChatKeydown);
+    elements.chatClear.addEventListener("click", clearConversation);
+    elements.chatExport.addEventListener("click", exportConversation);
+    elements.chatReport.addEventListener("click", reportConversation);
     elements.chatForm.addEventListener("submit", async (event) => {
       event.preventDefault();
       const query = elements.chatQuery.value.trim();
@@ -660,27 +1147,136 @@
 
       clearChatEmptyState();
       addMessage("user", query);
+      state.transcript.push({
+        role: "user",
+        content: query,
+        at: new Date().toISOString(),
+      });
+      updateChatToolbar();
       const answerNode = addMessage("assistant", "");
       elements.chatQuery.value = "";
       setSelectedSources([]);
-      renderAnswerQuality(null);
-      renderStreamingStatus(answerNode, "Looking through course sources...");
-      setChatBusy(true, "Looking through course sources...");
+      renderStreamingStatus(answerNode, "正在搜尋課程教材…");
+      setChatBusy(true, "正在搜尋課程教材…");
 
       try {
         await streamChat(query, answerNode);
       } catch (error) {
         answerNode.textContent = errorMessage(error);
+        state.transcript.push({
+          role: "assistant",
+          content: errorMessage(error),
+          error: true,
+          at: new Date().toISOString(),
+        });
         renderAnswerFooter(answerNode, {
+          decision: "cannot_confirm",
           answer_quality: {
             answer_valid: false,
             citation_errors: [errorMessage(error)],
           },
         });
       } finally {
-        setChatBusy(false, "Ready for your next question.");
+        setChatBusy(false, "可以繼續提問。");
       }
     });
+  }
+
+  // ── 對話工具列：清除 / 匯出 / 回報 ───────────────────────
+  function updateChatToolbar() {
+    const hasMessages = state.transcript.length > 0;
+    elements.chatClear.hidden = !hasMessages;
+    elements.chatExport.hidden = !hasMessages;
+    // 回報需要 conversation id（第一則回答完成後才有）。
+    elements.chatReport.hidden = !state.conversationId;
+  }
+
+  function clearConversation() {
+    if (state.chatBusy) {
+      return;
+    }
+    Array.from(elements.chatLog.children).forEach((child) => {
+      if (child !== elements.chatEmptyState) {
+        child.remove();
+      }
+    });
+    elements.chatEmptyState.hidden = false;
+    state.conversationId = null;
+    state.transcript = [];
+    setSelectedSources([]);
+    updateChatToolbar();
+    elements.chatComposerStatus.textContent = "已清除對話，可以重新提問。";
+  }
+
+  function exportConversation() {
+    if (state.transcript.length === 0) {
+      return;
+    }
+    const payload = {
+      exported_at: new Date().toISOString(),
+      conversation_id: state.conversationId,
+      message_count: state.transcript.length,
+      messages: state.transcript,
+    };
+    const blob = new Blob([JSON.stringify(payload, null, 2)], {
+      type: "application/json",
+    });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    const idPart = state.conversationId ? state.conversationId.slice(0, 8) : "session";
+    link.download = `course-chat-${idPart}.json`;
+    document.body.append(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+    elements.chatComposerStatus.textContent = "已匯出對話 JSON。";
+  }
+
+  async function reportConversation() {
+    if (!state.conversationId) {
+      return;
+    }
+    elements.chatReport.disabled = true;
+    try {
+      const response = await fetch("/chat/report", {
+        method: "POST",
+        headers: platformJsonHeaders(),
+        body: JSON.stringify({ conversation_id: state.conversationId }),
+      });
+      if (!response.ok) {
+        throw new Error(await responseError(response));
+      }
+      const copied = await copyTextToClipboard(state.conversationId);
+      elements.chatComposerStatus.textContent = copied
+        ? `已回報這次對話（session id ${state.conversationId.slice(0, 8)}… 已複製到剪貼簿）。`
+        : `已回報這次對話。session id：${state.conversationId}`;
+    } catch (error) {
+      elements.chatComposerStatus.textContent = `回報失敗：${errorMessage(error)}`;
+    } finally {
+      elements.chatReport.disabled = false;
+    }
+  }
+
+  async function copyTextToClipboard(text) {
+    try {
+      if (navigator.clipboard && window.isSecureContext) {
+        await navigator.clipboard.writeText(text);
+        return true;
+      }
+      const helper = document.createElement("textarea");
+      helper.value = text;
+      helper.setAttribute("readonly", "");
+      helper.style.position = "fixed";
+      helper.style.opacity = "0";
+      document.body.append(helper);
+      helper.select();
+      const copied = document.execCommand("copy");
+      helper.remove();
+      return copied;
+    } catch (_) {
+      return false;
+    }
   }
 
   function bindSamplePrompts() {
@@ -688,7 +1284,7 @@
       button.addEventListener("click", () => {
         elements.chatQuery.value = button.dataset.samplePrompt || button.textContent.trim();
         elements.chatQuery.focus();
-        elements.chatComposerStatus.textContent = "Review or send the suggested question.";
+        elements.chatComposerStatus.textContent = "確認問題內容後送出。";
       });
     });
   }
@@ -714,14 +1310,12 @@
   function setChatBusy(isBusy, statusText) {
     state.chatBusy = isBusy;
     elements.chatQuery.disabled = isBusy;
-    elements.chatStrategy.disabled = isBusy;
-    elements.chatLimit.disabled = isBusy;
     elements.chatSubmit.disabled = isBusy;
     elements.samplePrompts.forEach((button) => {
       button.disabled = isBusy;
     });
     elements.chatForm.classList.toggle("is-busy", isBusy);
-    elements.chatComposerStatus.textContent = statusText || (isBusy ? "Working..." : "Ready.");
+    elements.chatComposerStatus.textContent = statusText || (isBusy ? "處理中…" : "可以提問。");
   }
 
   function renderStreamingStatus(answerNode, message) {
@@ -734,9 +1328,12 @@
   async function streamChat(query, answerNode) {
     const payload = {
       query,
-      strategy: elements.chatStrategy.value,
-      limit: chatLimit(),
+      strategy: CHAT_STRATEGY,
+      limit: CHAT_LIMIT,
     };
+    if (state.conversationId) {
+      payload.conversation_id = state.conversationId;
+    }
     const response = await fetch("/chat/stream", {
       method: "POST",
       headers: platformJsonHeaders(),
@@ -756,17 +1353,13 @@
     await readSse(response.body, (event) => {
       if (event.event === "sources") {
         const payload = safeJson(event.data);
-        setSelectedSources(payload.selected_sources || payload.sources || []);
-        renderAnswerQuality({
-          retrieval_diagnostics: payload.retrieval_diagnostics,
-        });
+        const sourceCount = (payload.selected_sources || payload.sources || []).length;
         if (!receivedToken) {
-          const sourceCount = state.selectedSources.length;
           renderStreamingStatus(
             answerNode,
-            sourceCount === 1
-              ? "Found 1 relevant source."
-              : `Found ${sourceCount} relevant sources.`,
+            sourceCount > 0
+              ? `找到 ${sourceCount} 個相關段落，整理回答中…`
+              : "正在整理回答…",
           );
         }
         return;
@@ -788,6 +1381,7 @@
         answerNode.textContent = payload.detail || event.data || "Chat stream failed.";
         answerNode.classList.remove("is-streaming-status");
         renderAnswerFooter(answerNode, {
+          decision: "cannot_confirm",
           answer_quality: {
             answer_valid: false,
             citation_errors: [answerNode.textContent],
@@ -801,11 +1395,37 @@
           answerNode.textContent = payload.answer;
           answerNode.classList.remove("is-streaming-status");
         }
-        mergeCitedSources(payload.sources);
-        renderAnswerQuality(payload);
+        const citedSources = answerIsCannotConfirm(payload) ? [] : payload.sources || [];
+        setSelectedSources(citedSources);
         renderAnswerFooter(answerNode, payload);
+        if (payload.conversation_id) {
+          state.conversationId = payload.conversation_id;
+        }
+        state.transcript.push({
+          role: "assistant",
+          content: payload.answer ?? answerNode.textContent,
+          at: new Date().toISOString(),
+          decision: payload.decision || null,
+          conversation_id: payload.conversation_id || null,
+          assistant_message_id: payload.assistant_message_id || null,
+          citations: citedSources.map((source) => ({
+            source_id: source.source_id,
+            heading: source.heading,
+            filename: source.filename,
+          })),
+        });
+        updateChatToolbar();
       }
     });
+  }
+
+  function answerIsCannotConfirm(payload) {
+    const quality = payload.answer_quality || {};
+    return (
+      payload.decision === "cannot_confirm" ||
+      Boolean(quality.cannot_confirm_reason) ||
+      quality.answer_valid === false
+    );
   }
 
   async function readSse(body, onEvent) {
@@ -866,13 +1486,16 @@
     return value.startsWith(" ") ? value.slice(1) : value;
   }
 
+  const CHAT_STRATEGY = "hybrid";
+  const CHAT_LIMIT = 10;
+
   function addMessage(role, text) {
     const wrapper = document.createElement("div");
     wrapper.className = `message ${role}`;
 
     const label = document.createElement("span");
     label.className = "message-label";
-    label.textContent = role === "user" ? "You" : "Course Assistant";
+    label.textContent = role === "user" ? "你" : "課程助理";
 
     const card = document.createElement("div");
     card.className = role === "user" ? "user-bubble" : "answer-card";
@@ -893,20 +1516,24 @@
       return;
     }
 
-    renderAnswerCitations(answerNode, state.selectedSources);
+    const cannotConfirm = answerIsCannotConfirm(payload);
+    const citedSources = cannotConfirm ? [] : payload.sources || state.selectedSources;
+    if (!cannotConfirm) {
+      renderAnswerCitations(answerNode, citedSources);
+    }
     card.querySelector(".trust-badge")?.remove();
     card.querySelector(".answer-footer")?.remove();
 
     const trust = document.createElement("span");
     const trustState = answerTrustState(payload);
     trust.className = `trust-badge is-${trustState}`;
-    trust.textContent = answerTrustText(payload, state.selectedSources);
+    trust.textContent = answerTrustText(payload, citedSources);
     card.prepend(trust);
 
     const footer = document.createElement("div");
     footer.className = "answer-footer";
-    renderSourceChips(footer, state.selectedSources);
-    renderFeedbackRow(footer, payload, state.selectedSources);
+    renderSourceChips(footer, citedSources);
+    renderFeedbackRow(footer, payload, citedSources);
     card.append(footer);
   }
 
@@ -924,7 +1551,11 @@
       if (range.start > cursor) {
         fragments.push(document.createTextNode(answer.slice(cursor, range.start)));
       }
-      fragments.push(inlineCitationButton(range.source, range.displayIndex));
+      // 對不到任何來源的 token 直接隱藏（range.source 為 null），
+      // 不讓原始 [file.md#anchor] 字串干擾學生閱讀。
+      if (range.source) {
+        fragments.push(inlineCitationButton(range.source, range.displayIndex));
+      }
       cursor = range.end;
     });
     if (cursor < answer.length) {
@@ -932,6 +1563,10 @@
     }
     answerNode.replaceChildren(...fragments);
   }
+
+  // 看起來像引用、但跟已知來源完全比對不到的 token，
+  // 例如模型自己改寫過 anchor 的 [1-基本觀念-09-Caching.md#某段落]。
+  const LOOSE_CITATION_RE = /\[([^\[\]\r\n]{1,200}\.md#[^\[\]\r\n]{1,200})\]/g;
 
   function citationRanges(answer, sources) {
     const sourceList = Array.isArray(sources) ? sources : [];
@@ -952,6 +1587,31 @@
         start = answer.indexOf(token, start + token.length);
       }
     });
+
+    // 第二輪：寬鬆比對。anchor 對不上時退回以檔名對應同一份教材的
+    // 既有引用；連檔名都對不到就標記為 source: null（渲染時隱藏）。
+    LOOSE_CITATION_RE.lastIndex = 0;
+    let looseMatch = LOOSE_CITATION_RE.exec(answer);
+    while (looseMatch !== null) {
+      const start = looseMatch.index;
+      const end = start + looseMatch[0].length;
+      const overlapsExact = ranges.some((range) => start < range.end && end > range.start);
+      if (!overlapsExact) {
+        const tokenFilename = looseMatch[1].split("#")[0].trim();
+        const fallbackIndex = sourceList.findIndex(
+          (source) =>
+            source.filename === tokenFilename ||
+            (source.source_id || "").startsWith(`${tokenFilename}#`),
+        );
+        ranges.push({
+          start,
+          end,
+          source: fallbackIndex >= 0 ? sourceList[fallbackIndex] : null,
+          displayIndex: fallbackIndex >= 0 ? fallbackIndex + 1 : null,
+        });
+      }
+      looseMatch = LOOSE_CITATION_RE.exec(answer);
+    }
 
     return ranges
       .sort((left, right) => left.start - right.start || right.end - left.end)
@@ -1149,11 +1809,11 @@
     if (quality.cannot_confirm_reason === "not_indexed") {
       return "課程知識庫尚未建立索引";
     }
-    if (quality.answer_valid === false) {
-      return "回答需要來源審查";
+    if (quality.cannot_confirm_reason === "guardrail_blocked") {
+      return "這個問題和課程學習無關";
     }
-    if (quality.cannot_confirm_reason || payload.decision === "cannot_confirm") {
-      return "知識庫無法確認這個問題";
+    if (answerIsCannotConfirm(payload)) {
+      return "教材中找不到這個問題的答案";
     }
 
     const sourceCount = Array.isArray(sources) ? sources.length : 0;
@@ -1164,14 +1824,7 @@
   }
 
   function answerTrustState(payload) {
-    const quality = payload.answer_quality || {};
-    if (quality.answer_valid === false) {
-      return "danger";
-    }
-    if (quality.cannot_confirm_reason || payload.decision === "cannot_confirm") {
-      return "warn";
-    }
-    return "ok";
+    return answerIsCannotConfirm(payload) ? "warn" : "ok";
   }
 
   function setSelectedSources(sources) {
@@ -1181,8 +1834,11 @@
 
     if (state.selectedSources.length === 0) {
       elements.selectedSources.append(emptyText("這次回答沒有引用來源。"));
+      elements.citationDisclosure.open = false;
       resetPreviewSourceMeta();
-      elements.markdownPreview.textContent = "Select a source to preview markdown.";
+      elements.markdownPreview.replaceChildren(
+        emptyText("點選回答中的引用編號，這裡會顯示教材原文。"),
+      );
       return;
     }
 
@@ -1197,36 +1853,16 @@
       title.textContent = citationLabelForSource(source, index + 1);
       const meta = document.createElement("span");
       meta.className = "source-meta";
-      meta.textContent = [
-        source.source_id,
-        source.strategy,
-        typeof source.score === "number" ? source.score.toFixed(3) : null,
-        scoreBreakdownText(source),
-      ]
-        .filter(Boolean)
-        .join(" · ");
+      meta.textContent = sourceFilenameLabel(source);
 
       row.append(title, meta);
       elements.selectedSources.append(row);
-
-      if (index === 0) {
-        previewCandidate(source);
-      }
     });
   }
 
-  function mergeCitedSources(sources) {
-    const citedSources = Array.isArray(sources) ? sources : [];
-    const knownSourceIds = new Set(
-      state.selectedSources.map((source) => source.source_id),
-    );
-    const newSources = citedSources.filter(
-      (source) => source && source.source_id && !knownSourceIds.has(source.source_id),
-    );
-    if (newSources.length === 0) {
-      return;
-    }
-    setSelectedSources([...state.selectedSources, ...newSources]);
+  function sourceFilenameLabel(source) {
+    const filename = source.filename || "";
+    return filename.replace(/\.md$/i, "");
   }
 
   function citationLabelForSource(source, displayIndex) {
@@ -1243,21 +1879,14 @@
   }
 
   function previewCandidate(source) {
-    const heading = source.heading || source.source_id || "Source";
-    const body = source.body_md || "No markdown body returned for this source.";
-    const diagnostics = scoreBreakdownText(source);
+    const heading = source.heading || "教材段落";
+    const body = source.body_md || "這個段落沒有內容。";
     renderPreviewSourceMeta({
       title: heading,
-      summary: source.source_id || source.filename || "Answer source",
+      summary: sourceFilenameLabel(source) || "課程教材",
       kind: "引用來源",
     });
-    elements.markdownPreview.textContent = [
-      heading,
-      diagnostics ? `Diagnostics: ${diagnostics}` : null,
-      body,
-    ]
-      .filter(Boolean)
-      .join("\n\n");
+    renderMarkdownInto(elements.markdownPreview, body);
     setActiveSourceRow(source.source_id);
     renderGraphCrossLink(source.source_id, heading, body);
   }
@@ -1268,61 +1897,10 @@
     });
   }
 
-  function renderAnswerQuality(payload) {
-    if (!payload) {
-      state.retrievalDiagnostics = null;
-      state.answerQuality = null;
-      elements.answerQuality.replaceChildren(
-        statusRow("Decision", "Unknown"),
-        statusRow("Grounding", "--"),
-        statusRow("Retrieval", "--"),
-      );
-      return;
-    }
-
-    if (payload.retrieval_diagnostics) {
-      state.retrievalDiagnostics = payload.retrieval_diagnostics;
-    }
-    if (payload.answer_quality) {
-      state.answerQuality = payload.answer_quality;
-    }
-
-    const diagnostics = state.retrievalDiagnostics || {};
-    const quality = state.answerQuality || {};
-    const grounding = quality.answer_valid === false
-      ? `invalid: ${(quality.citation_errors || []).join(", ") || "citation validation"}`
-      : quality.cannot_confirm_reason
-        ? `cannot confirm: ${quality.cannot_confirm_reason}`
-        : quality.answer_valid === true
-          ? "valid citations"
-          : "--";
-    const retrieval = diagnostics.accepted_count == null
-      ? "--"
-      : `${diagnostics.accepted_count} selected · ${diagnostics.rejected_count || 0} rejected`;
-
-    elements.answerQuality.replaceChildren(
-      statusRow("Decision", payload.decision || "--"),
-      statusRow("Grounding", grounding),
-      statusRow("Retrieval", retrieval),
-      statusRow("Top Score", diagnostics.top_score == null ? "--" : Number(diagnostics.top_score).toFixed(3)),
-    );
-  }
-
-  function scoreBreakdownText(source) {
-    const debugScores = source.debug_scores || {};
-    const parts = [
-      debugScores.lexical_score != null ? `lexical ${Number(debugScores.lexical_score).toFixed(3)}` : null,
-      debugScores.vector_score != null ? `vector ${Number(debugScores.vector_score).toFixed(3)}` : null,
-      debugScores.source_priority_boost != null
-        ? `priority +${Number(debugScores.source_priority_boost).toFixed(3)}`
-        : null,
-    ];
-    return parts.filter(Boolean).join(" · ");
-  }
-
   function bindSources() {
     elements.refreshSources.addEventListener("click", refreshSources);
     elements.refreshDocuments.addEventListener("click", refreshAdminDocuments);
+    elements.sourceReaderBack.addEventListener("click", closeSourceReader);
   }
 
   async function refreshSources() {
@@ -1333,44 +1911,24 @@
       updateLearnerChatStatus();
     } catch (error) {
       state.documents = [];
-      elements.sourceList.replaceChildren(emptyText(`無法載入來源：${errorMessage(error)}`));
-      elements.sourceTable.replaceChildren(emptyText("尚未找到已索引的來源。"));
-      updateLearnerChatStatus("Course sources unavailable.");
+      elements.sourceTable.replaceChildren(
+        emptyText(`無法載入教材：${errorMessage(error)}`),
+      );
+      updateLearnerChatStatus("目前無法載入課程教材。");
     }
   }
 
   function renderSources() {
-    elements.sourceList.replaceChildren();
     elements.sourceTable.replaceChildren();
 
     if (state.documents.length === 0) {
-      elements.sourceList.append(emptyText("尚未載入任何來源"));
       elements.sourceTable.append(emptyText("尚未找到已索引的來源。"));
       return;
     }
 
     state.documents.forEach((documentItem) => {
-      const row = sourceButton(documentItem);
-      elements.sourceList.append(row);
       elements.sourceTable.append(sourceTableRow(documentItem));
     });
-  }
-
-  function sourceButton(documentItem) {
-    const row = document.createElement("button");
-    row.type = "button";
-    row.className = "source-row";
-    row.addEventListener("click", () => previewDocument(documentItem));
-
-    const title = document.createElement("strong");
-    title.className = "source-title";
-    title.textContent = documentDisplayTitle(documentItem);
-    const meta = document.createElement("span");
-    meta.className = "source-meta";
-    meta.textContent = documentSourceSummary(documentItem);
-
-    row.append(title, meta);
-    return row;
   }
 
   function sourceTableRow(documentItem) {
@@ -1378,7 +1936,7 @@
     row.type = "button";
     row.className = "doc-row";
     row.dataset.docId = documentItem.id;
-    row.addEventListener("click", () => previewDocument(documentItem));
+    row.addEventListener("click", () => openSourceReader(documentItem));
 
     const title = document.createElement("strong");
     title.className = "source-title";
@@ -1393,13 +1951,7 @@
 
   function documentSourceSummaryZh(documentItem) {
     const sectionCount = documentItem.section_count || 0;
-    const status = sectionCount > 0 ? "已索引" : "未索引";
-    const parts = [
-      `${sectionCount} 個段落`,
-      status,
-      documentItem.source_type || null,
-    ];
-    return parts.filter(Boolean).join(" · ");
+    return `${sectionCount} 個段落`;
   }
 
   async function refreshAdminDocuments() {
@@ -1535,49 +2087,311 @@
     }
   }
 
-  async function previewDocument(documentItem) {
-    $$("#source-table .doc-row").forEach((row) => row.classList.remove("is-active"));
-    const activeRow = $$("#source-table .doc-row").find(
-      (row) => row.dataset.docId === String(documentItem.id),
-    );
-    if (activeRow) {
-      activeRow.classList.add("is-active");
-    }
-    elements.markdownPreview.textContent = "載入來源中…";
-    renderPreviewSourceMeta({
-      title: documentDisplayTitle(documentItem),
-      summary: documentSourceSummary(documentItem),
-      kind: "Source browser",
-    });
+  // 教材閱讀器 — 在中間欄展開教材全文，取代列表。
+  async function openSourceReader(documentItem) {
+    elements.sourceTable.hidden = true;
+    elements.sourceReader.hidden = false;
+    elements.sourceReaderBody.replaceChildren(emptyText("載入教材內容中…"));
 
     try {
       const documentDetail = await getJson(`/sources/${documentItem.id}`);
-      renderPreviewSourceMeta({
-        title: documentDisplayTitle(documentDetail),
-        summary: documentSourceSummary(documentDetail),
-        kind: "Source browser",
+      const sections = await Promise.all(
+        (documentDetail.sections || []).map((section) =>
+          getJson(`/sources/${documentDetail.id}/sections/${section.id}`),
+        ),
+      );
+
+      const fragment = document.createDocumentFragment();
+      const title = document.createElement("h1");
+      title.textContent = documentDisplayTitle(documentDetail);
+      fragment.append(title);
+
+      if (sections.length === 0) {
+        fragment.append(emptyText("這份教材還沒有索引的段落。"));
+      }
+      sections.forEach((section) => {
+        const body = section.body_md || "";
+        if (section.heading && !markdownStartsWithHeading(body, section.heading)) {
+          const headingLevel = Math.min(4, Math.max(2, (section.level || 1) + 1));
+          const heading = document.createElement(`h${headingLevel}`);
+          heading.textContent = section.heading;
+          fragment.append(heading);
+        }
+        fragment.append(renderMarkdownFragment(body));
       });
-      elements.markdownPreview.textContent = await formatDocumentPreview(documentDetail);
+
+      elements.sourceReaderBody.replaceChildren(fragment);
+      elements.sourceReaderBody.focus({ preventScroll: true });
+      elements.sourceReaderBody.scrollTop = 0;
     } catch (error) {
-      elements.markdownPreview.textContent = `Source preview unavailable: ${errorMessage(error)}`;
+      elements.sourceReaderBody.replaceChildren(
+        emptyText(`教材內容無法載入：${errorMessage(error)}`),
+      );
     }
   }
 
-  async function formatDocumentPreview(documentDetail) {
-    const sections = await Promise.all(
-      (documentDetail.sections || []).map(async (section) => {
-        const detail = await getJson(`/sources/${documentDetail.id}/sections/${section.id}`);
-        return detail.body_md;
-      }),
-    );
-    return [
-      `# ${documentDetail.title || documentDetail.filename}`,
-      "",
-      `Path: ${documentDetail.canonical_path}`,
-      `Type: ${documentDetail.source_type}`,
-      "",
-      sections.join("\n\n") || "No sections indexed.",
-    ].join("\n");
+  function closeSourceReader() {
+    elements.sourceReader.hidden = true;
+    elements.sourceTable.hidden = false;
+  }
+
+  // ── Markdown 渲染（無外部依賴）────────────────────────────
+  // 支援：標題、清單、引用、程式碼區塊、表格、粗斜體、行內碼、連結。
+  // 一律以 textContent 寫入文字節點，來源內容不會被當成 HTML 解析。
+  function renderMarkdownInto(container, markdownText) {
+    container.replaceChildren(renderMarkdownFragment(markdownText));
+  }
+
+  // ── Mermaid 圖表渲染 ─────────────────────────────────────
+  // 教材的 ```mermaid 區塊改畫成圖；mermaid 未載入或語法錯誤時，
+  // 退回原本的程式碼區塊，閱讀不會中斷。
+  let mermaidSeq = 0;
+  let mermaidConfigured = false;
+
+  document.addEventListener("kb-theme-changed", () => {
+    // 之後渲染的圖採用新主題；已渲染的圖維持原樣。
+    mermaidConfigured = false;
+  });
+
+  function ensureMermaidConfigured() {
+    if (typeof mermaid === "undefined") {
+      return false;
+    }
+    if (!mermaidConfigured) {
+      const dark =
+        document.documentElement.getAttribute("data-theme") === "dark" ||
+        (!document.documentElement.getAttribute("data-theme") &&
+          window.matchMedia("(prefers-color-scheme: dark)").matches);
+      mermaid.initialize({
+        startOnLoad: false,
+        securityLevel: "strict",
+        suppressErrorRendering: true,
+        theme: dark ? "dark" : "neutral",
+        fontFamily: '"Noto Sans TC", "PingFang TC", "Segoe UI", sans-serif',
+      });
+      mermaidConfigured = true;
+    }
+    return true;
+  }
+
+  function mermaidBlock(codeText) {
+    const container = document.createElement("div");
+    container.className = "mermaid-diagram";
+
+    const fallbackToCode = () => {
+      const pre = document.createElement("pre");
+      const code = document.createElement("code");
+      code.textContent = codeText;
+      pre.append(code);
+      container.replaceChildren(pre);
+      container.classList.add("is-fallback");
+    };
+
+    if (!ensureMermaidConfigured()) {
+      fallbackToCode();
+      return container;
+    }
+
+    const renderId = `kb-mermaid-${++mermaidSeq}`;
+    mermaid
+      .render(renderId, codeText)
+      .then(({ svg }) => {
+        // mermaid 在 strict 模式輸出的 SVG 已淨化，可直接插入。
+        container.innerHTML = svg;
+      })
+      .catch(() => {
+        document.getElementById(`d${renderId}`)?.remove();
+        fallbackToCode();
+      });
+    return container;
+  }
+
+  function markdownStartsWithHeading(markdownText, headingText) {
+    const firstLine = String(markdownText || "")
+      .split("\n")
+      .find((line) => line.trim());
+    const match = (firstLine || "").match(/^#{1,6}\s+(.*)$/);
+    return Boolean(match) && match[1].trim() === String(headingText).trim();
+  }
+
+  function renderMarkdownFragment(markdownText) {
+    const fragment = document.createDocumentFragment();
+    const lines = String(markdownText || "").replace(/\r\n/g, "\n").split("\n");
+    let index = 0;
+
+    while (index < lines.length) {
+      const line = lines[index];
+
+      if (!line.trim() || /^\s*<!--.*-->\s*$/.test(line)) {
+        index += 1;
+        continue;
+      }
+
+      const fence = line.match(/^```\s*(\S*)/);
+      if (fence) {
+        const language = (fence[1] || "").toLowerCase();
+        const codeLines = [];
+        index += 1;
+        while (index < lines.length && !/^```/.test(lines[index])) {
+          codeLines.push(lines[index]);
+          index += 1;
+        }
+        index += 1; // skip closing fence
+        const codeText = codeLines.join("\n");
+        if (language === "mermaid") {
+          fragment.append(mermaidBlock(codeText));
+        } else {
+          const pre = document.createElement("pre");
+          const code = document.createElement("code");
+          code.textContent = codeText;
+          pre.append(code);
+          fragment.append(pre);
+        }
+        continue;
+      }
+
+      const heading = line.match(/^(#{1,6})\s+(.*)$/);
+      if (heading) {
+        const level = Math.min(6, heading[1].length + 1);
+        const node = document.createElement(`h${level}`);
+        node.append(renderInlineMarkdown(heading[2]));
+        fragment.append(node);
+        index += 1;
+        continue;
+      }
+
+      if (/^(-{3,}|\*{3,}|_{3,})\s*$/.test(line)) {
+        fragment.append(document.createElement("hr"));
+        index += 1;
+        continue;
+      }
+
+      if (/^\s*([-*+]|\d+[.)])\s+/.test(line)) {
+        const ordered = /^\s*\d+[.)]\s+/.test(line);
+        const list = document.createElement(ordered ? "ol" : "ul");
+        while (index < lines.length && /^\s*([-*+]|\d+[.)])\s+/.test(lines[index])) {
+          const item = document.createElement("li");
+          item.append(
+            renderInlineMarkdown(lines[index].replace(/^\s*([-*+]|\d+[.)])\s+/, "")),
+          );
+          list.append(item);
+          index += 1;
+        }
+        fragment.append(list);
+        continue;
+      }
+
+      if (/^>\s?/.test(line)) {
+        const quoteLines = [];
+        while (index < lines.length && /^>\s?/.test(lines[index])) {
+          quoteLines.push(lines[index].replace(/^>\s?/, ""));
+          index += 1;
+        }
+        const quote = document.createElement("blockquote");
+        quote.append(renderMarkdownFragment(quoteLines.join("\n")));
+        fragment.append(quote);
+        continue;
+      }
+
+      if (/^\|.*\|\s*$/.test(line)) {
+        const tableLines = [];
+        while (index < lines.length && /^\|.*\|\s*$/.test(lines[index])) {
+          tableLines.push(lines[index]);
+          index += 1;
+        }
+        fragment.append(renderMarkdownTable(tableLines));
+        continue;
+      }
+
+      const paragraphLines = [];
+      while (
+        index < lines.length &&
+        lines[index].trim() &&
+        !/^(#{1,6}\s|```|>\s?|\|.*\|\s*$|\s*([-*+]|\d+[.)])\s+|(-{3,}|\*{3,}|_{3,})\s*$)/.test(
+          lines[index],
+        )
+      ) {
+        paragraphLines.push(lines[index].trim());
+        index += 1;
+      }
+      if (paragraphLines.length > 0) {
+        const paragraph = document.createElement("p");
+        paragraph.append(renderInlineMarkdown(paragraphLines.join(" ")));
+        fragment.append(paragraph);
+      } else {
+        index += 1;
+      }
+    }
+
+    return fragment;
+  }
+
+  function renderMarkdownTable(tableLines) {
+    const table = document.createElement("table");
+    const rows = tableLines
+      .map((line) =>
+        line
+          .replace(/^\||\|\s*$/g, "")
+          .split("|")
+          .map((cell) => cell.trim()),
+      )
+      .filter((cells, rowIndex) => {
+        // Skip the |---|---| separator row.
+        const isSeparator = cells.every((cell) => /^:?-{2,}:?$/.test(cell || "-"));
+        return !(rowIndex === 1 && isSeparator);
+      });
+
+    rows.forEach((cells, rowIndex) => {
+      const row = document.createElement("tr");
+      cells.forEach((cell) => {
+        const node = document.createElement(rowIndex === 0 ? "th" : "td");
+        node.append(renderInlineMarkdown(cell));
+        row.append(node);
+      });
+      table.append(row);
+    });
+    return table;
+  }
+
+  function renderInlineMarkdown(text) {
+    const fragment = document.createDocumentFragment();
+    const pattern =
+      /(`[^`]+`)|(\*\*[^*]+\*\*)|(\*[^*]+\*)|(\[([^\]]+)\]\((https?:\/\/[^\s)]+)\))/g;
+    let cursor = 0;
+    let match = pattern.exec(text);
+
+    while (match) {
+      if (match.index > cursor) {
+        fragment.append(document.createTextNode(text.slice(cursor, match.index)));
+      }
+      if (match[1]) {
+        const code = document.createElement("code");
+        code.textContent = match[1].slice(1, -1);
+        fragment.append(code);
+      } else if (match[2]) {
+        const strong = document.createElement("strong");
+        strong.textContent = match[2].slice(2, -2);
+        fragment.append(strong);
+      } else if (match[3]) {
+        const em = document.createElement("em");
+        em.textContent = match[3].slice(1, -1);
+        fragment.append(em);
+      } else if (match[4]) {
+        const link = document.createElement("a");
+        link.textContent = match[5];
+        link.href = match[6];
+        link.target = "_blank";
+        link.rel = "noopener noreferrer";
+        fragment.append(link);
+      }
+      cursor = match.index + match[0].length;
+      match = pattern.exec(text);
+    }
+
+    if (cursor < text.length) {
+      fragment.append(document.createTextNode(text.slice(cursor)));
+    }
+    return fragment;
   }
 
   function documentDisplayTitle(documentItem) {
@@ -1589,40 +2403,25 @@
     return filename.replace(/\.md$/i, "");
   }
 
-  function documentSourceSummary(documentItem) {
-    const parts = [
-      `${documentItem.section_count || 0} 個段落`,
-      documentItem.source_type || "source",
-      documentItem.imported_from ? documentItem.imported_from : documentItem.filename,
-    ];
-    return parts.filter(Boolean).join(" · ");
-  }
-
   function renderPreviewSourceMeta({ title, summary, kind }) {
     elements.previewSourceMeta.replaceChildren();
     const wrapper = document.createElement("div");
     wrapper.className = "preview-source-card";
     const label = document.createElement("span");
-    label.textContent = kind || "Preview";
+    label.textContent = kind || "預覽";
     const heading = document.createElement("strong");
-    heading.textContent = title || "Untitled source";
+    heading.textContent = title || "未命名教材";
     const meta = document.createElement("span");
     meta.className = "source-meta";
-    meta.textContent = summary || "No source metadata available.";
+    meta.textContent = summary || "";
     wrapper.append(label, heading, meta);
     elements.previewSourceMeta.append(wrapper);
   }
 
   function resetPreviewSourceMeta() {
-    elements.previewSourceMeta.replaceChildren(emptyText("No preview selected."));
-  }
-
-  function chatLimit() {
-    const rawLimit = Number(elements.chatLimit.value || 5);
-    const normalizedLimit = Number.isFinite(rawLimit) ? Math.round(rawLimit) : 5;
-    const clampedLimit = Math.min(20, Math.max(1, normalizedLimit));
-    elements.chatLimit.value = String(clampedLimit);
-    return clampedLimit;
+    elements.previewSourceMeta.replaceChildren(
+      emptyText("點選回答中的引用編號，這裡會顯示教材原文。"),
+    );
   }
 
   // --- knowledge graph ---
@@ -1750,24 +2549,83 @@
     return { parents, nodes, edges };
   }
 
+  // 叢集視圖使用確定性的「群內螺旋＋群間網格」布局：力導向（cose）在
+  // 多群組大圖上會發散成不可讀的巨大畫布，preset 位置每次都穩定可讀。
+  function buildClusterPresetPositions(nodeDefs) {
+    const GOLDEN_ANGLE = 2.399963229728653;
+    const NODE_SPACING = 62;
+    const CLUSTER_GAP = 110;
+    const ROW_MAX_WIDTH = 2300;
+
+    const groups = new Map();
+    nodeDefs.forEach((def) => {
+      const key = def.data.parent || `solo:${def.data.clusterIndex ?? "none"}`;
+      if (!groups.has(key)) {
+        groups.set(key, []);
+      }
+      groups.get(key).push(def);
+    });
+
+    const infos = [...groups.values()]
+      .map((members) => ({
+        members,
+        radius: Math.max(90, NODE_SPACING * 0.7 * Math.sqrt(members.length) + 50),
+      }))
+      .sort((a, b) => b.members.length - a.members.length);
+
+    const positions = {};
+    let rowX = 0;
+    let rowY = 0;
+    let rowHeight = 0;
+    infos.forEach((info) => {
+      const diameter = info.radius * 2;
+      if (rowX > 0 && rowX + diameter > ROW_MAX_WIDTH) {
+        rowY += rowHeight + CLUSTER_GAP;
+        rowX = 0;
+        rowHeight = 0;
+      }
+      const centerX = rowX + info.radius;
+      const centerY = rowY + info.radius;
+      info.members.forEach((def, index) => {
+        const r = NODE_SPACING * 0.62 * Math.sqrt(index + 0.5);
+        const theta = index * GOLDEN_ANGLE;
+        positions[def.data.id] = {
+          x: centerX + r * Math.cos(theta),
+          y: centerY + r * Math.sin(theta),
+        };
+      });
+      rowX += diameter + CLUSTER_GAP;
+      rowHeight = Math.max(rowHeight, diameter);
+    });
+    return positions;
+  }
+
   const GRAPH_LAYOUTS = {
-    cluster: { name: "cose", animate: false, padding: 24, nodeRepulsion: 9000 },
     // Radial: assign each cluster its own concentric ring.
     // clusterCount - clusterIndex gives outermost ring to cluster 0's concepts;
     // level 0 is reserved for anything without a cluster.
     radial: {
       name: "concentric",
       animate: false,
-      padding: 24,
-      minNodeSpacing: 28,
+      padding: 30,
+      minNodeSpacing: 48,
       concentric: (node) => {
         const count = node.data("clusterCount") || 1;
         const idx = node.data("clusterIndex") || 0;
         return count - idx;
       },
       levelWidth: () => 1,
+      fit: true,
     },
-    order: { name: "dagre", rankDir: "LR", animate: false, padding: 24 },
+    order: {
+      name: "dagre",
+      rankDir: "LR",
+      animate: false,
+      padding: 30,
+      nodeSep: 36,
+      rankSep: 110,
+      fit: true,
+    },
   };
 
   function renderGraphView(view) {
@@ -1804,14 +2662,29 @@
     if (state.cy) {
       state.cy.destroy();
     }
+    const layout = useCompound
+      ? (() => {
+          const positions = buildClusterPresetPositions(nodes);
+          return {
+            name: "preset",
+            positions: (node) => positions[node.id()],
+            fit: true,
+            padding: 30,
+          };
+        })()
+      : GRAPH_LAYOUTS[view];
     state.cy = cytoscape({
       container: elements.graphCanvas,
       elements: [...(useCompound ? parents : []), ...nodes, ...edges],
-      layout: GRAPH_LAYOUTS[view],
+      layout,
+      minZoom: 0.03,
+      maxZoom: 3,
+      wheelSensitivity: 0.2,
       style: [
         { selector: "node[^isCluster]", style: {
-          label: "data(label)", "font-size": 11, width: "data(size)", height: "data(size)",
-          "background-color": "data(color)", "text-valign": "bottom", "text-margin-y": 4,
+          label: "data(label)", "font-size": 12, width: "data(size)", height: "data(size)",
+          "background-color": "data(color)", "text-valign": "bottom", "text-margin-y": 5,
+          "text-wrap": "wrap", "text-max-width": 130,
           color: theme.label } },
         // Compound parent nodes use a separate selector (no data() size/color
         // mappings) to avoid Cytoscape style-mapping warnings for fields that
@@ -1819,8 +2692,9 @@
         { selector: "node[?isCluster]", style: {
           "background-opacity": 0.08, "border-width": 1.5,
           "border-color": theme.clusterBorder,
-          label: "data(label)", "font-size": 14, "font-weight": 700,
-          color: theme.label, "text-valign": "top", shape: "round-rectangle" } },
+          label: "data(label)", "font-size": 15, "font-weight": 700,
+          color: theme.label, "text-valign": "top", shape: "round-rectangle",
+          padding: 18 } },
         { selector: "edge", style: {
           width: 1.4, "line-color": theme.edge, "curve-style": "bezier" } },
         { selector: 'edge[kind = "prerequisite"]', style: {
@@ -1830,15 +2704,47 @@
         ...(orderView
           ? [{ selector: 'edge[kind != "prerequisite"]', style: { opacity: 0.25 } }]
           : []),
-        { selector: "node.dimmed", style: { opacity: 0.15 } },
+        { selector: "node.dimmed", style: { opacity: 0.12, "text-opacity": 0.1 } },
+        { selector: "edge.dimmed", style: { opacity: 0.08 } },
         { selector: "node.highlighted", style: { "border-width": 3, "border-color": theme.highlight } },
       ],
     });
-    state.cy.on("tap", "node[^isCluster]", (event) => previewConcept(event.target.id()));
+    state.cy.on("tap", "node[^isCluster]", (event) => {
+      highlightGraphNeighborhood(event.target);
+      previewConcept(event.target.id());
+    });
     state.cy.on("tap", "node[?isCluster]", (event) => toggleClusterCollapse(event.target.id()));
+    state.cy.on("tap", (event) => {
+      if (event.target === state.cy) {
+        clearGraphNeighborhood();
+      }
+    });
+    state.cy.fit(undefined, 30);
     applyClusterCollapse();
     filterGraphNodes();
     renderGraphStats();
+  }
+
+  function highlightGraphNeighborhood(node) {
+    const cy = state.cy;
+    if (!cy) {
+      return;
+    }
+    cy.elements().removeClass("dimmed highlighted");
+    const neighborhood = node.closedNeighborhood();
+    cy.elements()
+      .not(neighborhood)
+      .not(cy.nodes("[?isCluster]"))
+      .addClass("dimmed");
+    node.addClass("highlighted");
+  }
+
+  function clearGraphNeighborhood() {
+    if (!state.cy) {
+      return;
+    }
+    state.cy.elements().removeClass("dimmed highlighted");
+    filterGraphNodes();
   }
 
   function setGraphView(view) {
@@ -1904,31 +2810,27 @@
       `${stats.cluster_count || 0} 個主題`,
       `${stats.edge_count || 0} 條關聯`,
     ];
-    if (stats.extracted_at) {
-      try {
-        parts.push(`最後更新 ${new Date(stats.extracted_at).toLocaleString()}`);
-      } catch (_) {
-        // ignore malformed date
-      }
-    }
-    let statsEl = elements.graphCanvas.previousElementSibling;
-    if (!statsEl || !statsEl.classList.contains("graph-stats")) {
-      statsEl = document.createElement("p");
-      statsEl.className = "graph-stats";
-      elements.graphCanvas.parentNode.insertBefore(statsEl, elements.graphCanvas);
-    }
-    statsEl.textContent = parts.join(" · ");
+    elements.graphStats.textContent = parts.join(" · ");
   }
 
+  // 概念詳情 — 點選圖中節點後渲染在右欄（來源內容區），
+  // 不佔用圖譜畫布的高度，也不需要往下捲動。
   async function previewConcept(conceptId) {
-    elements.markdownPreview.textContent = "載入概念中…";
+    renderPreviewSourceMeta({
+      title: "載入概念中…",
+      summary: "",
+      kind: "知識圖譜概念",
+    });
+    elements.markdownPreview.replaceChildren(emptyText("載入概念中…"));
 
     try {
       const detail = await getJson(`/graph/concepts/${conceptId}`);
+      state.graphConceptDetail = detail;
       renderConceptDetail(detail);
     } catch (error) {
-      resetPreviewSourceMeta();
-      elements.markdownPreview.textContent = `Concept detail unavailable: ${errorMessage(error)}`;
+      elements.markdownPreview.replaceChildren(
+        emptyText(`概念內容無法載入：${errorMessage(error)}`),
+      );
     }
   }
 
@@ -1936,68 +2838,95 @@
     const sources = Array.isArray(detail.sources) ? detail.sources : [];
     renderPreviewSourceMeta({
       title: detail.name,
-      summary: [detail.cluster, `${sources.length} 個來源`].filter(Boolean).join(" · "),
+      summary: [detail.cluster, `${sources.length} 個相關段落`].filter(Boolean).join(" · "),
       kind: "知識圖譜概念",
     });
 
     const askButton = document.createElement("button");
     askButton.type = "button";
-    askButton.id = "ask-about-concept";
-    askButton.className = "secondary-button";
-    askButton.textContent = "去問問題";
+    askButton.className = "secondary-button graph-detail-ask";
+    askButton.textContent = "拿這個概念去提問";
     askButton.addEventListener("click", () => askAboutConcept(detail.name));
     elements.previewSourceMeta.append(askButton);
 
-    const sourceList = document.createElement("div");
-    sourceList.className = "concept-sources";
-    sources.forEach((source) => {
-      const row = document.createElement("button");
-      row.type = "button";
-      row.className = "source-row";
-      row.addEventListener("click", () => previewConceptSource(source));
+    const fragment = document.createDocumentFragment();
 
-      const title = document.createElement("strong");
-      title.className = "source-title";
-      title.textContent = source.heading || source.source_id;
-      const meta = document.createElement("span");
-      meta.className = "source-meta";
-      meta.textContent = [source.filename, source.source_id].filter(Boolean).join(" · ");
-
-      row.append(title, meta);
-      sourceList.append(row);
-    });
-    elements.previewSourceMeta.append(sourceList);
+    if (detail.summary) {
+      const summary = document.createElement("p");
+      summary.className = "graph-detail-summary";
+      summary.textContent = detail.summary;
+      fragment.append(summary);
+    }
 
     const aliases = Array.isArray(detail.aliases) ? detail.aliases : [];
-    elements.markdownPreview.textContent = [
-      detail.name,
-      detail.summary,
-      aliases.length > 0 ? `Aliases: ${aliases.join(", ")}` : null,
-    ]
-      .filter(Boolean)
-      .join("\n\n");
+    if (aliases.length > 0) {
+      const aliasLine = document.createElement("p");
+      aliasLine.className = "source-meta";
+      aliasLine.textContent = `也稱作：${aliases.join("、")}`;
+      fragment.append(aliasLine);
+    }
+
+    if (sources.length > 0) {
+      const sourcesHeading = document.createElement("h4");
+      sourcesHeading.className = "graph-detail-sources-heading";
+      sourcesHeading.textContent = `相關教材段落（${sources.length}）`;
+      fragment.append(sourcesHeading);
+
+      const sourceList = document.createElement("div");
+      sourceList.className = "concept-sources";
+      sources.forEach((source) => {
+        const row = document.createElement("button");
+        row.type = "button";
+        row.className = "source-row";
+        row.addEventListener("click", () => previewConceptSource(source));
+
+        const rowTitle = document.createElement("strong");
+        rowTitle.className = "source-title";
+        rowTitle.textContent = source.heading || source.source_id;
+        const meta = document.createElement("span");
+        meta.className = "source-meta";
+        meta.textContent = (source.filename || "").replace(/\.md$/i, "");
+
+        row.append(rowTitle, meta);
+        sourceList.append(row);
+      });
+      fragment.append(sourceList);
+    }
+
+    elements.markdownPreview.replaceChildren(fragment);
   }
 
   async function previewConceptSource(source) {
-    elements.markdownPreview.textContent = "載入來源段落中…";
+    const backButton = document.createElement("button");
+    backButton.type = "button";
+    backButton.className = "text-button concept-back-link";
+    backButton.textContent = "← 回到概念";
+    backButton.addEventListener("click", () => {
+      if (state.graphConceptDetail) {
+        renderConceptDetail(state.graphConceptDetail);
+      }
+    });
+
     renderPreviewSourceMeta({
       title: source.heading || source.source_id,
-      summary: source.source_id || "概念來源",
-      kind: "知識圖譜預覽",
+      summary: (source.filename || "").replace(/\.md$/i, ""),
+      kind: "教材段落",
     });
+    elements.markdownPreview.replaceChildren(backButton, emptyText("載入教材段落中…"));
+
     try {
       const section = await getJson(
         `/sources/${source.document_id}/sections/${source.section_id}`,
       );
-      renderPreviewSourceMeta({
-        title: section.heading,
-        summary: section.source_id,
-        kind: "知識圖譜預覽",
-      });
-      elements.markdownPreview.textContent = [section.heading, section.body_md].join("\n\n");
-      renderGraphCrossLink(section.source_id, section.heading, section.body_md);
+      const body = document.createElement("div");
+      body.className = "markdown-body";
+      renderMarkdownInto(body, section.body_md || "");
+      elements.markdownPreview.replaceChildren(backButton, body);
     } catch (error) {
-      elements.markdownPreview.textContent = `Source preview unavailable: ${errorMessage(error)}`;
+      elements.markdownPreview.replaceChildren(
+        backButton,
+        emptyText(`教材段落無法載入：${errorMessage(error)}`),
+      );
     }
   }
 
@@ -2085,6 +3014,8 @@
     state.cy.elements().unselect();
     node.select();
     state.cy.center(node);
+    highlightGraphNeighborhood(node);
+    previewConcept(conceptId);
   }
 
   function askAboutConcept(name) {
@@ -2110,7 +3041,6 @@
     elements.rebuildIndex.addEventListener("click", rebuildIndex);
     elements.queueIndexJob.addEventListener("click", queueIndexJob);
     elements.recoverStaleJobs.addEventListener("click", recoverStaleJobs);
-    elements.refreshStatus.addEventListener("click", refreshStatus);
     elements.refreshImports.addEventListener("click", refreshImportJobs);
     elements.refreshBackgroundJobs.addEventListener("click", refreshBackgroundJobs);
     elements.backgroundJobStatusFilter.addEventListener("change", refreshBackgroundJobs);
@@ -2175,7 +3105,6 @@
       appendOperation(
         `Index ${payload.status}: ${payload.files_indexed} files, ${payload.chunks_indexed} chunks`,
       );
-      await refreshStatus();
       await refreshSources();
       await refreshGraphAfterContentChange();
     } catch (error) {
@@ -2934,42 +3863,8 @@
       .join(" · ");
   }
 
-  async function refreshStatus() {
-    try {
-      const payload = await getJson("/index/status");
-      const chunks = payload.stats && payload.stats.chunks_indexed;
-      state.indexStatus = {
-        status: payload.status,
-        chunks,
-        updatedAt: payload.updated_at || null,
-      };
-      elements.statusPill.textContent = `Index ${payload.status}`;
-      elements.statusPill.className = payload.status === "succeeded" ? "is-success" : "is-warning";
-      elements.statusGrid.replaceChildren(
-        statusRow("Status", payload.status),
-        statusRow("Chunks", chunks ?? "--"),
-        statusRow("Updated", payload.updated_at || "--"),
-      );
-      updateLearnerChatStatus();
-    } catch (error) {
-      state.indexStatus = {
-        status: "unavailable",
-        chunks: null,
-        updatedAt: null,
-      };
-      elements.statusPill.textContent = "Index not ready";
-      elements.statusPill.className = "is-warning";
-      elements.statusGrid.replaceChildren(
-        statusRow("Status", "Unavailable"),
-        statusRow("Chunks", "--"),
-        statusRow("Updated", errorMessage(error)),
-      );
-      updateLearnerChatStatus("Course source index unavailable.");
-    }
-  }
-
   async function refreshLearnerContext() {
-    await Promise.allSettled([refreshStatus(), refreshSources()]);
+    await refreshSources();
   }
 
   function updateLearnerChatStatus(fallbackText = null) {
@@ -2979,24 +3874,10 @@
     }
 
     const sourceCount = state.documents.length;
-    const sourceLabel = sourceCount === 1 ? "1 course source" : `${sourceCount} course sources`;
-    if (!state.indexStatus) {
-      elements.learnerChatStatus.textContent = `${sourceLabel} available.`;
-      return;
-    }
-
-    if (state.indexStatus.status === "succeeded") {
-      const chunkText = state.indexStatus.chunks == null ? "chunks indexed" : `${state.indexStatus.chunks} chunks indexed`;
-      elements.learnerChatStatus.textContent = `${sourceLabel} available · ${chunkText}.`;
-      return;
-    }
-
-    if (state.indexStatus.status === "unavailable") {
-      elements.learnerChatStatus.textContent = "Course source index unavailable.";
-      return;
-    }
-
-    elements.learnerChatStatus.textContent = `Index ${state.indexStatus.status} · ${sourceLabel} available.`;
+    elements.learnerChatStatus.textContent =
+      sourceCount > 0
+        ? `${sourceCount} 份課程教材可供查詢，回答都會附上引用來源。`
+        : "回答都來自課程教材，並附上引用來源。";
   }
 
   async function refreshImportJobs() {
@@ -3192,8 +4073,24 @@
     }
   }
 
+  // 審計日誌表格：點表頭排序（再點一次反向）。
+  const AUDIT_COLUMNS = [
+    { key: "created_at", label: "時間" },
+    { key: "event_type", label: "事件" },
+    { key: "outcome", label: "結果" },
+    { key: "actor_type", label: "角色" },
+    { key: "actor_id", label: "帳號" },
+    { key: "path", label: "路徑" },
+    { key: "metadata", label: "詳細", sortable: false },
+  ];
+  const auditSort = { key: "created_at", dir: "desc" };
+
   function renderAuditEvents(events) {
     state.auditEvents = Array.isArray(events) ? events : [];
+    renderAuditTable();
+  }
+
+  function renderAuditTable() {
     elements.auditEvents.replaceChildren();
 
     if (state.auditEvents.length === 0) {
@@ -3201,30 +4098,70 @@
       return;
     }
 
-    state.auditEvents.forEach((auditEvent) => {
-      const row = document.createElement("div");
-      row.className = `audit-row is-${auditEvent.outcome || "unknown"}`;
-
-      const title = document.createElement("strong");
-      title.textContent = auditEvent.event_type || "audit.event";
-      const meta = document.createElement("span");
-      meta.className = "source-meta";
-      meta.textContent = [
-        auditEvent.outcome,
-        auditEvent.actor_type,
-        auditEvent.actor_id,
-        auditEvent.path,
-        auditEvent.request_id,
-        formatDateTime(auditEvent.created_at),
-      ]
-        .filter(Boolean)
-        .join(" · ");
-      const details = document.createElement("span");
-      details.className = "source-meta";
-      details.textContent = auditMetadataSummary(auditEvent.metadata || {});
-      row.append(title, meta, details);
-      elements.auditEvents.append(row);
+    const sorted = [...state.auditEvents].sort((left, right) => {
+      const a = String(left[auditSort.key] ?? "");
+      const b = String(right[auditSort.key] ?? "");
+      const compared = a.localeCompare(b);
+      return auditSort.dir === "asc" ? compared : -compared;
     });
+
+    const table = document.createElement("table");
+    table.className = "admin-table";
+    const head = document.createElement("thead");
+    const headRow = document.createElement("tr");
+    AUDIT_COLUMNS.forEach((column) => {
+      const cell = document.createElement("th");
+      if (column.sortable === false) {
+        cell.textContent = column.label;
+      } else {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "table-sort-button";
+        const active = auditSort.key === column.key;
+        button.textContent = active
+          ? `${column.label} ${auditSort.dir === "asc" ? "▲" : "▼"}`
+          : column.label;
+        button.addEventListener("click", () => {
+          if (auditSort.key === column.key) {
+            auditSort.dir = auditSort.dir === "asc" ? "desc" : "asc";
+          } else {
+            auditSort.key = column.key;
+            auditSort.dir = "desc";
+          }
+          renderAuditTable();
+        });
+        cell.append(button);
+      }
+      headRow.append(cell);
+    });
+    head.append(headRow);
+    table.append(head);
+
+    const body = document.createElement("tbody");
+    sorted.forEach((auditEvent) => {
+      const row = document.createElement("tr");
+      row.className = `is-${auditEvent.outcome || "unknown"}`;
+      const values = [
+        formatDateTime(auditEvent.created_at) || "--",
+        auditEvent.event_type || "--",
+        auditEvent.outcome || "--",
+        auditEvent.actor_type || "--",
+        auditEvent.actor_id || "--",
+        auditEvent.path || "--",
+        auditMetadataSummary(auditEvent.metadata || {}),
+      ];
+      values.forEach((value, index) => {
+        const cell = document.createElement("td");
+        cell.textContent = String(value);
+        if (AUDIT_COLUMNS[index].key === "metadata") {
+          cell.className = "audit-metadata-cell";
+        }
+        row.append(cell);
+      });
+      body.append(row);
+    });
+    table.append(body);
+    elements.auditEvents.append(table);
   }
 
   function auditLimit() {
@@ -3352,8 +4289,8 @@
         method: "POST",
         headers: jsonAdminHeaders(),
         body: JSON.stringify({
-          strategy: elements.chatStrategy.value,
-          limit: chatLimit(),
+          strategy: CHAT_STRATEGY,
+          limit: CHAT_LIMIT,
         }),
       });
       if (!response.ok) {

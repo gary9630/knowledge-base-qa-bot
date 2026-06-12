@@ -11,11 +11,17 @@ Set production values outside git:
 - `KB_AUTH_SECRET_KEY`
 - `KB_PLATFORM_USERNAME`
 - `KB_PLATFORM_PASSWORD`
+- `KB_ADMIN_USERNAME`
+- `KB_ADMIN_PASSWORD`
 - `KB_ADMIN_API_KEY`
+- `KB_IMAGE`
+- `KB_POSTGRES_PASSWORD`
 - `KB_DATABASE_URL`
 - `KB_DOCS_DIR`
 - `KB_RAW_DIR`
 - `KB_KB_DIR`
+- `KB_APP_PORT`
+- `KB_POSTGRES_PORT`
 - `KB_RATE_LIMIT_*`
 - `KB_MAX_CONCURRENT_UPLOADS`
 - `KB_BACKGROUND_JOB_STALE_AFTER_SECONDS`
@@ -43,6 +49,94 @@ set -a
 set +a
 make deploy-check
 ```
+
+## DigitalOcean Host Setup
+
+The current production path targets one DigitalOcean Droplet running Docker Compose,
+Nginx, and Certbot. Clone the repository on the server, keep `/etc/kb/production.env`
+outside git, and use `docker-compose.prod.yml` with the base Compose file:
+
+```bash
+git clone https://github.com/gary9630/knowledge-base-qa-bot.git /opt/kb/knowledge-base-qa-bot
+cd /opt/kb/knowledge-base-qa-bot
+cp ops/env.production.example /etc/kb/production.env
+chmod 600 /etc/kb/production.env
+```
+
+Set loopback ports in `/etc/kb/production.env` so only Nginx is public:
+
+```bash
+KB_APP_PORT=127.0.0.1:8000
+KB_POSTGRES_PORT=127.0.0.1:5432
+```
+
+Use `ops/nginx/kb.conf.example` as the Nginx site template, replacing
+`example.com` with the production domain. After DNS points at the Droplet, enable
+HTTPS with Certbot's Nginx installer.
+
+## Automated DigitalOcean Deployment
+
+`.github/workflows/deploy.yml` promotes only commits that already passed the `CI`
+workflow on `main`. It builds the app image on the GitHub runner, runs `docker save`,
+compresses the archive with `gzip`, copies it to the Droplet with `scp`, SSHes to the
+Droplet, checks out the exact commit, loads the archive with `docker load`, and runs
+`scripts/deploy_production.sh`.
+
+Configure these GitHub repository or environment secrets:
+
+- `DEPLOY_SSH_HOST`
+- `DEPLOY_SSH_USER`
+- `DEPLOY_SSH_PRIVATE_KEY`
+- `DEPLOY_SSH_KNOWN_HOSTS`
+- `DEPLOY_PATH` - usually `/opt/kb/knowledge-base-qa-bot`
+
+The server-side `/etc/kb/production.env` remains the source of runtime secrets. Do not
+send OpenAI keys, platform passwords, or database passwords through workflow commands.
+
+For a first deploy or manual retry on the server:
+
+```bash
+cd /opt/kb/knowledge-base-qa-bot
+set -a
+. /etc/kb/production.env
+set +a
+KB_IMAGE=knowledge-base-qa-bot:<commit-sha> \
+KB_IMAGE_ARCHIVE=/tmp/knowledge-base-qa-bot-image-<commit-sha>.tar.gz \
+  scripts/deploy_production.sh
+```
+
+The deploy script uses:
+
+```bash
+docker compose --env-file /etc/kb/production.env \
+  -f docker-compose.yml -f docker-compose.prod.yml
+```
+
+It loads the copied image archive when `KB_IMAGE_ARCHIVE` is set, starts Postgres, runs
+migrations, starts the app and worker with `--no-build`, then verifies `/health`,
+`/ready`, and worker runtime.
+
+## Upload Local Knowledge Files
+
+Keep `course-materials-md/` out of git. To transfer a local course-material directory
+to the Droplet through the same SSH target used by `connect-server.sh`, run:
+
+```bash
+scripts/scp_knowledge_files_to_server.sh
+```
+
+Useful overrides:
+
+```bash
+SOURCE_DIR=course-materials-md \
+CONNECT_SCRIPT=connect-server.sh \
+REMOTE_UPLOAD_ROOT=/opt/kb/knowledge-uploads \
+scripts/scp_knowledge_files_to_server.sh
+```
+
+The script creates a versioned remote directory and prints a follow-up command using
+`REAL_CONTENT_SOURCE_DIR=<remote-versioned-source> make real-content-package`. It does
+not delete or merge old remote course files.
 
 ## Pre-Deploy Checks
 
@@ -111,11 +205,17 @@ directory out of git and transfer it through an encrypted artifact path.
 For the Compose deployment model:
 
 ```bash
-docker compose build app migrate worker eval-runner
-docker compose up -d postgres
-docker compose run --rm migrate
-docker compose up -d app
-docker compose --profile worker up -d worker
+set -a
+. /etc/kb/production.env
+set +a
+docker compose --env-file /etc/kb/production.env \
+  -f docker-compose.yml -f docker-compose.prod.yml up -d postgres
+docker compose --env-file /etc/kb/production.env \
+  -f docker-compose.yml -f docker-compose.prod.yml run --rm migrate
+docker compose --env-file /etc/kb/production.env \
+  -f docker-compose.yml -f docker-compose.prod.yml up -d --no-build app
+docker compose --env-file /etc/kb/production.env \
+  -f docker-compose.yml -f docker-compose.prod.yml --profile worker up -d --no-build worker
 make ops-check API_URL=https://your-app.example.com KB_ADMIN_API_KEY=$KB_ADMIN_API_KEY
 ```
 
@@ -203,6 +303,8 @@ manually one explicit path at a time.
 
 ## CI/CD Gates
 
-The GitHub Actions workflow runs `make lint`, `make test`, `make deploy-check-ci`,
+The CI workflow runs `make lint`, `make test`, `make deploy-check-ci`,
 `docker compose --profile worker --profile test config`, `make docker-test`, and
-`make docker-smoke`. Keep these gates green before promoting an image or git ref.
+`make docker-smoke`. Keep these gates green before promoting an image or git ref. The
+production deployment workflow in `.github/workflows/deploy.yml` runs only after CI
+succeeds on `main` or through an explicit `workflow_dispatch`.

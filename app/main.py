@@ -1,9 +1,12 @@
+import time
 from collections.abc import Callable
 
 from fastapi import FastAPI
 from sqlalchemy.orm import Session
 
 from app.answer.providers import AnswerProvider, create_answer_provider
+from app.answer.query_router import QueryRouter
+from app.api.admin_settings import router as admin_settings_router
 from app.api.audit import router as audit_router
 from app.api.auth import router as auth_router
 from app.api.chat import router as chat_router
@@ -18,6 +21,7 @@ from app.api.jobs import router as jobs_router
 from app.api.provider_observability import router as provider_observability_router
 from app.api.search import router as search_router
 from app.api.sources import router as sources_router
+from app.api.system_status import router as system_status_router
 from app.api.ui import mount_ui_static
 from app.api.ui import router as ui_router
 from app.core.config import Settings
@@ -41,6 +45,7 @@ def create_app(
     session_factory: SessionFactory | None = None,
     embedding_provider: EmbeddingProvider | None = None,
     answer_provider: AnswerProvider | None = None,
+    query_router: QueryRouter | None = None,
 ) -> FastAPI:
     resolved_settings = settings or Settings()
     if resolved_settings.embedding_dimension != SCHEMA_EMBEDDING_DIMENSION:
@@ -53,7 +58,19 @@ def create_app(
     app.state.embedding_provider = embedding_provider or create_embedding_provider(
         resolved_settings
     )
-    app.state.answer_provider = answer_provider or create_answer_provider(resolved_settings)
+    # Injected providers (tests, scripts) are pinned; otherwise a default
+    # provider is built for non-request consumers (background worker wiring),
+    # while request paths use get_answer_provider, which honours admin runtime
+    # overrides (model, tokens, temperature) and refreshes this alias.
+    if answer_provider is not None:
+        app.state.answer_provider = answer_provider
+        app.state.answer_provider_injected = True
+    else:
+        app.state.answer_provider = create_answer_provider(resolved_settings)
+    if query_router is not None:
+        app.state.query_router = query_router
+        app.state.query_router_injected = True
+    app.state.started_at = time.time()
     app.state.metrics = InMemoryMetrics()
     app.add_middleware(RateLimitMiddleware)
     app.add_middleware(RequestObservabilityMiddleware)
@@ -71,10 +88,12 @@ def create_app(
     app.include_router(sources_router)
     app.include_router(feedback_router)
     app.include_router(evals_router)
+    app.include_router(admin_settings_router)
     app.include_router(audit_router)
     app.include_router(documents_router)
     app.include_router(jobs_router)
     app.include_router(provider_observability_router)
+    app.include_router(system_status_router)
     return app
 
 

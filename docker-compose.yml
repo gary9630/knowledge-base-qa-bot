@@ -1,12 +1,14 @@
 x-app-environment: &app-environment
   - KB_APP_ENV=production
-  - KB_DATABASE_URL=postgresql+psycopg://kb:kb@postgres:5432/kb
+  - KB_DATABASE_URL=${KB_DATABASE_URL:-postgresql+psycopg://kb:kb@postgres:5432/kb}
   - KB_DOCS_DIR=/app/docs
   - KB_RAW_DIR=/app/raw
   - KB_KB_DIR=/app/.kb
   - KB_AUTH_SECRET_KEY=${KB_AUTH_SECRET_KEY:-local-auth-secret}
   - KB_PLATFORM_USERNAME=${KB_PLATFORM_USERNAME:-student}
   - KB_PLATFORM_PASSWORD=${KB_PLATFORM_PASSWORD:-student-password}
+  - KB_ADMIN_USERNAME=${KB_ADMIN_USERNAME:-admin}
+  - KB_ADMIN_PASSWORD=${KB_ADMIN_PASSWORD:-admin-password}
   - KB_PLATFORM_COHORTS=${KB_PLATFORM_COHORTS:-}
   - KB_PLATFORM_EXTRA_VISIBILITY_LABELS=${KB_PLATFORM_EXTRA_VISIBILITY_LABELS:-}
   - KB_PLATFORM_SESSION_TTL_SECONDS=${KB_PLATFORM_SESSION_TTL_SECONDS:-86400}
@@ -31,7 +33,10 @@ x-app-environment: &app-environment
   - KB_OPENAI_CHAT_MODEL=${KB_OPENAI_CHAT_MODEL:-}
   - KB_OPENAI_REQUEST_TIMEOUT_SECONDS=${KB_OPENAI_REQUEST_TIMEOUT_SECONDS:-30}
   - KB_OPENAI_MAX_RETRIES=${KB_OPENAI_MAX_RETRIES:-2}
-  - KB_OPENAI_CHAT_MAX_COMPLETION_TOKENS=${KB_OPENAI_CHAT_MAX_COMPLETION_TOKENS:-1024}
+  - KB_OPENAI_CHAT_MAX_COMPLETION_TOKENS=${KB_OPENAI_CHAT_MAX_COMPLETION_TOKENS:-4096}
+  - KB_OPENAI_CHAT_MODEL_HARD=${KB_OPENAI_CHAT_MODEL_HARD:-}
+  - KB_OPENAI_ROUTER_MODEL=${KB_OPENAI_ROUTER_MODEL:-}
+  - KB_QUERY_ROUTER_ENABLED=${KB_QUERY_ROUTER_ENABLED:-true}
   - KB_EMBEDDING_DIMENSION=${KB_EMBEDDING_DIMENSION:-768}
   - OPENAI_API_KEY=${OPENAI_API_KEY:-}
 
@@ -54,7 +59,7 @@ services:
     image: pgvector/pgvector:pg16
     environment:
       POSTGRES_USER: kb
-      POSTGRES_PASSWORD: kb
+      POSTGRES_PASSWORD: ${KB_POSTGRES_PASSWORD:-kb}
       POSTGRES_DB: kb
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U kb -d kb"]
@@ -88,7 +93,7 @@ services:
       migrate:
         condition: service_completed_successfully
     ports:
-      - "8000:8000"
+      - "${KB_APP_PORT:-8000}:8000"
     volumes: *app-volumes
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000
     healthcheck:

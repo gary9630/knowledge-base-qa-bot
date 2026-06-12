@@ -14,13 +14,22 @@ multi-course product later.
 - Use pgvector for retrieval. FAISS is intentionally not part of the current path.
 - Answer with selected source snippets through an answer provider and validate citations.
 - Stream `/chat/stream` responses from the provider when OpenAI answering is enabled.
-- Provide a three-pane learner workbench: left functional tabs (chat / knowledge graph /
-  教材總覽), center chat, right source preview and diagnostics, with 主題切換
-  (淺色/深色/自動，自動跟隨作業系統).
-- Provide a separate 管理主控台 (admin console) reached from the workbench footer; it
-  replaces the old admin tabs and gathers overview, uploads/indexing, document lifecycle,
-  graph extraction, evals, background jobs, provider usage, and audit panels behind one
-  shared admin key.
+- Guard every chat query with an LLM router (`gpt-5.4-mini`): off-topic, harmful, and
+  prompt-injection queries are blocked with a fixed learner-friendly reply; allowed
+  questions are difficulty-rated in the same call and hard questions are answered with a
+  stronger model (`gpt-5.4` by default).
+- Persist every LLM call (router + answer) to `provider_call_logs` with full request and
+  response payloads, keyed by conversation id for end-to-end tracing.
+- Serve a pre-login landing page; after login, a three-pane learner workbench: left tabs
+  (chat / 知識圖譜 / Sources), center content with a readable course-material reader
+  (mermaid diagrams render natively), right citation sources and 來源內容, with 主題切換
+  (淺色/深色/自動). Learner chat includes 清除對話, 匯出 JSON, and 回報問題 (copies the
+  session id and records an audit event).
+- Two login roles configured in `.env`: learner (`student`) and admin. Only admins see
+  the 管理主控台, which gathers overview, uploads/indexing, 教材編輯 (markdown CRUD with
+  reindex), document lifecycle, graph extraction, evals, 服務狀態 (system health),
+  系統設定 (runtime LLM settings, applied without restart), background jobs, provider
+  usage with LLM call logs, and a sortable audit log.
 - Run app, worker, tests, backups, and deploy checks through Docker Compose and Make.
 
 ## Launch Configuration
@@ -29,10 +38,12 @@ The accepted launch configuration is:
 
 - Embeddings: `text-embedding-3-small`
 - Embedding dimension: `KB_EMBEDDING_DIMENSION=768`
-- Answer model: `gpt-5.4-mini`
+- Answer model: `gpt-5.4-mini` (easy) / `gpt-5.4` (hard, chosen by the query router)
+- Query router model: `gpt-5.4-mini`
+- Max output tokens: `4096`
 - Retrieval strategy: `hybrid`
-- Learner auth: one configured platform login, no registration
-- Admin auth: `X-KB-Admin-Key`
+- Learner auth: configured learner + admin logins, no registration
+- Admin auth: admin login session or `X-KB-Admin-Key`
 
 Latest local real-content acceptance:
 
@@ -45,6 +56,8 @@ See [ops/live-answer-acceptance.md](ops/live-answer-acceptance.md) for the requi
 learner-facing RAG checks.
 
 ## Quick Start
+
+Full step-by-step setup and usage walkthrough: [docs/USAGE.md](docs/USAGE.md).
 
 Prerequisites: Python 3.12, `uv`, Docker, and `curl`.
 
@@ -66,6 +79,7 @@ make index
 Local Compose defaults are development-only:
 
 - Learner login: `student` / `student-password`
+- Admin login: `admin` / `admin-password`
 - Admin key: `local-admin-key`
 
 ## Common Commands
@@ -102,8 +116,8 @@ exports only `OPENAI_API_KEY` and `KB_POSTGRES_PORT` for Make-driven workflows.
 Required for staging or production:
 
 - `KB_AUTH_SECRET_KEY`
-- `KB_PLATFORM_USERNAME`
-- `KB_PLATFORM_PASSWORD`
+- `KB_PLATFORM_USERNAME` / `KB_PLATFORM_PASSWORD` (learner login)
+- `KB_ADMIN_USERNAME` / `KB_ADMIN_PASSWORD` (admin login)
 - `KB_ADMIN_API_KEY`
 - `KB_DATABASE_URL`
 - `KB_DOCS_DIR`
@@ -117,10 +131,17 @@ Important provider settings:
 - `KB_ANSWER_PROVIDER=fake|openai`
 - `KB_OPENAI_EMBEDDING_MODEL=text-embedding-3-small`
 - `KB_OPENAI_CHAT_MODEL=gpt-5.4-mini`
+- `KB_OPENAI_CHAT_MODEL_HARD=gpt-5.4` (answer model for router-rated hard questions)
+- `KB_OPENAI_ROUTER_MODEL=gpt-5.4-mini` (guardrail / difficulty router)
+- `KB_QUERY_ROUTER_ENABLED=true`
 - `KB_OPENAI_REQUEST_TIMEOUT_SECONDS`
 - `KB_OPENAI_MAX_RETRIES`
-- `KB_OPENAI_CHAT_MAX_COMPLETION_TOKENS`
+- `KB_OPENAI_CHAT_MAX_COMPLETION_TOKENS` (default 4096)
 - `KB_PROVIDER_BUDGET_*`
+
+Model, hard model, router model, max output tokens, temperature, and budgets can also be
+overridden at runtime from the admin console (系統設定) without a restart; runtime
+overrides are stored in the `runtime_settings` table and take precedence over env values.
 
 Important knowledge graph settings:
 
@@ -189,16 +210,19 @@ Learner-facing:
 
 - `POST /auth/login`
 - `POST /auth/logout`
+- `GET /auth/session`
 - `POST /search`
 - `POST /chat`
 - `POST /chat/stream`
+- `POST /chat/report` (report a problematic session; writes a `chat.session_reported`
+  audit event keyed by conversation id)
 - `GET /sources`
 - `GET /sources/{document_id}`
 - `GET /sources/{document_id}/sections/{section_id}`
 - `GET /graph`
 - `GET /graph/concepts/{concept_id}`
 
-Admin-only:
+Admin-only (admin session or `X-KB-Admin-Key`):
 
 - `POST /imports`
 - `GET /imports/status`
@@ -208,13 +232,19 @@ Admin-only:
 - `POST /admin/jobs`
 - `POST /admin/jobs/recover-stale`
 - `POST /admin/jobs/{job_id}/requeue`
+- `POST /admin/jobs/{job_id}/cancel`
 - `GET /admin/jobs/runtime`
 - `GET /admin/documents`
+- `GET /admin/documents/{document_id}/content`
+- `PUT /admin/documents/{document_id}/content` (edit markdown in place + reindex)
 - `PATCH /admin/documents/{document_id}/lifecycle`
 - `DELETE /admin/documents/{document_id}`
 - `POST /admin/documents/{document_id}/reindex`
+- `GET /admin/settings` / `PUT /admin/settings` (runtime LLM/budget overrides)
+- `GET /admin/system-status` (DB / index / worker / budget health)
 - `GET /admin/audit-events`
 - `GET /admin/provider-observability`
+- `GET /admin/provider-logs` (full LLM request/response call log)
 - `POST /graph/extract`
 - `GET /metrics`
 
@@ -240,15 +270,22 @@ debug data. Chat responses also expose answer-quality metadata:
 - `cited_source_ids`
 - `cannot_confirm_reason`
 
-Provider citations must reference selected sources. Invalid citations downgrade the answer
-to the exact cannot-confirm response with `cannot_confirm_reason="invalid_citations"`.
+Provider citations must reference selected sources (or their context-assembly neighbors).
+Citation matching normalizes anchors (slugified, punctuation-tolerant) so heading variants
+still match; an answer with at least one valid citation stays valid and unmatched citation
+tokens degrade gracefully in the UI. Only answers with zero valid citations downgrade to
+the exact cannot-confirm response with `cannot_confirm_reason="invalid_citations"`.
+Guardrail-blocked queries return the fixed blocked reply with
+`cannot_confirm_reason="guardrail_blocked"` and the router decision in `query_route`.
 Streaming chat sends retrieval diagnostics in the `sources` event and final answer quality
 in the `done` event.
 
 ## Access Control
 
-Learner platform auth is intentionally simple: one configured username and password for
-the trial course. Admin operations are separate and require `X-KB-Admin-Key`.
+Platform auth is intentionally simple: two configured logins for the trial course — a
+learner account (role `student`) and an admin account (role `admin`). Only the admin role
+sees the 管理主控台 entry. Admin API routes accept an authenticated admin session or
+`X-KB-Admin-Key`.
 
 Source visibility is enforced across search, chat, streaming chat, source preview, and the
 knowledge graph. Canonical Markdown frontmatter can set `visibility`; omitted visibility

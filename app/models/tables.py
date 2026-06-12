@@ -736,3 +736,41 @@ class ConceptExtractionState(TimestampMixin, Base):
         nullable=False,
     )
     content_hash: Mapped[str] = mapped_column(Text, nullable=False)
+
+
+class RuntimeSetting(TimestampMixin, Base):
+    """Admin-tunable runtime overrides (LLM model, tokens, budgets) applied without restart."""
+
+    __tablename__ = "runtime_settings"
+
+    key: Mapped[str] = mapped_column(Text, primary_key=True)
+    value: Mapped[Any] = mapped_column(JSONB, nullable=False)
+
+
+class ProviderCallLog(TimestampMixin, Base):
+    """Full request/response audit trail for every LLM provider call."""
+
+    __tablename__ = "provider_call_logs"
+
+    id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), primary_key=True, default=uuid4)
+    conversation_id: Mapped[UUID | None] = mapped_column(
+        PG_UUID(as_uuid=True),
+        nullable=True,
+        index=True,
+    )
+    retrieval_event_id: Mapped[UUID | None] = mapped_column(
+        PG_UUID(as_uuid=True),
+        nullable=True,
+        index=True,
+    )
+    provider: Mapped[str] = mapped_column(Text, nullable=False)
+    operation: Mapped[str] = mapped_column(Text, nullable=False, index=True)
+    model: Mapped[str] = mapped_column(Text, nullable=False)
+    status: Mapped[str] = mapped_column(Text, nullable=False, index=True)
+    client_request_id: Mapped[str | None] = mapped_column(Text, nullable=True)
+    provider_request_id: Mapped[str | None] = mapped_column(Text, nullable=True)
+    latency_ms: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    error_type: Mapped[str | None] = mapped_column(Text, nullable=True)
+    usage_json: Mapped[Any | None] = mapped_column(JSONB, nullable=True)
+    request_json: Mapped[Any | None] = mapped_column(JSONB, nullable=True)
+    response_json: Mapped[Any | None] = mapped_column(JSONB, nullable=True)

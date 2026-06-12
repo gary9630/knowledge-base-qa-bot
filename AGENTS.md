@@ -16,9 +16,13 @@
 - Between retrieval and answering sits a context assembly layer: each retrieved chunk expands to its full section plus `KB_CONTEXT_NEIGHBOR_SECTIONS` neighbors within `KB_CONTEXT_TOKEN_BUDGET` tokens, used by chat, streaming chat, and the eval answer path.
 - MVP intentionally uses Postgres + pgvector; FAISS is not in the current path.
 - Concept graph: 5 tables (`concepts`, `concept_clusters`, `concept_edges`, `concept_sources`, `concept_extraction_state`). Concepts with `origin='seed'` are protected from orphan pruning; cluster assignments are immutable once made (new concepts get assigned, existing ones never move). Extraction runs as a background job chained after index rebuild; it is incremental (only new or content-changed documents are processed) and skips without error when `KB_ANSWER_PROVIDER` is not `openai`. The curated seed dataset lives at `docs/plans/2026-06-11-concept-graph-seed.json` and is loaded via `make graph-seed`, which marks all currently active documents as extracted to prevent duplicates.
-- UI is a three-pane learner workbench (left tabs: chat / knowledge graph / 教材總覽; center chat/streaming answer; right sources/Markdown/index status) plus a separate admin console (overview, uploads, document lifecycle, graph extraction, evals, jobs, provider usage, audit) opened from the workbench footer with one shared admin key. Dual theme (light/dark/auto, no-flash boot script) built on scholarly design tokens in `app/ui/static/app.css`.
-- Platform auth is a single configured login for learners. It is not registration or full RBAC.
-- Admin operations are separate and require `X-KB-Admin-Key`.
+- Query guardrail: before retrieval, `app/answer/query_router.py` classifies each chat query with an LLM (`gpt-5.4-mini`, JSON mode): off-topic / harmful / prompt-injection queries are blocked with the fixed reply 「這個問題和學習無關，Let's learn together!」; allowed course questions are tagged easy/hard in the same call, and hard questions answer with `KB_OPENAI_CHAT_MODEL_HARD` (default `gpt-5.4`). The router fails open (easy course question) on provider errors.
+- Every LLM call (router + answer, streaming included) is persisted to `provider_call_logs` with full request messages, response content, usage, latency, and provider request id, keyed by `conversation_id`/`retrieval_event_id` for tracing.
+- Admin runtime settings (`runtime_settings` table, `GET/PUT /admin/settings`) override chat model, hard model, router model, max output tokens, temperature, and provider budgets without a restart; `get_effective_settings` merges them over env settings per request.
+- UI: a pre-login landing page (topbar 登入) gates a three-pane learner workbench (left tabs: chat / 知識圖譜 / Sources; center content; right citation sources + 來源內容 reader). Learner chat has a toolbar: 🧹 清除對話, ⬇ 匯出 JSON, 🚩 回報問題 (copies the conversation id and writes a `chat.session_reported` audit event). Mermaid code fences in course materials render as diagrams (vendored `mermaid.min.js`, code-block fallback). Dual theme (light/dark/auto) on scholarly design tokens in `app/ui/static/app.css`.
+- Learner UI principle: keep diagnostics (scores, index status, answer-quality internals) out of learner-facing surfaces; the admin console owns them.
+- Admin console panels: overview, uploads/indexing, 教材編輯 (markdown CRUD + reindex), document lifecycle, graph extraction, evals, 服務狀態 (system health), 系統設定 (runtime settings), background jobs, provider usage (incl. LLM call logs with request/response), audit log (sortable table).
+- Auth: two configured logins — learner (`KB_PLATFORM_USERNAME/PASSWORD`, role `student`) and admin (`KB_ADMIN_USERNAME/PASSWORD`, role `admin`). Only the admin role sees the 管理主控台 entry; an admin session or `X-KB-Admin-Key` authorizes `/admin/*` routes. No registration or full RBAC.
 
 ## Local Commands
 
@@ -47,7 +51,8 @@
 ## Environment Notes
 
 - Settings use the `KB_` prefix unless noted.
-- Required for production/staging: `KB_AUTH_SECRET_KEY`, `KB_PLATFORM_USERNAME`, `KB_PLATFORM_PASSWORD`, `KB_ADMIN_API_KEY`.
+- Required for production/staging: `KB_AUTH_SECRET_KEY`, `KB_PLATFORM_USERNAME`, `KB_PLATFORM_PASSWORD`, `KB_ADMIN_USERNAME`, `KB_ADMIN_PASSWORD`, `KB_ADMIN_API_KEY`.
+- Query router / difficulty routing: `KB_QUERY_ROUTER_ENABLED` (default true), `KB_OPENAI_ROUTER_MODEL` (default `gpt-5.4-mini`), `KB_OPENAI_CHAT_MODEL_HARD` (default `gpt-5.4`). `KB_OPENAI_CHAT_MAX_COMPLETION_TOKENS` defaults to 4096.
 - OpenAI providers require unprefixed `OPENAI_API_KEY`.
 - Keep `KB_EMBEDDING_DIMENSION` aligned with the schema dimension, currently `768`.
 - Real course content lives in local `course-materials-md/` and must remain out of git.
@@ -66,7 +71,8 @@
 ## Testing Expectations
 
 - Use TDD for new behavior: write the failing test, run it, implement, rerun.
-- DB-backed tests need `KB_DATABASE_URL_TEST`; otherwise they are skipped.
+- Tests never read the local `.env` (`tests/conftest.py` sets `Settings.model_config["env_file"] = None`); tests that need specific settings pass them explicitly to `Settings(...)`.
+- DB-backed tests need `KB_DATABASE_URL_TEST`; otherwise they are skipped. Local recipe: create a `kb_test` database with the `vector` extension on the compose Postgres, then run `KB_DATABASE_URL_TEST="postgresql+psycopg://kb:kb@localhost:5432/kb_test" make test-integration`.
 - Docker/e2e verification is expected before claiming deploy packaging works.
 - Before a final completion claim, run focused tests plus the broadest feasible verification.
 
@@ -92,7 +98,9 @@ intentionally deferred until traffic or multi-replica deployment requires it.
 - Preserve the answer quality contract: every chat result should expose `answer_valid`, `citation_errors`, `selected_source_ids`, `cited_source_ids`, and `cannot_confirm_reason`.
 - Streaming chat must send retrieval diagnostics in the `sources` event and answer quality in the `done` event.
 - Persist retrieval diagnostics and answer quality in `RetrievalEvent.scores_json`; keep cited sources separate from selected sources.
-- Cited source IDs must be sections the answer provider was actually given: selected sections or their context-assembly neighbors (never arbitrary IDs). Invalid provider citations should downgrade to the exact cannot-confirm answer with `cannot_confirm_reason="invalid_citations"`.
+- Cited source IDs must be sections the answer provider was actually given: selected sections or their context-assembly neighbors (never arbitrary IDs). Citation matching is normalized (anchors are slugified, surrounding punctuation tolerated) so heading punctuation variants still match. An answer with at least one valid citation stays valid — unmatched citation tokens become warnings, and the frontend maps them to a same-file pill or hides them gracefully. Only answers with zero valid citations downgrade to the exact cannot-confirm answer with `cannot_confirm_reason="invalid_citations"`.
+- Guardrail-blocked queries persist as `cannot_confirm` with `cannot_confirm_reason="guardrail_blocked"` and the route decision in `scores_json.query_route`; the UI shows no citations and no source rail for them.
+- Debug-trace chain for a reported session: audit `chat.session_reported` (conversation id) → `retrieval_events.conversation_id` → `provider_call_logs.conversation_id` (full LLM request/response). Keep all three keyed by conversation id.
 - Eval metrics should distinguish retrieval failure from citation failure. Keep `top1_hit`, `retrieval_recall`, `citation_recall`, `citation_precision`, `answer_valid`, and `citation_error_count` useful for dashboard/reporting.
 - The right-side UI inspector owns answer quality and retrieval score breakdowns; avoid cluttering the main learner chat transcript with admin diagnostics.
 - Store raw uploads and canonical Markdown on durable production storage before public launch.
@@ -118,8 +126,10 @@ intentionally deferred until traffic or multi-replica deployment requires it.
 - Current verified local launch artifact is `backups/real-content-20260529T171708Z/`: 35 course files, 819 sections/chunks, retrieval acceptance 5/5 passed. It is intentionally ignored by git.
 - Current OpenAI answer model default is `gpt-5.4-mini`; `/chat/stream` should forward provider streaming deltas and use the final `done.answer` as the validated persisted answer.
 - Live answer acceptance against the real-content index passed 3/3 with `gpt-5.4-mini`: CAP theorem via `/chat`, RAG flow via `/chat`, and Message Queue via `/chat/stream`. This sends selected snippets to OpenAI Chat API and requires explicit operator approval.
-- OpenAI provider controls are `KB_OPENAI_REQUEST_TIMEOUT_SECONDS`, `KB_OPENAI_MAX_RETRIES`, and `KB_OPENAI_CHAT_MAX_COMPLETION_TOKENS`; provider usage and error metadata should stay user-safe and be recorded through `/metrics` plus `RetrievalEvent.scores_json`.
-- Protected `GET /admin/provider-observability` backs the Provider Ops UI tab with provider call summaries, token usage by operation, latest in-memory calls, and DB-backed answer traces; keep it admin-only and free of raw provider prompts, credentials, or source payload dumps.
+- OpenAI provider controls are `KB_OPENAI_REQUEST_TIMEOUT_SECONDS`, `KB_OPENAI_MAX_RETRIES`, and `KB_OPENAI_CHAT_MAX_COMPLETION_TOKENS` (default 4096); learner-facing responses and `/metrics` stay free of raw prompts, while the admin-only `provider_call_logs` table deliberately stores full request/response payloads for debugging.
+- Protected `GET /admin/provider-observability` backs the Provider Ops UI tab with provider call summaries, token usage by operation, latest in-memory calls, and DB-backed answer traces; protected `GET /admin/provider-logs` exposes the full request/response call log. Both stay admin-only and free of credentials.
+- Protected `GET /admin/system-status` aggregates DB latency, readiness checks, index freshness, worker heartbeats, and provider budget for the 服務狀態 console panel.
+- Admin markdown editing: `GET/PUT /admin/documents/{id}/content` reads/overwrites the canonical file and reindexes the document (docs root is derived from the document's canonical path, not `KB_DOCS_DIR`); creation goes through the normal `/imports` flow.
 - App-native provider budget guardrails are controlled by `KB_PROVIDER_BUDGET_*`; when `KB_PROVIDER_BUDGET_BLOCK_ON_EXCEEDED=true`, `/chat` returns 429 and `/chat/stream` emits a stable SSE error before calling the answer provider.
 - If changing embedding model or dimension later, add a migration and rebuild the index.
 - Sample content lives in `sample-docs/`; do not treat it as production data.

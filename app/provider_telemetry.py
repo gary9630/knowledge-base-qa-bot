@@ -36,6 +36,11 @@ class ProviderCallRecord:
     usage_complete: bool = False
     latency_ms: int = 0
     error_type: str | None = None
+    # Full request/response payloads for the provider_call_logs audit table.
+    # Deliberately excluded from to_dict() so metrics and retrieval-event
+    # scores_json stay slim.
+    request_payload: dict[str, object] | None = None
+    response_payload: dict[str, object] | None = None
 
     def to_dict(self) -> dict[str, object]:
         payload: dict[str, object] = {

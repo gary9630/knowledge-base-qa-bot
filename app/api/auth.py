@@ -32,6 +32,7 @@ class SessionResponse(BaseModel):
     auth_required: bool
     authenticated: bool
     username: str | None
+    role: str | None = None
     csrf_token: str | None
 
 
@@ -43,11 +44,12 @@ def login(
     settings: Annotated[Settings, Depends(get_app_settings)],
 ) -> SessionResponse:
     _require_platform_auth_configured(settings)
-    if not verify_platform_credentials(
+    role = verify_platform_credentials(
         settings,
         username=payload.username,
         password=payload.password,
-    ):
+    )
+    if role is None:
         record_audit_event(
             request,
             event_type="auth.login_failed",
@@ -58,7 +60,7 @@ def login(
         )
         raise HTTPException(status_code=401, detail="Invalid credentials.")
 
-    token = create_platform_session_token(settings, username=payload.username)
+    token = create_platform_session_token(settings, username=payload.username, role=role)
     session = verify_platform_session_token(settings, token)
     if session is None:
         raise HTTPException(status_code=500, detail="Could not create platform session.")
@@ -84,6 +86,7 @@ def login(
         auth_required=True,
         authenticated=True,
         username=session.username,
+        role=session.role,
         csrf_token=session.csrf_token,
     )
 
@@ -131,6 +134,7 @@ def session_status(
         auth_required=True,
         authenticated=True,
         username=session.username,
+        role=session.role,
         csrf_token=session.csrf_token,
     )
 

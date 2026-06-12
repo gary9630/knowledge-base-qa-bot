@@ -18,11 +18,18 @@ from app.answer.context_assembly import (
     ContextAssembler,
 )
 from app.answer.providers import AnswerProvider
+from app.answer.query_router import (
+    BLOCKED_ANSWER,
+    QueryRouteDecision,
+    hard_answer_model,
+)
 from app.answer.service import AnswerResult, AnswerService
 from app.api.dependencies import (
     get_answer_provider,
     get_app_settings,
+    get_effective_settings,
     get_embedding_provider,
+    get_query_router,
     get_request_db_session,
     get_source_principal,
 )
@@ -34,12 +41,13 @@ from app.api.search import (
     candidate_response,
     retrieval_diagnostics_response,
 )
+from app.audit import record_audit_event
 from app.core.config import Settings
-from app.models.tables import Conversation, Message, RetrievalEvent
+from app.models.tables import Conversation, Message, ProviderCallLog, RetrievalEvent
 from app.observability.metrics import InMemoryMetrics
 from app.observability.middleware import mark_stream_error
 from app.provider_budget import provider_budget_status
-from app.provider_telemetry import ProviderCallRecord
+from app.provider_telemetry import ProviderCallContext, ProviderCallRecord
 from app.retrieval.hybrid import HybridRetriever
 from app.retrieval.models import (
     RetrievalDecision,
@@ -82,6 +90,15 @@ class ContextAssemblyResponse(BaseModel):
     truncated_count: int
 
 
+class QueryRouteResponse(BaseModel):
+    category: str
+    allowed: bool
+    difficulty: str
+    reason: str | None = None
+    router_failed: bool = False
+    answer_model: str | None = None
+
+
 class ChatResponse(BaseModel):
     conversation_id: UUID
     user_message_id: UUID
@@ -94,6 +111,7 @@ class ChatResponse(BaseModel):
     retrieval_diagnostics: RetrievalDiagnosticsResponse
     answer_quality: AnswerQualityResponse
     context_assembly: ContextAssemblyResponse | None = None
+    query_route: QueryRouteResponse | None = None
 
 
 @router.post("/chat", response_model=ChatResponse)
@@ -109,6 +127,54 @@ def chat(
         session=session,
         principal=principal,
     )
+
+
+class ChatReportRequest(BaseModel):
+    conversation_id: UUID
+    note: str | None = Field(default=None, max_length=2000)
+
+
+class ChatReportResponse(BaseModel):
+    status: str
+    conversation_id: UUID
+
+
+@router.post("/chat/report", response_model=ChatReportResponse)
+def report_chat_session(
+    payload: ChatReportRequest,
+    request: Request,
+    session: Annotated[Session, Depends(get_request_db_session)],
+    principal: Annotated[SourcePrincipal, Depends(get_source_principal)],
+) -> ChatReportResponse:
+    """Learner-facing problem report for a chat session.
+
+    Writes a ``chat.session_reported`` audit event keyed by conversation id so
+    support can trace the session: audit event → retrieval_events
+    (conversation_id) → provider_call_logs (full LLM request/response).
+    """
+    conversation = session.get(Conversation, payload.conversation_id)
+    if conversation is None:
+        raise HTTPException(status_code=404, detail="Conversation not found.")
+
+    message_count = len(conversation.messages)
+    # End the read transaction before the audit write: the audit event uses its
+    # own session and must not nest inside a transaction that may roll back.
+    session.commit()
+    record_audit_event(
+        request,
+        event_type="chat.session_reported",
+        actor_type="platform",
+        actor_id=principal.username,
+        outcome="success",
+        resource_type="conversation",
+        resource_id=str(payload.conversation_id),
+        metadata={
+            "note": payload.note or "",
+            "message_count": message_count,
+            "reported_via": "ui",
+        },
+    )
+    return ChatReportResponse(status="reported", conversation_id=payload.conversation_id)
 
 
 @router.post("/chat/stream")
@@ -170,6 +236,19 @@ def _build_chat_response(
             context_assembly=None,
         )
 
+    route_decision, router_records = _route_query(request, payload.query)
+    if not route_decision.allowed:
+        return _blocked_chat_response(
+            session=session,
+            conversation=conversation,
+            user_message=user_message,
+            payload=payload,
+            route_decision=route_decision,
+            router_records=router_records,
+            started_at=started_at,
+        )
+    answer_model = _answer_model_for_route(request, route_decision)
+
     retriever = HybridRetriever(
         session=session,
         embedding_provider=get_embedding_provider(request),
@@ -187,8 +266,8 @@ def _build_chat_response(
         session=session,
         retrieval_result=retrieval_result,
     )
-    answer_result = _answer_provider_error_response(
-        provider=get_answer_provider(request),
+    answer_result, answer_records = _answer_provider_error_response(
+        provider=get_answer_provider(request, model=answer_model),
         payload=payload,
         request=request,
         sources=assembled.sources,
@@ -212,8 +291,10 @@ def _build_chat_response(
         retrieval_diagnostics=retrieval_result.diagnostics,
         answer_quality=answer_quality,
         latency_ms=_elapsed_ms(started_at),
-        provider_calls=answer_result.provider_calls,
+        provider_calls=_record_payloads(router_records) + answer_result.provider_calls,
         context_assembly=_context_assembly_response(assembled),
+        query_route=_query_route_response(route_decision, answer_model),
+        provider_call_records=router_records + answer_records,
     )
 
 
@@ -223,7 +304,7 @@ def _answer_provider_error_response(
     payload: ChatRequest,
     sources: Sequence[AssembledSource],
     request: Request | None = None,
-) -> AnswerResult:
+) -> tuple[AnswerResult, list[ProviderCallRecord]]:
     answer_service = AnswerService(
         provider,
         client_request_id=_request_id_from_request(request),
@@ -234,7 +315,84 @@ def _answer_provider_error_response(
         _record_provider_call_records(request, answer_service.provider_call_records())
         raise HTTPException(status_code=502, detail="Answer provider failed.") from error
     _record_provider_call_records(request, answer_service.provider_call_records())
-    return answer_result
+    return answer_result, answer_service.provider_call_records()
+
+
+def _route_query(
+    request: Request,
+    query: str,
+) -> tuple[QueryRouteDecision, list[ProviderCallRecord]]:
+    request_id = _request_id_from_request(request)
+    context = ProviderCallContext(
+        client_request_id=f"{request_id}-router" if request_id else None,
+    )
+    decision = get_query_router(request).route(query, context=context)
+    _record_provider_call_records(request, context.records)
+    return decision, list(context.records)
+
+
+def _answer_model_for_route(
+    request: Request,
+    route_decision: QueryRouteDecision,
+) -> str | None:
+    if route_decision.difficulty != "hard":
+        return None
+    return hard_answer_model(get_effective_settings(request))
+
+
+def _query_route_response(
+    route_decision: QueryRouteDecision,
+    answer_model: str | None,
+) -> QueryRouteResponse:
+    return QueryRouteResponse(
+        category=route_decision.category,
+        allowed=route_decision.allowed,
+        difficulty=route_decision.difficulty,
+        reason=route_decision.reason,
+        router_failed=route_decision.router_failed,
+        answer_model=answer_model,
+    )
+
+
+def _record_payloads(records: list[ProviderCallRecord]) -> list[dict[str, object]]:
+    return [record.to_dict() for record in records]
+
+
+def _blocked_chat_response(
+    *,
+    session: Session,
+    conversation: Conversation,
+    user_message: Message,
+    payload: ChatRequest,
+    route_decision: QueryRouteDecision,
+    router_records: list[ProviderCallRecord],
+    started_at: float,
+) -> ChatResponse:
+    answer_quality = AnswerQualityResponse(
+        answer_valid=True,
+        citation_errors=[],
+        selected_source_ids=[],
+        cited_source_ids=[],
+        cannot_confirm_reason="guardrail_blocked",
+    )
+    return _persist_chat_response(
+        session=session,
+        conversation=conversation,
+        user_message=user_message,
+        query=payload.query,
+        strategy=payload.strategy,
+        answer=BLOCKED_ANSWER,
+        decision="cannot_confirm",
+        selected_candidates=[],
+        cited_source_responses=[],
+        retrieval_diagnostics=_empty_retrieval_diagnostics(payload),
+        answer_quality=answer_quality,
+        latency_ms=_elapsed_ms(started_at),
+        provider_calls=_record_payloads(router_records),
+        context_assembly=None,
+        query_route=_query_route_response(route_decision, None),
+        provider_call_records=router_records,
+    )
 
 
 def _chat_decision(
@@ -402,6 +560,21 @@ def _unsafe_chat_stream_response_events(
         yield from _chat_response_events(response)
         return
 
+    route_decision, router_records = _route_query(request, payload.query)
+    if not route_decision.allowed:
+        response = _blocked_chat_response(
+            session=session,
+            conversation=conversation,
+            user_message=user_message,
+            payload=payload,
+            route_decision=route_decision,
+            router_records=router_records,
+            started_at=started_at,
+        )
+        yield from _chat_response_events(response)
+        return
+    answer_model = _answer_model_for_route(request, route_decision)
+
     retriever = HybridRetriever(
         session=session,
         embedding_provider=get_embedding_provider(request),
@@ -429,7 +602,7 @@ def _unsafe_chat_stream_response_events(
         retrieval_result=retrieval_result,
     )
     yield from _stream_answer_response_events(
-        provider=get_answer_provider(request),
+        provider=get_answer_provider(request, model=answer_model),
         payload=payload,
         request=request,
         session=session,
@@ -438,6 +611,9 @@ def _unsafe_chat_stream_response_events(
         retrieval_result=retrieval_result,
         assembled=assembled,
         started_at=started_at,
+        route_decision=route_decision,
+        router_records=router_records,
+        answer_model=answer_model,
     )
 
 
@@ -452,6 +628,9 @@ def _stream_answer_response_events(
     retrieval_result: RetrievalResult,
     assembled: AssembledContext,
     started_at: float,
+    route_decision: QueryRouteDecision | None = None,
+    router_records: list[ProviderCallRecord] | None = None,
+    answer_model: str | None = None,
 ) -> Iterator[dict[str, str]]:
     answer_service = AnswerService(
         provider,
@@ -478,6 +657,7 @@ def _stream_answer_response_events(
         selected_candidates=retrieval_result.candidates,
         answer_result=answer_result,
     )
+    safe_router_records = router_records or []
     response = _persist_chat_response(
         session=session,
         conversation=conversation,
@@ -491,8 +671,12 @@ def _stream_answer_response_events(
         retrieval_diagnostics=retrieval_result.diagnostics,
         answer_quality=answer_quality,
         latency_ms=_elapsed_ms(started_at),
-        provider_calls=answer_result.provider_calls,
+        provider_calls=_record_payloads(safe_router_records) + answer_result.provider_calls,
         context_assembly=_context_assembly_response(assembled),
+        query_route=(
+            _query_route_response(route_decision, answer_model) if route_decision else None
+        ),
+        provider_call_records=safe_router_records + answer_service.provider_call_records(),
     )
     yield _done_event(response)
 
@@ -551,6 +735,11 @@ def _done_event(response: ChatResponse) -> dict[str, str]:
                     if response.context_assembly
                     else None
                 ),
+                "query_route": (
+                    response.query_route.model_dump(mode="json")
+                    if response.query_route
+                    else None
+                ),
             }
         ),
     }
@@ -598,6 +787,8 @@ def _persist_chat_response(
     latency_ms: int,
     provider_calls: list[dict[str, object]],
     context_assembly: ContextAssemblyResponse | None,
+    query_route: QueryRouteResponse | None = None,
+    provider_call_records: list[ProviderCallRecord] | None = None,
 ) -> ChatResponse:
     selected_source_responses = [
         candidate_response(candidate) for candidate in selected_candidates
@@ -623,11 +814,19 @@ def _persist_chat_response(
             answer_quality=answer_quality,
             provider_calls=provider_calls,
             context_assembly=context_assembly,
+            query_route=query_route,
         ),
         decision=decision,
         latency_ms=latency_ms,
     )
     session.add(retrieval_event)
+    session.flush()
+    _persist_provider_call_logs(
+        session,
+        records=provider_call_records or [],
+        conversation_id=conversation.id,
+        retrieval_event_id=retrieval_event.id,
+    )
     session.commit()
 
     return ChatResponse(
@@ -642,7 +841,35 @@ def _persist_chat_response(
         retrieval_diagnostics=retrieval_diagnostics_response(retrieval_diagnostics),
         answer_quality=answer_quality,
         context_assembly=context_assembly,
+        query_route=query_route,
     )
+
+
+def _persist_provider_call_logs(
+    session: Session,
+    *,
+    records: list[ProviderCallRecord],
+    conversation_id: UUID,
+    retrieval_event_id: UUID,
+) -> None:
+    for record in records:
+        session.add(
+            ProviderCallLog(
+                conversation_id=conversation_id,
+                retrieval_event_id=retrieval_event_id,
+                provider=record.provider,
+                operation=record.operation,
+                model=record.model,
+                status=record.status,
+                client_request_id=record.client_request_id,
+                provider_request_id=record.provider_request_id,
+                latency_ms=record.latency_ms,
+                error_type=record.error_type,
+                usage_json=record.usage.to_dict() if record.usage else None,
+                request_json=record.request_payload,
+                response_json=record.response_payload,
+            )
+        )
 
 
 def _responses_to_json(responses: list[CandidateResponse]) -> list[dict[str, Any]]:
@@ -656,6 +883,7 @@ def _retrieval_scores_payload(
     answer_quality: AnswerQualityResponse,
     provider_calls: list[dict[str, object]],
     context_assembly: ContextAssemblyResponse | None,
+    query_route: QueryRouteResponse | None = None,
 ) -> dict[str, Any]:
     return {
         "scores_by_source_id": {
@@ -669,6 +897,7 @@ def _retrieval_scores_payload(
         "context_assembly": (
             context_assembly.model_dump(mode="json") if context_assembly else None
         ),
+        "query_route": query_route.model_dump(mode="json") if query_route else None,
     }
 
 
@@ -699,7 +928,7 @@ def _raise_if_provider_budget_blocked(request: Request) -> None:
         metrics = InMemoryMetrics()
         request.app.state.metrics = metrics
     exception = _provider_budget_block_exception(
-        settings=get_app_settings(request),
+        settings=get_effective_settings(request),
         metrics_snapshot=metrics.snapshot(),
     )
     if exception is not None:

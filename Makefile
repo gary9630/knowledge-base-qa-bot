@@ -6,7 +6,34 @@ export KB_POSTGRES_PORT
 
 UV := uv run --python 3.12
 COMPOSE ?= docker compose
-API_URL ?= http://localhost:8000
+
+# Local dev server port/host — override on the CLI, e.g. `make dev PORT=8010`.
+PORT ?= 8000
+HOST ?= 0.0.0.0
+# Docker app published port follows PORT unless KB_APP_PORT is set (.env or CLI).
+KB_APP_PORT ?= $(PORT)
+export KB_APP_PORT
+
+# Runtime settings for local app/worker/eval processes. `include .env` above turns
+# each .env key into a make variable; `?=` keeps the .env value when set and
+# otherwise uses a host-friendly default. Passed per-recipe via RUNTIME_ENV (never
+# exported globally) so `make test`/`make lint` stay isolated from .env runtime
+# settings such as the answer provider — see AGENTS.md.
+KB_DATABASE_URL ?= postgresql+psycopg://kb:kb@localhost:5432/kb
+KB_EMBEDDING_PROVIDER ?= fake
+KB_ANSWER_PROVIDER ?= fake
+KB_EMBEDDING_DIMENSION ?= 768
+KB_OPENAI_EMBEDDING_MODEL ?=
+KB_OPENAI_CHAT_MODEL ?=
+RUNTIME_ENV := \
+  KB_DATABASE_URL=$(KB_DATABASE_URL) \
+  KB_EMBEDDING_PROVIDER=$(KB_EMBEDDING_PROVIDER) \
+  KB_ANSWER_PROVIDER=$(KB_ANSWER_PROVIDER) \
+  KB_EMBEDDING_DIMENSION=$(KB_EMBEDDING_DIMENSION) \
+  KB_OPENAI_EMBEDDING_MODEL=$(KB_OPENAI_EMBEDDING_MODEL) \
+  KB_OPENAI_CHAT_MODEL=$(KB_OPENAI_CHAT_MODEL)
+
+API_URL ?= http://localhost:$(PORT)
 KB_ADMIN_API_KEY ?= local-admin-key
 KB_ADMIN_API_KEY := $(or $(KB_ADMIN_API_KEY),local-admin-key)
 KB_TEST_DATABASE_URL ?= postgresql+psycopg://kb:kb@postgres:5432/kb_test
@@ -16,6 +43,7 @@ BACKUP_FILES_FILE ?= $(BACKUP_DIR)/runtime-files.tar.gz
 RESTORE_DB_FILE ?= $(BACKUP_DB_FILE)
 RESTORE_FILES_FILE ?= $(BACKUP_FILES_FILE)
 REAL_CONTENT_SOURCE_DIR ?= course-materials-md
+REAL_CONTENT_SOURCE_PATH := $(if $(filter /%,$(REAL_CONTENT_SOURCE_DIR)),$(REAL_CONTENT_SOURCE_DIR),$(CURDIR)/$(REAL_CONTENT_SOURCE_DIR))
 REAL_CONTENT_CASES ?= ops/real-content-acceptance-cases.json
 REAL_CONTENT_REPORT ?= tmp/real-content-acceptance-report.json
 REAL_CONTENT_BACKUP_DIR ?= backups/real-content-$(shell date -u +%Y%m%dT%H%M%SZ)
@@ -54,9 +82,9 @@ real-content-env-check:
 	@test "$(REAL_CONTENT_EMBEDDING_PROVIDER)" != "openai" || test -n "$$OPENAI_API_KEY" || (echo "OPENAI_API_KEY is required when REAL_CONTENT_EMBEDDING_PROVIDER=openai."; exit 1)
 
 real-content-prepare:
-	@test -d "$(REAL_CONTENT_SOURCE_DIR)" || (echo "Missing REAL_CONTENT_SOURCE_DIR=$(REAL_CONTENT_SOURCE_DIR)"; exit 1)
+	@test -d "$(REAL_CONTENT_SOURCE_PATH)" || (echo "Missing REAL_CONTENT_SOURCE_DIR=$(REAL_CONTENT_SOURCE_DIR)"; exit 1)
 	$(REAL_CONTENT_COMPOSE) build app
-	$(REAL_CONTENT_COMPOSE) run --rm --no-deps --volume "$(CURDIR)/$(REAL_CONTENT_SOURCE_DIR):/real-content:ro" app python -m scripts.prepare_real_content --source-dir /real-content --docs-dir /app/docs
+	$(REAL_CONTENT_COMPOSE) run --rm --no-deps --volume "$(REAL_CONTENT_SOURCE_PATH):/real-content:ro" app python -m scripts.prepare_real_content --source-dir /real-content --docs-dir /app/docs
 
 real-content-index: real-content-env-check
 	$(REAL_CONTENT_COMPOSE_ENV) $(REAL_CONTENT_COMPOSE) build app
@@ -83,6 +111,8 @@ deploy-check-ci:
 	KB_AUTH_SECRET_KEY=ci-auth-secret-000000000000000000 \
 	KB_PLATFORM_USERNAME=ci-learner \
 	KB_PLATFORM_PASSWORD=ci-platform-password \
+	KB_ADMIN_USERNAME=ci-admin \
+	KB_ADMIN_PASSWORD=ci-admin-password \
 	KB_ADMIN_API_KEY=ci-admin-api-key \
 	KB_DATABASE_URL=postgresql+psycopg://kb:kb@postgres:5432/kb \
 	KB_DOCS_DIR=/app/docs \
@@ -95,7 +125,7 @@ deploy-check-ci:
 	$(UV) python -m scripts.validate_deploy_env
 
 dev:
-	$(UV) uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+	$(RUNTIME_ENV) $(UV) uvicorn app.main:app --reload --host $(HOST) --port $(PORT)
 
 test:
 	$(UV) pytest
@@ -118,31 +148,31 @@ format:
 	$(UV) ruff check . --fix
 
 migrate:
-	$(UV) alembic upgrade head
+	$(RUNTIME_ENV) $(UV) alembic upgrade head
 
 index:
 	curl -fsS -X POST "$(API_URL)/index"
 
 worker-once:
-	$(UV) python -m scripts.run_background_worker --once
+	$(RUNTIME_ENV) $(UV) python -m scripts.run_background_worker --once
 
 worker:
-	$(UV) python -m scripts.run_background_worker
+	$(RUNTIME_ENV) $(UV) python -m scripts.run_background_worker
 
 worker-status:
 	curl -fsS -H "X-KB-Admin-Key: $(KB_ADMIN_API_KEY)" "$(API_URL)/admin/jobs/runtime"
 
 graph-seed:
-	$(UV) python -m scripts.seed_concept_graph --file docs/plans/2026-06-11-concept-graph-seed.json
+	$(RUNTIME_ENV) $(UV) python -m scripts.seed_concept_graph --file docs/plans/2026-06-11-concept-graph-seed.json
 
 eval-seed:
-	$(UV) python -m scripts.seed_eval_cases
+	$(RUNTIME_ENV) $(UV) python -m scripts.seed_eval_cases
 
 eval-run:
-	$(UV) python -m scripts.run_evals --trigger scheduled
+	$(RUNTIME_ENV) $(UV) python -m scripts.run_evals --trigger scheduled
 
 eval-generate:
-	$(UV) python -m scripts.generate_eval_cases
+	$(RUNTIME_ENV) $(UV) python -m scripts.generate_eval_cases
 
 ops-check:
 	@echo "health:"
