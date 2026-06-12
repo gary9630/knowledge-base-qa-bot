@@ -17,47 +17,62 @@
     <script src="{{ url_for('static', path='vendor/cytoscape.min.js') }}" defer></script>
     <script src="{{ url_for('static', path='vendor/dagre.min.js') }}" defer></script>
     <script src="{{ url_for('static', path='vendor/cytoscape-dagre.js') }}" defer></script>
+    <script src="{{ url_for('static', path='vendor/mermaid.min.js') }}" defer></script>
     <script src="{{ url_for('static', path='app.js') }}" defer></script>
   </head>
   <body>
-    <section class="login-shell" id="platform-login" aria-labelledby="platform-login-heading" hidden>
-      <div class="landing-card">
-        <header class="landing-header">
-          <p class="landing-kicker">課程助理</p>
-          <h1 id="platform-login-heading">在詢問助教之前，先問課程助理。</h1>
-          <p class="landing-lede">
-            搜尋課程公告、講義、政策與原始文件，回答皆附上所使用的確切引用來源。
-          </p>
-          <div class="landing-trust-strip" id="landing-trust-strip" aria-label="課程助理功能說明">
-            <span>根據來源回答</span>
-            <span>原始段落預覽</span>
-            <span>僅限課程帳號登入</span>
-          </div>
-        </header>
-
-        <div class="landing-body">
-          <form class="login-form" id="platform-login-form">
-            <div>
-              <h2>學生登入</h2>
-              <p id="platform-auth-status">請以課程帳號登入以繼續使用。</p>
-            </div>
-            <label for="platform-username">帳號</label>
-            <input id="platform-username" name="username" type="text" autocomplete="username" />
-            <label for="platform-password">密碼</label>
-            <input id="platform-password" name="password" type="password" autocomplete="current-password" />
-            <button class="primary-button" type="submit">登入</button>
-          </form>
-
-          <aside class="landing-preview" id="landing-preview" aria-label="課程助理示範">
-            <div class="message assistant">
-              <span class="message-label">課程助理</span>
-              <div class="answer-card">
-                <div class="trust-badge is-ok">✓ 依據 2 個課程段落回答</div>
-                <p>課程網站與公告會整理在課程入口頁，請見以下引用來源。<button class="citation-pill" type="button" aria-label="引用來源 1">1</button><button class="citation-pill" type="button" aria-label="引用來源 2">2</button></p>
-              </div>
-            </div>
-          </aside>
+    <section class="landing" id="platform-login" aria-labelledby="platform-login-heading" hidden>
+      <header class="landing-topbar">
+        <div class="landing-brand">
+          <span class="brand-mark" aria-hidden="true">KB</span>
+          <span>Knowledge Base Assistant</span>
         </div>
+        <button class="primary-button" type="button" id="landing-login-open">登入</button>
+      </header>
+
+      <main class="landing-hero">
+        <p class="landing-kicker">課程知識庫助理</p>
+        <h1 id="platform-login-heading">把整門課的講義，<br />變成可以對話的學習夥伴。</h1>
+        <p class="landing-lede">
+          針對課程教材提問，每個回答都附上可點開的教材原文；
+          讀講義、看概念關聯、問問題，都在同一個地方完成。
+        </p>
+        <div class="landing-cta">
+          <button class="primary-button landing-cta-button" type="button" id="landing-cta-login">開始學習</button>
+        </div>
+
+        <div class="landing-feature-grid" aria-label="功能介紹">
+          <article class="landing-feature">
+            <span class="landing-feature-icon" aria-hidden="true">💬</span>
+            <h2>有憑有據的問答</h2>
+            <p>回答只來自課程教材，每句話都標註引用段落，點開就能對照原文。</p>
+          </article>
+          <article class="landing-feature">
+            <span class="landing-feature-icon" aria-hidden="true">📚</span>
+            <h2>教材全文閱讀</h2>
+            <p>講義以易讀的排版呈現，圖表自動渲染，隨時從問答跳回原文脈絡。</p>
+          </article>
+          <article class="landing-feature">
+            <span class="landing-feature-icon" aria-hidden="true">🗺</span>
+            <h2>知識圖譜導航</h2>
+            <p>看懂概念之間的先後與關聯，從任何一個概念出發規劃學習路徑。</p>
+          </article>
+        </div>
+      </main>
+
+      <div class="landing-login-overlay" id="landing-login-overlay" hidden>
+        <form class="login-form landing-login-card" id="platform-login-form" aria-label="課程帳號登入">
+          <div class="login-form-heading">
+            <h2>登入課程帳號</h2>
+            <button class="text-button" type="button" id="landing-login-close" aria-label="關閉登入視窗">✕</button>
+          </div>
+          <p id="platform-auth-status">請以課程帳號登入以繼續使用。</p>
+          <label for="platform-username">帳號</label>
+          <input id="platform-username" name="username" type="text" autocomplete="username" />
+          <label for="platform-password">密碼</label>
+          <input id="platform-password" name="password" type="password" autocomplete="current-password" />
+          <button class="primary-button" type="submit">登入</button>
+        </form>
       </div>
     </section>
     <div class="workbench" data-app>
@@ -66,11 +81,10 @@
           <span class="brand-mark" aria-hidden="true">KB</span>
           <div>
             <h1>Knowledge Workbench</h1>
-            <p id="index-status-pill">Index status unavailable</p>
+            <p>課程學習助手</p>
           </div>
           <button class="theme-toggle" id="theme-toggle" type="button"
                   aria-label="切換深淺色主題" title="主題：自動">☀︎</button>
-          <button class="text-button" type="button" id="platform-logout" hidden>Logout</button>
         </div>
 
         <nav class="tabs" aria-label="Workspace tabs" role="tablist">
@@ -94,60 +108,50 @@
           </button>
         </nav>
 
-        <section class="sidebar-section" aria-labelledby="source-list-heading">
-          <div class="section-heading">
-            <h2 id="source-list-heading">Sources</h2>
-            <button class="text-button" type="button" id="refresh-sources">Refresh</button>
-          </div>
-          <div class="source-list" id="source-list" aria-live="polite">
-            <p class="muted">No sources loaded</p>
-          </div>
-        </section>
-
-        <button class="console-entry" id="console-entry" type="button" data-admin-only>⚙ 管理主控台</button>
+        <div class="sidebar-footer">
+          <button class="console-entry" id="console-entry" type="button" data-admin-only>⚙ 管理主控台</button>
+          <button class="console-entry" id="platform-logout" type="button" hidden>🚪 登出</button>
+        </div>
       </aside>
 
       <main class="workspace" aria-live="polite">
         <section class="workspace-panel is-active" id="panel-chat" role="tabpanel" tabindex="0" data-panel="chat" aria-labelledby="tab-chat">
           <header class="workspace-header">
             <div>
-              <h2>Course Assistant</h2>
-              <p class="workspace-subtitle" id="learner-chat-status">Grounded in indexed course sources.</p>
+              <h2>課程助理</h2>
+              <p class="workspace-subtitle" id="learner-chat-status">回答都來自課程教材，並附上引用來源。</p>
             </div>
-            <label class="inline-control" for="chat-limit">
-              Limit
-              <input id="chat-limit" type="number" min="1" max="20" value="10" />
-            </label>
+            <div class="chat-toolbar" role="group" aria-label="對話工具">
+              <button class="text-button" type="button" id="chat-report" hidden>🚩 回報問題</button>
+              <button class="text-button" type="button" id="chat-export" hidden>⬇ 匯出 JSON</button>
+              <button class="text-button" type="button" id="chat-clear" hidden>🧹 清除對話</button>
+            </div>
           </header>
 
           <div class="chat-log" id="chat-log" aria-live="polite">
             <div class="chat-empty-state" id="chat-empty-state">
               <div class="message assistant">
-                <span class="message-label">Course Assistant</span>
+                <span class="message-label">課程助理</span>
                 <div class="answer-card">
-                  <p>Ask a question about the course materials. Answers cite the indexed sources used.</p>
+                  <p>問我任何課程教材的問題，回答會附上引用的教材段落。</p>
                 </div>
               </div>
-              <div class="sample-prompt-grid" aria-label="Sample course questions">
-                <button type="button" data-sample-prompt="課程網站在哪裡？">課程網站在哪裡？</button>
-                <button type="button" data-sample-prompt="作業繳交有哪些規則？">作業繳交有哪些規則？</button>
-                <button type="button" data-sample-prompt="Network Essentials 的基本觀念有哪些？">Network Essentials 基本觀念</button>
-                <button type="button" data-sample-prompt="課程公告有哪些重要提醒？">課程公告重點</button>
+              <div class="sample-prompt-grid" aria-label="課程範例問題">
+                <button type="button" data-sample-prompt="什麼是 CAP Theorem？三個性質可以同時滿足嗎？">什麼是 CAP Theorem？</button>
+                <button type="button" data-sample-prompt="Sharding 和 Partitioning 有什麼差別？">Sharding 和 Partitioning 的差別</button>
+                <button type="button" data-sample-prompt="什麼時候該用 Cache？有哪些常見策略？">快取的常見策略</button>
+                <button type="button" data-sample-prompt="這門課的講義建議按什麼順序讀？">講義建議閱讀順序</button>
               </div>
             </div>
           </div>
 
           <form class="chat-form" id="chat-form">
-            <label class="sr-only" for="chat-query">Question</label>
-            <textarea id="chat-query" name="query" rows="4" placeholder="Ask about course policies, homework, or Network Essentials"></textarea>
-            <p class="composer-status" id="chat-composer-status" aria-live="polite">Ready for your question.</p>
+            <label class="sr-only" for="chat-query">問題</label>
+            <textarea id="chat-query" name="query" rows="4" placeholder="想了解哪個課程主題？例如：什麼是 CAP Theorem？"></textarea>
+            <p class="composer-status" id="chat-composer-status" aria-live="polite">輸入問題後按 Enter 送出。</p>
             <div class="form-actions">
-              <select id="chat-strategy" name="strategy" aria-label="Retrieval strategy">
-                <option value="hybrid">Hybrid</option>
-                <option value="markdown">Markdown</option>
-                <option value="vector">Vector</option>
-              </select>
-              <button class="primary-button" id="chat-submit" type="submit">Send</button>
+              <span></span>
+              <button class="primary-button" id="chat-submit" type="submit">送出</button>
             </div>
           </form>
         </section>
@@ -165,9 +169,10 @@
                 <button class="graph-view-button" type="button" id="graph-view-radial" aria-pressed="false">放射</button>
                 <button class="graph-view-button" type="button" id="graph-view-order" aria-pressed="false">學習順序</button>
               </div>
-              <button class="secondary-button" type="button" id="load-graph">載入圖譜</button>
+              <button class="secondary-button" type="button" id="load-graph">重新載入</button>
             </div>
           </header>
+          <p class="graph-stats" id="graph-stats"></p>
           <div class="graph-canvas" id="graph-canvas"></div>
           <p class="graph-empty" id="graph-empty">尚未建立知識圖譜。請先建立索引並執行概念抽取。</p>
         </section>
@@ -176,88 +181,43 @@
           <header class="workspace-header">
             <div>
               <h2>教材總覽</h2>
+              <p class="workspace-subtitle">點選任一份教材即可展開全文閱讀。</p>
             </div>
             <div class="button-row">
-              <button class="secondary-button" type="button" id="refresh-status">更新狀態</button>
+              <button class="secondary-button" type="button" id="refresh-sources">重新整理</button>
             </div>
           </header>
           <div class="source-table" id="source-table">
             <p class="muted">尚未找到已索引的來源。</p>
           </div>
+          <article class="source-reader" id="source-reader" hidden>
+            <div class="reader-toolbar">
+              <button class="secondary-button" type="button" id="source-reader-back">← 回到教材列表</button>
+            </div>
+            <div class="markdown-body reader-body" id="source-reader-body" tabindex="0"></div>
+          </article>
         </section>
       </main>
 
-      <aside class="inspector" aria-label="Context inspector">
+      <aside class="inspector" aria-label="引用與來源預覽">
         <section class="inspector-section">
-          <div class="section-heading">
-            <h2>引用來源</h2>
-            <span class="count-pill" id="selected-source-count">0</span>
-          </div>
-          <div class="selected-sources" id="answer-sources">
-            <p class="muted">這次回答沒有引用來源。</p>
-          </div>
+          <details class="inspector-disclosure" id="citation-disclosure">
+            <summary>
+              <span class="disclosure-title">引用來源</span>
+              <span class="count-pill" id="selected-source-count">0</span>
+            </summary>
+            <div class="selected-sources" id="answer-sources">
+              <p class="muted">這次回答沒有引用來源。</p>
+            </div>
+          </details>
         </section>
 
         <section class="inspector-section">
-          <h2>Answer Quality</h2>
-          <dl class="status-grid" id="answer-quality">
-            <div>
-              <dt>Decision</dt>
-              <dd>Unknown</dd>
-            </div>
-            <div>
-              <dt>Grounding</dt>
-              <dd>--</dd>
-            </div>
-            <div>
-              <dt>Retrieval</dt>
-              <dd>--</dd>
-            </div>
-          </dl>
-        </section>
-
-        <section class="inspector-section">
-          <h2>Previewed Source</h2>
+          <h2>來源內容</h2>
           <div class="preview-source-meta" id="preview-source-meta">
-            <p class="muted">No preview selected.</p>
+            <p class="muted">點選回答中的引用編號，這裡會顯示教材原文。</p>
           </div>
-          <pre class="markdown-preview" id="markdown-preview" tabindex="0">Select a source to preview markdown.</pre>
-        </section>
-
-        <section class="inspector-section">
-          <h2>Index Status</h2>
-          <dl class="status-grid" id="index-status">
-            <div>
-              <dt>Status</dt>
-              <dd>Unknown</dd>
-            </div>
-            <div>
-              <dt>Chunks</dt>
-              <dd>--</dd>
-            </div>
-            <div>
-              <dt>Updated</dt>
-              <dd>--</dd>
-            </div>
-          </dl>
-        </section>
-
-        <section class="inspector-section">
-          <h2>Eval Summary</h2>
-          <dl class="status-grid" id="eval-summary">
-            <div>
-              <dt>Status</dt>
-              <dd>Unknown</dd>
-            </div>
-            <div>
-              <dt>Pass Rate</dt>
-              <dd>--</dd>
-            </div>
-            <div>
-              <dt>Cases</dt>
-              <dd>--</dd>
-            </div>
-          </dl>
+          <div class="markdown-body markdown-preview" id="markdown-preview" tabindex="0"></div>
         </section>
       </aside>
     </div>
@@ -269,11 +229,14 @@
         <button class="console-nav-item is-active" type="button" data-console-panel="overview" aria-current="true">📊 總覽</button>
         <div class="console-section">內容</div>
         <button class="console-nav-item" type="button" data-console-panel="uploads">📥 上傳與索引</button>
+        <button class="console-nav-item" type="button" data-console-panel="editor">✏️ 教材編輯</button>
         <button class="console-nav-item" type="button" data-console-panel="documents">📄 文件生命週期</button>
         <button class="console-nav-item" type="button" data-console-panel="graph-extract">🗺 圖譜抽取</button>
         <div class="console-section">品質</div>
         <button class="console-nav-item" type="button" data-console-panel="evals">🧪 評估與回饋</button>
         <div class="console-section">維運</div>
+        <button class="console-nav-item" type="button" data-console-panel="health">🩺 服務狀態</button>
+        <button class="console-nav-item" type="button" data-console-panel="settings">🎛 系統設定</button>
         <button class="console-nav-item" type="button" data-console-panel="jobs">⚙️ 背景任務</button>
         <button class="console-nav-item" type="button" data-console-panel="ops">📡 Provider 用量</button>
         <button class="console-nav-item" type="button" data-console-panel="audit">🔒 審計日誌</button>
@@ -367,6 +330,55 @@
           </section>
         </section>
 
+        <section class="console-panel" id="panel-editor" data-console-panel-body="editor" data-admin-only hidden>
+          <header class="workspace-header">
+            <div>
+              <h2>教材編輯</h2>
+              <p class="workspace-subtitle">直接編輯持續更新的 markdown 教材（例如課程公告），儲存後立即重新索引。</p>
+            </div>
+            <button class="secondary-button" type="button" id="refresh-editor-documents">重新整理清單</button>
+          </header>
+
+          <section class="tool-section" aria-labelledby="editor-edit-heading">
+            <div class="section-heading">
+              <h3 id="editor-edit-heading">編輯既有教材</h3>
+            </div>
+            <div class="editor-controls">
+              <label class="inline-control editor-doc-select" for="editor-document-select">
+                文件
+                <select id="editor-document-select">
+                  <option value="">選擇要編輯的教材…</option>
+                </select>
+              </label>
+              <button class="secondary-button" type="button" id="editor-load-content">載入內容</button>
+            </div>
+            <textarea class="editor-textarea" id="editor-content" rows="18" spellcheck="false"
+                      placeholder="選擇文件並載入內容後，在此編輯 markdown。"></textarea>
+            <div class="button-row">
+              <button class="primary-button" type="button" id="editor-save-content">儲存並重新索引</button>
+            </div>
+          </section>
+
+          <section class="tool-section" aria-labelledby="editor-create-heading">
+            <div class="section-heading">
+              <h3 id="editor-create-heading">新增 markdown 教材</h3>
+            </div>
+            <div class="editor-controls">
+              <label class="inline-control" for="editor-new-filename">
+                檔名
+                <input id="editor-new-filename" type="text" placeholder="例如：課程公告.md" />
+              </label>
+            </div>
+            <textarea class="editor-textarea" id="editor-new-content" rows="10" spellcheck="false"
+                      placeholder="# 標題&#10;&#10;內容…"></textarea>
+            <div class="button-row">
+              <button class="primary-button" type="button" id="editor-create-document">建立並索引</button>
+            </div>
+          </section>
+
+          <p class="settings-status" id="editor-status" aria-live="polite">選擇教材後即可編輯。</p>
+        </section>
+
         <section class="console-panel" id="panel-documents" data-console-panel-body="documents" data-admin-only hidden>
           <header class="workspace-header">
             <div>
@@ -430,6 +442,20 @@
             <input id="eval-tags" name="tags" type="text" />
             <button class="primary-button" type="submit">Add Case</button>
           </form>
+          <dl class="status-grid" id="eval-summary">
+            <div>
+              <dt>Status</dt>
+              <dd>Unknown</dd>
+            </div>
+            <div>
+              <dt>Pass Rate</dt>
+              <dd>--</dd>
+            </div>
+            <div>
+              <dt>Cases</dt>
+              <dd>--</dd>
+            </div>
+          </dl>
           <pre class="eval-status" id="eval-status" aria-live="polite">No eval activity yet.</pre>
 
           <section class="tool-section" aria-labelledby="eval-report-heading">
@@ -481,6 +507,106 @@
               </div>
             </section>
           </div>
+        </section>
+
+        <section class="console-panel" id="panel-health" data-console-panel-body="health" data-admin-only hidden>
+          <header class="workspace-header">
+            <div>
+              <h2>服務狀態</h2>
+              <p class="workspace-subtitle" id="health-summary">尚未載入服務狀態。</p>
+            </div>
+            <button class="secondary-button" type="button" id="refresh-health">重新整理</button>
+          </header>
+          <div class="health-grid" id="health-checks" aria-live="polite">
+            <p class="muted">尚未載入服務狀態。</p>
+          </div>
+        </section>
+
+        <section class="console-panel" id="panel-settings" data-console-panel-body="settings" data-admin-only hidden>
+          <header class="workspace-header">
+            <div>
+              <h2>系統設定</h2>
+              <p class="workspace-subtitle">調整 LLM 與預算參數，儲存後立即生效，無需重啟服務。</p>
+            </div>
+            <button class="secondary-button" type="button" id="refresh-runtime-settings">重新整理</button>
+          </header>
+
+          <form class="runtime-settings-form" id="runtime-settings-form">
+            <section class="tool-section" aria-labelledby="settings-llm-heading">
+              <div class="section-heading">
+                <h3 id="settings-llm-heading">LLM 參數</h3>
+              </div>
+              <div class="settings-grid">
+                <label class="settings-field">
+                  <span>Chat 模型（一般問題）</span>
+                  <input id="settings-chat-model" name="openai_chat_model" type="text" placeholder="（使用預設）" />
+                  <small class="settings-default" data-default-for="openai_chat_model"></small>
+                </label>
+                <label class="settings-field">
+                  <span>Chat 模型（困難問題）</span>
+                  <input id="settings-chat-model-hard" name="openai_chat_model_hard" type="text" placeholder="（使用預設）" />
+                  <small class="settings-default" data-default-for="openai_chat_model_hard"></small>
+                </label>
+                <label class="settings-field">
+                  <span>Router 模型（guardrail／難度分級）</span>
+                  <input id="settings-router-model" name="openai_router_model" type="text" placeholder="（使用預設）" />
+                  <small class="settings-default" data-default-for="openai_router_model"></small>
+                </label>
+                <label class="settings-field">
+                  <span>Max output tokens</span>
+                  <input id="settings-max-tokens" name="openai_chat_max_completion_tokens" type="number" min="1" max="64000" placeholder="（使用預設）" />
+                  <small class="settings-default" data-default-for="openai_chat_max_completion_tokens"></small>
+                </label>
+                <label class="settings-field">
+                  <span>Temperature</span>
+                  <input id="settings-temperature" name="openai_chat_temperature" type="number" min="0" max="2" step="0.1" placeholder="（使用預設）" />
+                  <small class="settings-default" data-default-for="openai_chat_temperature"></small>
+                </label>
+              </div>
+            </section>
+
+            <section class="tool-section" aria-labelledby="settings-budget-heading">
+              <div class="section-heading">
+                <h3 id="settings-budget-heading">預算 Guardrails</h3>
+              </div>
+              <div class="settings-grid">
+                <label class="settings-field">
+                  <span>預算檢查</span>
+                  <select id="settings-budget-enabled" name="provider_budget_enabled">
+                    <option value="">（使用預設）</option>
+                    <option value="true">開啟</option>
+                    <option value="false">關閉</option>
+                  </select>
+                  <small class="settings-default" data-default-for="provider_budget_enabled"></small>
+                </label>
+                <label class="settings-field">
+                  <span>每日 token 上限（0 = 不限）</span>
+                  <input id="settings-token-limit" name="provider_budget_daily_token_limit" type="number" min="0" placeholder="（使用預設）" />
+                  <small class="settings-default" data-default-for="provider_budget_daily_token_limit"></small>
+                </label>
+                <label class="settings-field">
+                  <span>每日呼叫上限（0 = 不限）</span>
+                  <input id="settings-call-limit" name="provider_budget_daily_call_limit" type="number" min="0" placeholder="（使用預設）" />
+                  <small class="settings-default" data-default-for="provider_budget_daily_call_limit"></small>
+                </label>
+                <label class="settings-field">
+                  <span>超出預算時阻擋請求</span>
+                  <select id="settings-budget-block" name="provider_budget_block_on_exceeded">
+                    <option value="">（使用預設）</option>
+                    <option value="true">阻擋</option>
+                    <option value="false">僅警告</option>
+                  </select>
+                  <small class="settings-default" data-default-for="provider_budget_block_on_exceeded"></small>
+                </label>
+              </div>
+            </section>
+
+            <div class="button-row">
+              <button class="primary-button" type="submit" id="save-runtime-settings">儲存設定</button>
+              <button class="secondary-button" type="button" id="reset-runtime-settings">清除全部覆寫</button>
+            </div>
+            <p class="settings-status" id="runtime-settings-status" aria-live="polite">尚未載入系統設定。</p>
+          </form>
         </section>
 
         <section class="console-panel" id="panel-jobs" data-console-panel-body="jobs" data-admin-only hidden>
@@ -616,6 +742,16 @@
               <p class="muted">No provider traces loaded.</p>
             </div>
           </section>
+
+          <section class="tool-section" aria-labelledby="provider-logs-heading">
+            <div class="section-heading">
+              <h3 id="provider-logs-heading">LLM 呼叫紀錄（request / response）</h3>
+              <button class="text-button" type="button" id="refresh-provider-logs">Refresh</button>
+            </div>
+            <div class="provider-logs" id="provider-logs" aria-live="polite">
+              <p class="muted">尚未載入 LLM 呼叫紀錄。</p>
+            </div>
+          </section>
         </section>
 
         <section class="console-panel" id="panel-audit" data-console-panel-body="audit" data-admin-only hidden>
@@ -635,6 +771,7 @@
               <option value="auth.logout">auth.logout</option>
               <option value="admin.access_denied">admin.access_denied</option>
               <option value="admin.access_granted">admin.access_granted</option>
+              <option value="chat.session_reported">chat.session_reported</option>
               <option value="security.rate_limited">security.rate_limited</option>
               <option value="security.upload_concurrency_limited">security.upload_concurrency_limited</option>
             </select>

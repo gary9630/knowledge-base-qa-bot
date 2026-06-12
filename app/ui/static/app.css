@@ -136,7 +136,8 @@ textarea:disabled {
 
 .workbench {
   display: grid;
-  grid-template-columns: minmax(220px, 260px) minmax(0, 1fr) minmax(280px, 360px);
+  /* 右欄以 30vw 隨視窗加寬（上限隨螢幕變大），閱讀引用原文不再擁擠 */
+  grid-template-columns: minmax(220px, 260px) minmax(0, 1fr) minmax(300px, 30vw);
   min-height: 100vh;
 }
 
@@ -144,35 +145,46 @@ textarea:disabled {
   display: none;
 }
 
-.login-shell {
+/* ── Landing page ────────────────────────────────────── */
+.landing {
   display: flex;
-  align-items: center;
-  justify-content: center;
+  flex-direction: column;
   min-height: 100vh;
   background: var(--bg);
-  padding: clamp(24px, 6vw, 64px) clamp(16px, 4vw, 40px);
 }
 
-.login-shell[hidden] {
+.landing[hidden] {
   display: none;
 }
 
-/* ── Landing card ────────────────────────────────────── */
-.landing-card {
-  display: grid;
-  gap: var(--space-6);
-  width: 100%;
-  max-width: 880px;
+.landing-topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  padding: 14px clamp(20px, 5vw, 56px);
+  border-bottom: 1px solid var(--border);
   background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-raised);
-  padding: var(--space-6) var(--space-7);
 }
 
-.landing-header {
-  display: grid;
+.landing-brand {
+  display: flex;
+  align-items: center;
   gap: var(--space-3);
+  font-family: var(--font-display);
+  font-size: 17px;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.landing-hero {
+  display: grid;
+  justify-items: center;
+  text-align: center;
+  gap: var(--space-4);
+  width: min(960px, 100%);
+  margin: 0 auto;
+  padding: clamp(48px, 10vh, 110px) clamp(20px, 5vw, 56px) clamp(40px, 8vh, 88px);
 }
 
 .landing-kicker {
@@ -187,45 +199,87 @@ textarea:disabled {
   padding: 4px 12px;
 }
 
-.landing-header h1 {
+.landing-hero h1 {
   margin: 0;
   color: var(--text);
   font-family: var(--font-display);
-  font-size: 26px;
-  line-height: 1.3;
+  font-size: clamp(30px, 4.4vw, 44px);
+  line-height: 1.25;
   letter-spacing: 0;
 }
 
 .landing-lede {
-  max-width: 620px;
+  max-width: 600px;
   margin: 0;
   color: var(--muted);
-  font-size: 15px;
-  line-height: 1.55;
+  font-size: 16px;
+  line-height: 1.65;
 }
 
-.landing-trust-strip {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-2);
-  margin-top: var(--space-1);
+.landing-cta {
+  margin-top: var(--space-2);
 }
 
-.landing-trust-strip span {
-  border: 1px solid var(--border);
-  border-radius: var(--radius-pill);
-  background: transparent;
-  color: var(--muted);
-  font-size: 12px;
-  font-weight: 600;
-  padding: 4px 12px;
+.landing-cta-button {
+  font-size: 16px;
+  padding: 12px 32px;
 }
 
-.landing-body {
+.landing-feature-grid {
   display: grid;
-  grid-template-columns: minmax(280px, 1fr) minmax(280px, 1fr);
-  gap: var(--space-5);
-  align-items: start;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: var(--space-4);
+  width: 100%;
+  margin-top: clamp(28px, 6vh, 56px);
+  text-align: left;
+}
+
+.landing-feature {
+  display: grid;
+  gap: var(--space-2);
+  align-content: start;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  box-shadow: var(--shadow);
+  padding: var(--space-5);
+}
+
+.landing-feature-icon {
+  font-size: 26px;
+  line-height: 1;
+}
+
+.landing-feature h2 {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 17px;
+  line-height: 1.3;
+  color: var(--text);
+}
+
+.landing-feature p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+/* 登入彈窗 */
+.landing-login-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: color-mix(in srgb, var(--text) 38%, transparent);
+  backdrop-filter: blur(2px);
+}
+
+.landing-login-overlay[hidden] {
+  display: none;
 }
 
 .login-form {
@@ -236,6 +290,19 @@ textarea:disabled {
   background: var(--surface);
   padding: var(--space-5);
   box-shadow: var(--shadow);
+}
+
+.landing-login-card {
+  width: min(380px, 100%);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-raised);
+}
+
+.login-form-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
 }
 
 .login-form h2 {
@@ -254,20 +321,6 @@ textarea:disabled {
   font-size: 16px;
 }
 
-.landing-preview {
-  display: grid;
-  gap: var(--space-3);
-  padding: var(--space-4);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  background: var(--surface-muted);
-}
-
-.landing-preview .answer-card {
-  max-width: 100%;
-  font-size: 14px;
-}
-
 .sidebar,
 .workspace,
 .inspector {
@@ -283,10 +336,31 @@ textarea:disabled {
 
 .sidebar {
   display: grid;
-  grid-template-rows: auto auto minmax(0, 1fr) auto;
+  grid-template-rows: auto auto minmax(0, 1fr);
   gap: 16px;
   border-width: 0 1px 0 0;
   padding: 16px;
+}
+
+.sidebar .sidebar-footer {
+  align-self: end;
+  display: grid;
+  gap: 8px;
+}
+
+.sidebar-footer .console-entry {
+  width: 100%;
+}
+
+.chat-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+
+.chat-toolbar .text-button[hidden] {
+  display: none;
 }
 
 .inspector {
@@ -451,7 +525,6 @@ textarea:disabled {
   display: none;
 }
 
-.source-list,
 .selected-sources,
 .source-table,
 .import-jobs,
@@ -470,11 +543,6 @@ textarea:disabled {
   display: grid;
   gap: 8px;
   margin-top: 10px;
-}
-
-.source-list {
-  max-height: calc(100vh - 250px);
-  overflow: auto;
 }
 
 .job-row,
@@ -1100,7 +1168,6 @@ select {
   font-weight: 800;
 }
 
-.markdown-preview,
 .operation-log,
 .eval-status {
   max-height: 260px;
@@ -1114,6 +1181,138 @@ select {
   line-height: 1.45;
   padding: 10px;
   white-space: pre-wrap;
+}
+
+/* ── Markdown 內文（引用預覽、教材閱讀器、概念面板共用） ── */
+.markdown-preview {
+  max-height: min(48vh, 520px);
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  padding: 12px 14px;
+  margin-top: 10px;
+}
+
+.markdown-body {
+  color: var(--text);
+  font-size: 14px;
+  line-height: 1.75;
+  overflow-wrap: anywhere;
+}
+
+.markdown-body h1,
+.markdown-body h2,
+.markdown-body h3,
+.markdown-body h4,
+.markdown-body h5,
+.markdown-body h6 {
+  font-family: var(--font-display);
+  line-height: 1.3;
+  margin: 1.2em 0 0.45em;
+}
+
+.markdown-body h1 { font-size: 22px; margin-top: 0.4em; }
+.markdown-body h2 { font-size: 18px; }
+.markdown-body h3 { font-size: 16px; }
+.markdown-body h4 { font-size: 14px; }
+
+.markdown-body p {
+  margin: 0.55em 0;
+}
+
+.markdown-body ul,
+.markdown-body ol {
+  margin: 0.55em 0;
+  padding-inline-start: 1.4em;
+}
+
+.markdown-body li {
+  margin: 0.25em 0;
+}
+
+.markdown-body code {
+  background: var(--surface-muted);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font-family: var(--font-mono);
+  font-size: 0.85em;
+  padding: 1px 5px;
+}
+
+.markdown-body pre {
+  overflow: auto;
+  background: var(--surface-muted);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px 12px;
+}
+
+.markdown-body pre code {
+  border: 0;
+  background: transparent;
+  padding: 0;
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.markdown-body blockquote {
+  margin: 0.7em 0;
+  border-left: 3px solid var(--border-strong);
+  color: var(--muted);
+  padding: 2px 0 2px 12px;
+}
+
+.markdown-body table {
+  border-collapse: collapse;
+  margin: 0.7em 0;
+  width: 100%;
+  font-size: 13px;
+}
+
+.markdown-body th,
+.markdown-body td {
+  border: 1px solid var(--border);
+  padding: 6px 9px;
+  text-align: left;
+  vertical-align: top;
+}
+
+.markdown-body th {
+  background: var(--surface-muted);
+}
+
+.markdown-body hr {
+  border: 0;
+  border-top: 1px solid var(--border);
+  margin: 1em 0;
+}
+
+.mermaid-diagram {
+  margin: 0.7em 0;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  padding: 12px;
+  overflow-x: auto;
+  text-align: center;
+}
+
+.mermaid-diagram svg {
+  max-width: 100%;
+  height: auto;
+}
+
+/* 渲染失敗時退回程式碼區塊，外框交給內部的 pre 呈現 */
+.mermaid-diagram.is-fallback {
+  border: 0;
+  background: transparent;
+  padding: 0;
+  text-align: left;
+}
+
+.markdown-body a {
+  color: var(--accent-strong);
 }
 
 .operation-log {
@@ -1147,18 +1346,111 @@ select {
   overflow-wrap: anywhere;
 }
 
-/* The graph panel gains a dynamically inserted .graph-stats line before the
-   canvas; give it its own row so the canvas keeps the stretch row instead of
-   being pushed to the panel bottom (below the fold when the inspector is tall). */
+/* ── 右欄收合面板（引用來源） ─────────────────────────── */
+.inspector-disclosure {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+
+.inspector-disclosure summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  list-style: none;
+  cursor: pointer;
+  padding: 10px 12px;
+  font-size: 13px;
+  font-weight: 700;
+  font-family: var(--font-display);
+}
+
+.inspector-disclosure summary::-webkit-details-marker {
+  display: none;
+}
+
+.inspector-disclosure summary::before {
+  content: "▸";
+  color: var(--muted);
+  font-size: 11px;
+  margin-right: 2px;
+}
+
+.inspector-disclosure[open] summary::before {
+  content: "▾";
+}
+
+.inspector-disclosure .disclosure-title {
+  flex: 1;
+}
+
+.inspector-disclosure .selected-sources {
+  margin: 0;
+  padding: 0 10px 10px;
+}
+
+/* ── 教材閱讀器（Sources tab 中欄全文） ───────────────── */
+.source-reader {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 12px;
+  min-height: 0;
+}
+
+.reader-toolbar {
+  display: flex;
+  justify-content: flex-start;
+}
+
+.reader-body {
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  padding: clamp(16px, 4vw, 40px);
+  max-width: 860px;
+  width: 100%;
+}
+
+/* The graph panel rows: header / stats line / canvas (stretch) / empty / detail.
+   The canvas keeps the stretch row so it fills the viewport height. */
 .workspace-panel[data-panel="graph"] {
-  grid-template-rows: auto auto minmax(0, 1fr) auto;
+  grid-template-rows: auto auto minmax(0, 1fr) auto auto;
 }
 
 .graph-canvas {
-  height: 560px;
+  height: 100%;
+  min-height: 480px;
   border: 1px solid var(--border);
   border-radius: 8px;
   background: var(--surface);
+}
+
+/* ── 圖譜概念詳情（渲染於右欄來源內容區） ─────────────── */
+.graph-detail-ask {
+  margin-top: 8px;
+  min-height: 34px;
+  font-size: 13px;
+  justify-self: start;
+}
+
+.graph-detail-summary {
+  margin: 4px 0 0;
+  line-height: 1.7;
+}
+
+.graph-detail-sources-heading {
+  margin: 14px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+}
+
+.concept-back-link {
+  display: inline-block;
+  margin-bottom: 8px;
 }
 
 .graph-toolbar {
@@ -1591,6 +1883,164 @@ select {
   }
 }
 
+/* ── 系統設定面板 ─────────────────────────────────────── */
+.runtime-settings-form {
+  display: grid;
+  gap: 16px;
+  max-width: 860px;
+}
+
+.settings-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 14px;
+}
+
+.settings-field {
+  display: grid;
+  gap: 6px;
+  align-content: start;
+}
+
+.settings-field > span {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.settings-default {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.settings-status {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.settings-status.is-danger {
+  color: var(--danger, #b3261e);
+}
+
+/* ── Admin tables（審計日誌 / LLM 呼叫紀錄）──────────────── */
+.admin-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.admin-table th,
+.admin-table td {
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+  vertical-align: top;
+}
+
+.admin-table thead th {
+  background: var(--surface-muted);
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.admin-table tbody tr.is-failed td,
+.admin-table tbody tr.is-failure td,
+.admin-table tbody tr.is-blocked td {
+  background: color-mix(in srgb, var(--danger, #b3261e) 7%, transparent);
+}
+
+.table-sort-button {
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+  padding: 0;
+}
+
+.audit-metadata-cell {
+  max-width: 420px;
+  overflow-wrap: anywhere;
+  color: var(--muted);
+}
+
+.provider-log-detail pre {
+  margin: 0;
+  max-height: 320px;
+  overflow: auto;
+  font-size: 12px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* ── 服務狀態 ─────────────────────────────────────────── */
+.health-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 14px;
+}
+
+.health-card {
+  border: 1px solid var(--border);
+  border-left-width: 4px;
+  border-radius: 8px;
+  background: var(--surface);
+  padding: 14px 16px;
+  display: grid;
+  gap: 8px;
+}
+
+.health-card.is-ok {
+  border-left-color: var(--success, #2e7d32);
+}
+
+.health-card.is-warning {
+  border-left-color: #b58a00;
+}
+
+.health-card.is-failed {
+  border-left-color: var(--danger, #b3261e);
+}
+
+.health-card-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.health-card p {
+  margin: 0;
+}
+
+/* ── 教材編輯 ─────────────────────────────────────────── */
+.editor-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.editor-doc-select select {
+  min-width: 320px;
+  max-width: 100%;
+}
+
+.editor-textarea {
+  width: 100%;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 13px;
+  line-height: 1.6;
+  resize: vertical;
+}
+
 /* ── Responsive: 1120px breakpoint ────────────────────────── */
 @media (max-width: 1120px) {
   .workbench {
@@ -1599,7 +2049,7 @@ select {
 
   .inspector {
     grid-column: 1 / -1;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: repeat(2, minmax(0, 1fr));
     border-width: 1px 0 0;
     max-height: none;
   }
@@ -1607,23 +2057,16 @@ select {
 
 /* ── Responsive: 760px breakpoint ────────────────────────── */
 @media (max-width: 760px) {
-  .login-shell {
-    padding: 16px;
-    align-items: flex-start;
+  .landing-topbar {
+    padding: 12px 16px;
   }
 
-  .landing-card {
-    padding: var(--space-5) var(--space-4);
-    gap: var(--space-4);
+  .landing-hero {
+    padding: 48px 20px 40px;
   }
 
-  .landing-body {
+  .landing-feature-grid {
     grid-template-columns: 1fr;
-  }
-
-  .login-form,
-  .landing-preview {
-    width: 100%;
   }
 
   .workbench {

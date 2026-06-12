@@ -4,6 +4,8 @@ import re
 from collections.abc import Iterable
 from dataclasses import dataclass
 
+from app.indexing.citations import slugify_heading
+
 CANNOT_CONFIRM_ANSWER = "我無法從知識庫確認這件事。"
 _SOURCE_ID_BOUNDARY_CHARS = (
     r"\s\"'`“”‘’「」『』《》〈〉（）【】［］〔〕｛｝"
@@ -39,7 +41,9 @@ _QUOTED_SOURCE_ID_RE = re.compile(
     r"|‘(?P<single_smart_source_id>[^‘’\r\n]+?\.md#[\w-]+)’",
     re.UNICODE,
 )
-_BRACKETED_SOURCE_ID_CONTENT_RE = re.compile(r"^(?P<source_id>.+\.md#[\w-]+)$", re.UNICODE)
+# Anchors may carry punctuation the model copied from the original heading
+# (e.g. a trailing 「？」); normalization maps them back to the indexed slug.
+_BRACKETED_SOURCE_ID_CONTENT_RE = re.compile(r"^(?P<source_id>.+\.md#\S.*)$", re.UNICODE)
 _URL_RE = re.compile(r"^[A-Za-z][A-Za-z0-9+.-]*://")
 _URL_SOURCE_ID_RE = re.compile(r"[A-Za-z][A-Za-z0-9+.-]*://\S*?\.md#[\w-]+", re.UNICODE)
 _MARKDOWN_URL_LINK_RE = re.compile(
@@ -75,8 +79,21 @@ def validate_citations(
     allowed_source_ids: Iterable[str],
 ) -> CitationValidationResult:
     allowed = {source_id for source_id in allowed_source_ids if source_id}
-    cited_source_ids = _extract_cited_source_ids(answer, allowed)
-    invalid_source_ids = _extract_source_id_tokens(answer) - allowed
+    normalized_allowed: dict[str, str] = {}
+    for source_id in allowed:
+        normalized_allowed.setdefault(_normalize_source_id(source_id), source_id)
+
+    cited_source_ids: set[str] = set()
+    invalid_source_ids: set[str] = set()
+    for token in _extract_source_id_tokens(answer):
+        if token in allowed:
+            cited_source_ids.add(token)
+            continue
+        canonical = normalized_allowed.get(_normalize_source_id(token))
+        if canonical is not None:
+            cited_source_ids.add(canonical)
+        else:
+            invalid_source_ids.add(token)
     has_any_citation = bool(cited_source_ids or invalid_source_ids)
     is_cannot_confirm = answer.strip() == CANNOT_CONFIRM_ANSWER
     mentions_cannot_confirm = CANNOT_CONFIRM_ANSWER in answer
@@ -94,8 +111,16 @@ def validate_citations(
     )
 
 
-def _extract_cited_source_ids(answer: str, allowed_source_ids: set[str]) -> set[str]:
-    return _extract_source_id_tokens(answer) & allowed_source_ids
+def _normalize_source_id(source_id: str) -> str:
+    """Map a cited source id onto the indexed slug form.
+
+    The model often copies the human heading (with punctuation such as 「？」)
+    instead of the slugified anchor; both must compare equal.
+    """
+    filename, separator, anchor = source_id.partition("#")
+    if not separator:
+        return source_id.strip()
+    return f"{filename.strip()}#{slugify_heading(anchor)}"
 
 
 def _extract_source_id_tokens(answer: str) -> set[str]:

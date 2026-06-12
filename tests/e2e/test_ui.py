@@ -92,10 +92,11 @@ def test_ui_serves_student_landing_page_and_marks_admin_surfaces() -> None:
     css_response = client.get("/static/app.css")
 
     assert response.status_code == 200
-    assert 'id="landing-preview"' in response.text
-    assert 'id="landing-trust-strip"' in response.text
-    assert "Course Assistant" in response.text  # still present in chat panel heading
-    assert "學生登入" in response.text  # zh-TW copy (was "Student sign in")
+    assert 'id="landing-login-open"' in response.text  # 右上角登入
+    assert 'id="landing-login-overlay"' in response.text
+    assert 'class="landing-feature-grid"' in response.text
+    assert "課程助理" in response.text  # chat panel heading (zh-TW learner copy)
+    assert "登入課程帳號" in response.text  # login dialog heading
     assert 'id="tab-chat"' in response.text
     assert 'id="tab-graph"' in response.text
     assert 'id="tab-sources"' in response.text
@@ -117,10 +118,10 @@ def test_ui_serves_student_landing_page_and_marks_admin_surfaces() -> None:
 
     assert css_response.status_code == 200
     assert "[hidden]" in css_response.text
-    # centered landing-card replaced the old two-column .landing-copy layout
-    assert ".landing-card" in css_response.text
-    assert ".landing-preview" in css_response.text
-    assert ".landing-trust-strip" in css_response.text
+    # full-page landing with topbar login replaced the landing-card layout
+    assert ".landing-topbar" in css_response.text
+    assert ".landing-feature-grid" in css_response.text
+    assert ".landing-login-overlay" in css_response.text
 
 
 def test_ui_blocks_admin_tabs_for_platform_learners_in_javascript() -> None:
@@ -259,20 +260,22 @@ def test_ui_exposes_import_diagnostics_wiring() -> None:
     assert "job.content_hash" in js_response.text
 
 
-def test_ui_exposes_answer_quality_wiring() -> None:
+def test_ui_keeps_diagnostics_out_of_learner_surfaces() -> None:
     client = TestClient(create_app())
 
     response = client.get("/")
     js_response = client.get("/static/app.js")
 
     assert response.status_code == 200
-    assert 'id="answer-quality"' in response.text
-    assert "renderAnswerQuality" in js_response.text
-    assert "retrieval_diagnostics" in js_response.text
-    assert "answer_quality" in js_response.text
-    assert "scoreBreakdownText" in js_response.text
-    assert "source.debug_scores" in js_response.text
+    # Diagnostic panels (answer quality / index status) are admin-console-only;
+    # learners see the collapsible citation list and the source preview instead.
+    assert 'id="answer-quality"' not in response.text
+    assert 'id="index-status"' not in response.text
+    assert 'id="citation-disclosure"' in response.text
+    assert 'id="selected-source-count"' in response.text
+    assert "answerIsCannotConfirm" in js_response.text
     assert "cannot_confirm_reason" in js_response.text
+    assert "scoreBreakdownText" not in js_response.text
 
 
 def test_ui_exposes_learner_chat_polish_wiring() -> None:
@@ -285,12 +288,12 @@ def test_ui_exposes_learner_chat_polish_wiring() -> None:
     assert response.status_code == 200
     assert 'id="learner-chat-status"' in response.text
     assert 'id="chat-empty-state"' in response.text
-    assert "Course Assistant" in response.text
+    assert "課程助理" in response.text
     assert "data-sample-prompt" in response.text
     assert 'id="chat-composer-status"' in response.text
     assert 'id="chat-submit"' in response.text
     assert 'id="markdown-preview" tabindex="0"' in response.text
-    assert "Ask about course policies, homework, or Network Essentials" in response.text
+    assert "想了解哪個課程主題" in response.text
 
     assert js_response.status_code == 200
     assert "bindSamplePrompts" in js_response.text
@@ -306,16 +309,17 @@ def test_ui_exposes_learner_chat_polish_wiring() -> None:
     assert "refreshLearnerContext" in js_response.text
     assert "updateLearnerChatStatus" in js_response.text
     assert "scrollIntoView" in js_response.text
-    assert "Looking through course sources" in js_response.text
+    assert "正在搜尋課程教材" in js_response.text
     assert "個課程段落回答" in js_response.text
-    assert "知識庫無法確認這個問題" in js_response.text
+    assert "教材中找不到這個問題的答案" in js_response.text
     assert "previewCandidate(source)" in js_response.text
     assert "renderAnswerCitations" in js_response.text
-    assert "mergeCitedSources(payload.sources)" in js_response.text
     assert "citationLabelForSource" in js_response.text
     assert "submitAnswerFeedback" in js_response.text
     assert "feedbackExpectedSource" in js_response.text
     assert 'fetch("/feedback"' in js_response.text
+    # cannot-confirm answers must not render citation chips or fill the rail
+    assert "const citedSources = answerIsCannotConfirm(payload) ? []" in js_response.text
 
     assert css_response.status_code == 200
     assert ".chat-empty-state" in css_response.text
@@ -338,18 +342,17 @@ def test_ui_separates_answer_sources_from_previewed_source() -> None:
     assert "引用來源" in response.text
     assert 'id="answer-sources"' in response.text
     assert 'id="preview-source-meta"' in response.text
-    assert "Previewed Source" in response.text
+    assert "來源內容" in response.text
     assert "這次回答沒有引用來源。" in response.text
 
     assert js_response.status_code == 200
     assert "documentDisplayTitle" in js_response.text
-    assert "documentSourceSummary" in js_response.text
     assert "renderPreviewSourceMeta" in js_response.text
-    assert "No preview selected." in js_response.text
-    preview_document_body = js_response.text.split("async function previewDocument", 1)[1].split(
-        "async function formatDocumentPreview", 1
+    # opening the source reader must not touch the chat citation rail
+    reader_body = js_response.text.split("async function openSourceReader", 1)[1].split(
+        "function closeSourceReader", 1
     )[0]
-    assert "setSelectedSources" not in preview_document_body
+    assert "setSelectedSources" not in reader_body
 
     assert css_response.status_code == 200
     assert ".preview-source-meta" in css_response.text
@@ -393,20 +396,16 @@ def test_ui_exposes_scholarly_landing_and_sources() -> None:
     css_response = client.get("/static/app.css")
 
     assert page.status_code == 200
-    # Landing card structure
-    assert 'class="landing-card"' in page.text
-    # Trust strip chips still present
-    assert 'id="landing-trust-strip"' in page.text
-    # Preview pane uses real chat classes (not drifting custom styles)
-    assert "answer-card" in page.text
-    assert "trust-badge" in page.text
-    assert "citation-pill" in page.text
+    # Landing hero structure with topbar login
+    assert 'class="landing-topbar"' in page.text
+    assert 'class="landing-hero"' in page.text
+    assert 'id="landing-cta-login"' in page.text
     # zh-TW copy on landing
-    assert "學生登入" in page.text
+    assert "課程知識庫助理" in page.text
 
     assert css_response.status_code == 200
-    # Landing card token-based style
-    assert ".landing-card" in css_response.text
+    # Landing token-based style
+    assert ".landing-hero" in css_response.text
     # Sources reading-list style
     assert ".doc-row" in css_response.text
 
@@ -430,9 +429,12 @@ def test_ui_admin_console_structure() -> None:
     for panel in (
         "overview",
         "uploads",
+        "editor",
         "documents",
         "graph-extract",
         "evals",
+        "health",
+        "settings",
         "jobs",
         "ops",
         "audit",
@@ -495,6 +497,10 @@ def test_ui_exposes_graph_tab_wiring() -> None:
     assert "vendor/dagre.min.js" in response.text
     assert "vendor/cytoscape-dagre.js" in response.text
 
+    # concept detail renders in the right-rail inspector, not below the canvas
+    assert 'id="graph-detail"' not in response.text
+    assert 'id="graph-stats"' in response.text
+
     assert "getJson(\"/graph\")" in js_response.text
     assert "renderGraphView" in js_response.text
     assert "graph-view-cluster" in js_response.text
@@ -502,6 +508,36 @@ def test_ui_exposes_graph_tab_wiring() -> None:
     assert "graph-view-order" in js_response.text
     assert "askAboutConcept" in js_response.text
     assert "refreshGraphAfterContentChange" in js_response.text
+    assert "buildClusterPresetPositions" in js_response.text
+    assert "highlightGraphNeighborhood" in js_response.text
+    assert "renderConceptDetail" in js_response.text
+
+
+def test_ui_exposes_source_reader_wiring() -> None:
+    client = TestClient(create_app())
+
+    response = client.get("/")
+    js_response = client.get("/static/app.js")
+
+    assert response.status_code == 200
+    assert 'id="source-table"' in response.text
+    assert 'id="source-reader"' in response.text
+    assert 'id="source-reader-back"' in response.text
+    assert 'id="source-reader-body"' in response.text
+    # the standalone sidebar source list is gone; sources live in the tab panel
+    assert 'id="source-list"' not in response.text
+
+    assert "openSourceReader" in js_response.text
+    assert "closeSourceReader" in js_response.text
+    assert "renderMarkdownFragment" in js_response.text
+    assert "renderMarkdownInto" in js_response.text
+
+    # mermaid code fences render as diagrams, with a code-block fallback
+    assert "vendor/mermaid.min.js" in response.text
+    assert "mermaidBlock" in js_response.text
+    assert "suppressErrorRendering" in js_response.text
+    vendor_response = client.get("/static/vendor/mermaid.min.js")
+    assert vendor_response.status_code == 200
     init_body = js_response.text.split("function init() {", 1)[1].split("}", 1)[0]
     assert "loadGraph" not in init_body
 
@@ -519,3 +555,142 @@ def test_ui_motion_and_a11y_rules() -> None:
     css_response = client.get("/static/app.css")
     assert "prefers-reduced-motion" in css_response.text
     assert ":focus-visible" in css_response.text
+
+
+def test_ui_runtime_settings_console_wiring() -> None:
+    client = TestClient(create_app())
+
+    page = client.get("/")
+    js_response = client.get("/static/app.js")
+
+    assert page.status_code == 200
+    assert 'data-console-panel="settings"' in page.text
+    assert 'id="runtime-settings-form"' in page.text
+    assert 'id="settings-chat-model"' in page.text
+    assert 'id="settings-max-tokens"' in page.text
+    assert 'id="settings-temperature"' in page.text
+    assert 'id="settings-budget-enabled"' in page.text
+    assert 'id="reset-runtime-settings"' in page.text
+
+    assert "loadRuntimeSettings" in js_response.text
+    assert "collectRuntimeOverrides" in js_response.text
+    assert '"/admin/settings"' in js_response.text
+
+
+def test_ui_role_based_landing_and_admin_gating() -> None:
+    client = TestClient(create_app())
+
+    page = client.get("/")
+    js_response = client.get("/static/app.js")
+
+    assert page.status_code == 200
+    # landing topbar 登入 + overlay form
+    assert 'id="landing-login-open"' in page.text
+    assert 'id="landing-login-overlay"' in page.text
+
+    # admin role unlocks the console entry; students stay restricted
+    assert 'state.auth.role !== "admin"' in js_response.text
+    assert "role: payload.role || null" in js_response.text
+    assert "openLoginOverlay" in js_response.text
+
+
+def test_ui_markdown_editor_console_wiring() -> None:
+    client = TestClient(create_app())
+
+    page = client.get("/")
+    js_response = client.get("/static/app.js")
+
+    assert 'id="editor-document-select"' in page.text
+    assert 'id="editor-content"' in page.text
+    assert 'id="editor-save-content"' in page.text
+    assert 'id="editor-new-filename"' in page.text
+    assert 'id="editor-create-document"' in page.text
+
+    assert "loadEditorContent" in js_response.text
+    assert "saveEditorContent" in js_response.text
+    assert "/content`" in js_response.text  # /admin/documents/{id}/content
+
+
+def test_ui_system_health_console_wiring() -> None:
+    client = TestClient(create_app())
+
+    page = client.get("/")
+    js_response = client.get("/static/app.js")
+
+    assert 'data-console-panel="health"' in page.text
+    assert 'id="health-checks"' in page.text
+    assert 'id="refresh-health"' in page.text
+    assert '"/admin/system-status"' in js_response.text
+    assert "renderSystemHealth" in js_response.text
+
+
+def test_ui_audit_log_renders_sortable_table() -> None:
+    client = TestClient(create_app())
+
+    js_response = client.get("/static/app.js")
+    css_response = client.get("/static/app.css")
+
+    assert "renderAuditTable" in js_response.text
+    assert "table-sort-button" in js_response.text
+    assert "AUDIT_COLUMNS" in js_response.text
+    assert ".admin-table" in css_response.text
+
+
+def test_ui_provider_logs_wiring() -> None:
+    client = TestClient(create_app())
+
+    page = client.get("/")
+    js_response = client.get("/static/app.js")
+
+    assert 'id="provider-logs"' in page.text
+    assert "/admin/provider-logs?limit=50" in js_response.text
+    assert "renderProviderLogs" in js_response.text
+
+
+def test_ui_guardrail_blocked_badge_copy() -> None:
+    client = TestClient(create_app())
+    js_response = client.get("/static/app.js")
+    assert "guardrail_blocked" in js_response.text
+    assert "這個問題和課程學習無關" in js_response.text
+
+
+def test_ui_runtime_settings_includes_router_and_hard_models() -> None:
+    client = TestClient(create_app())
+    page = client.get("/")
+    assert 'id="settings-chat-model-hard"' in page.text
+    assert 'id="settings-router-model"' in page.text
+
+
+def test_ui_chat_toolbar_clear_export_report_wiring() -> None:
+    client = TestClient(create_app())
+
+    page = client.get("/")
+    js_response = client.get("/static/app.js")
+
+    assert 'id="chat-clear"' in page.text
+    assert 'id="chat-export"' in page.text
+    assert 'id="chat-report"' in page.text
+    assert "🧹 清除對話" in page.text
+    assert "⬇ 匯出 JSON" in page.text
+    assert "🚩 回報問題" in page.text
+
+    assert "function clearConversation" in js_response.text
+    assert "function exportConversation" in js_response.text
+    assert "async function reportConversation" in js_response.text
+    assert "fetch(\"/chat/report\"" in js_response.text
+    # 後續訊息帶上既有 conversation_id，done 事件再把它存回 state
+    assert "payload.conversation_id = state.conversationId" in js_response.text
+    assert "state.conversationId = payload.conversation_id" in js_response.text
+
+
+def test_ui_logout_moved_to_sidebar_footer_with_emoji() -> None:
+    client = TestClient(create_app())
+
+    page = client.get("/")
+
+    footer_markup = page.text.split('class="sidebar-footer"', 1)[1].split("</div>", 1)[0]
+    assert 'id="platform-logout"' in footer_markup
+    assert "🚪 登出" in footer_markup
+    # brand 區不再有 logout 按鈕
+    brand_markup = page.text.split('class="brand"', 1)[1].split("</div>", 1)[0]
+    assert "platform-logout" not in brand_markup

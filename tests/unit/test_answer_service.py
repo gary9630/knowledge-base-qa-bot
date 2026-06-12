@@ -41,6 +41,32 @@ def test_validate_citations_accepts_cjk_source_id_with_surrounding_punctuation()
     assert result.invalid_source_ids == set()
 
 
+def test_validate_citations_accepts_anchor_with_heading_punctuation() -> None:
+    allowed_source_ids = {"3-常用技術-01-Database.md#為什麼資料庫的選擇這麼複雜"}
+
+    result = validate_citations(
+        "資料庫選型牽涉多種取捨。 [3-常用技術-01-Database.md#為什麼資料庫的選擇這麼複雜？]",
+        allowed_source_ids,
+    )
+
+    assert result.valid
+    assert result.cited_source_ids == allowed_source_ids
+    assert result.invalid_source_ids == set()
+
+
+def test_validate_citations_accepts_anchor_with_spaces_and_case_variants() -> None:
+    allowed_source_ids = {"faq.md#course-site"}
+
+    result = validate_citations(
+        "課程網站在學習平台。 [faq.md#Course Site]",
+        allowed_source_ids,
+    )
+
+    assert result.valid
+    assert result.cited_source_ids == allowed_source_ids
+    assert result.invalid_source_ids == set()
+
+
 def test_validate_citations_does_not_treat_markdown_url_anchor_as_source_id() -> None:
     result = validate_citations(
         "更多背景可參考 https://example.md#anchor",
@@ -346,6 +372,29 @@ def test_answer_falls_back_when_retry_still_has_invalid_citation() -> None:
     assert [call.strict for call in provider.calls] == [False, True]
 
 
+def test_answer_keeps_partially_grounded_retry_answer_with_warnings() -> None:
+    source = _candidate(source_id="faq.md#course-site")
+    provider = FakeAnswerProvider(
+        [
+            "課程網站在平台首頁。 [missing.md#course-site]",
+            "課程網站在平台首頁。 [faq.md#course-site] 另見 [missing.md#course-site]",
+        ]
+    )
+    service = AnswerService(provider)
+
+    result = service.answer("課程網站在哪裡？", [source])
+
+    expected_answer = "課程網站在平台首頁。 [faq.md#course-site] 另見 [missing.md#course-site]"
+    assert result.answer == expected_answer
+    assert result.valid
+    assert [answer_source.source_id for answer_source in result.sources] == [source.source_id]
+    assert result.citation_errors == [
+        "answer cited unselected source IDs: missing.md#course-site"
+    ]
+    assert result.cannot_confirm_reason is None
+    assert [call.strict for call in provider.calls] == [False, True]
+
+
 def test_cannot_confirm_answer_with_no_citations_is_valid_with_sources_available() -> None:
     source = _candidate(source_id="faq.md#course-site")
     provider = FakeAnswerProvider([CANNOT_CONFIRM_ANSWER])
@@ -395,6 +444,24 @@ def test_validate_generated_stream_answer_downgrades_invalid_citations() -> None
     assert result.citation_errors == [
         "answer cited unselected source IDs: missing.md#course-site"
     ]
+
+
+def test_validate_generated_stream_answer_keeps_partially_grounded_answer() -> None:
+    source = _candidate(source_id="faq.md#course-site")
+    service = AnswerService(FakeAnswerProvider())
+
+    result = service.validate_generated_answer(
+        "Course site. [faq.md#course-site] See also [missing.md#course-site]",
+        [source],
+    )
+
+    assert result.answer == "Course site. [faq.md#course-site] See also [missing.md#course-site]"
+    assert result.valid
+    assert [answer_source.source_id for answer_source in result.sources] == [source.source_id]
+    assert result.citation_errors == [
+        "answer cited unselected source IDs: missing.md#course-site"
+    ]
+    assert result.cannot_confirm_reason is None
 
 
 def _candidate(

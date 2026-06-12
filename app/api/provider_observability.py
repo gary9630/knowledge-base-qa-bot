@@ -9,12 +9,12 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.api.dependencies import (
-    get_app_settings,
+    get_effective_settings,
     get_request_db_session,
     require_admin_access,
 )
 from app.core.config import Settings
-from app.models.tables import RetrievalEvent
+from app.models.tables import ProviderCallLog, RetrievalEvent
 from app.observability.metrics import InMemoryMetrics
 from app.provider_budget import ProviderBudgetStatus, provider_budget_status
 
@@ -79,6 +79,69 @@ class ProviderObservabilityResponse(BaseModel):
     traces: list[ProviderTraceResponse]
 
 
+class ProviderCallLogResponse(BaseModel):
+    id: UUID
+    conversation_id: UUID | None
+    retrieval_event_id: UUID | None
+    provider: str
+    operation: str
+    model: str
+    status: str
+    client_request_id: str | None
+    provider_request_id: str | None
+    latency_ms: int
+    error_type: str | None
+    usage: dict[str, Any] | None
+    request: dict[str, Any] | None
+    response: dict[str, Any] | None
+    created_at: str
+
+
+class ProviderCallLogsResponse(BaseModel):
+    logs: list[ProviderCallLogResponse]
+
+
+@router.get("/provider-logs", response_model=ProviderCallLogsResponse)
+def list_provider_call_logs(
+    session: Annotated[Session, Depends(get_request_db_session)],
+    limit: Annotated[int, Query(ge=1, le=200)] = 50,
+    operation: str | None = None,
+    status: str | None = None,
+) -> ProviderCallLogsResponse:
+    statement = select(ProviderCallLog)
+    if operation:
+        statement = statement.where(ProviderCallLog.operation == operation)
+    if status:
+        statement = statement.where(ProviderCallLog.status == status)
+    rows = session.scalars(
+        statement.order_by(ProviderCallLog.created_at.desc(), ProviderCallLog.id.desc()).limit(
+            limit
+        )
+    ).all()
+    return ProviderCallLogsResponse(
+        logs=[
+            ProviderCallLogResponse(
+                id=row.id,
+                conversation_id=row.conversation_id,
+                retrieval_event_id=row.retrieval_event_id,
+                provider=row.provider,
+                operation=row.operation,
+                model=row.model,
+                status=row.status,
+                client_request_id=row.client_request_id,
+                provider_request_id=row.provider_request_id,
+                latency_ms=row.latency_ms,
+                error_type=row.error_type,
+                usage=row.usage_json,
+                request=row.request_json,
+                response=row.response_json,
+                created_at=row.created_at.isoformat(),
+            )
+            for row in rows
+        ]
+    )
+
+
 @router.get("/provider-observability", response_model=ProviderObservabilityResponse)
 def get_provider_observability(
     request: Request,
@@ -104,7 +167,7 @@ def get_provider_observability(
             break
 
     return provider_observability_response(
-        settings=get_app_settings(request),
+        settings=get_effective_settings(request),
         metrics_snapshot=metrics.snapshot(),
         traces=traces,
     )

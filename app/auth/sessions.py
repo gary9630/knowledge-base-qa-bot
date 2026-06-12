@@ -10,7 +10,11 @@ from dataclasses import dataclass
 
 from app.core.config import Settings
 
+# Legacy role kept for tokens issued before student/admin roles existed.
 PLATFORM_ROLE = "platform"
+ROLE_STUDENT = "student"
+ROLE_ADMIN = "admin"
+VALID_ROLES = {ROLE_STUDENT, ROLE_ADMIN}
 
 
 @dataclass(frozen=True)
@@ -21,13 +25,17 @@ class PlatformSession:
     expires_at: int
 
 
+def _student_account_configured(settings: Settings) -> bool:
+    return bool(settings.platform_username and settings.platform_password)
+
+
+def _admin_account_configured(settings: Settings) -> bool:
+    return bool(settings.admin_username and settings.admin_password)
+
+
 def platform_auth_is_configured(settings: Settings) -> bool:
-    return all(
-        (
-            settings.auth_secret_key,
-            settings.platform_username,
-            settings.platform_password,
-        )
+    return bool(settings.auth_secret_key) and (
+        _student_account_configured(settings) or _admin_account_configured(settings)
     )
 
 
@@ -40,11 +48,36 @@ def verify_platform_credentials(
     *,
     username: str,
     password: str,
-) -> bool:
+) -> str | None:
+    """Return the role for valid credentials, or None when they do not match."""
     if not platform_auth_is_configured(settings):
-        return False
-    configured_username = settings.platform_username or ""
-    configured_password = settings.platform_password or ""
+        return None
+
+    if _student_account_configured(settings) and _credentials_match(
+        username,
+        password,
+        settings.platform_username or "",
+        settings.platform_password or "",
+    ):
+        return ROLE_STUDENT
+
+    if _admin_account_configured(settings) and _credentials_match(
+        username,
+        password,
+        settings.admin_username or "",
+        settings.admin_password or "",
+    ):
+        return ROLE_ADMIN
+
+    return None
+
+
+def _credentials_match(
+    username: str,
+    password: str,
+    configured_username: str,
+    configured_password: str,
+) -> bool:
     return secrets.compare_digest(username, configured_username) and secrets.compare_digest(
         password,
         configured_password,
@@ -55,15 +88,18 @@ def create_platform_session_token(
     settings: Settings,
     *,
     username: str,
+    role: str = ROLE_STUDENT,
     csrf_token: str | None = None,
     now: int | None = None,
 ) -> str:
+    if role not in VALID_ROLES:
+        raise ValueError(f"unsupported platform role: {role}")
     secret = _required_auth_secret(settings)
     issued_at = _now(now)
     expires_at = issued_at + _session_ttl(settings)
     payload = {
         "sub": username,
-        "role": PLATFORM_ROLE,
+        "role": role,
         "csrf": csrf_token or secrets.token_urlsafe(32),
         "exp": expires_at,
     }
@@ -114,7 +150,10 @@ def _session_from_payload(payload: object) -> PlatformSession | None:
     expires_at = payload.get("exp")
     if not isinstance(username, str) or not username:
         return None
-    if role != PLATFORM_ROLE:
+    if role == PLATFORM_ROLE:
+        # Tokens issued before roles existed map to the student experience.
+        role = ROLE_STUDENT
+    if role not in VALID_ROLES:
         return None
     if not isinstance(csrf_token, str) or not csrf_token:
         return None

@@ -156,6 +156,119 @@ def delete_document_from_index(
     return admin_document_response(session, document)
 
 
+class DocumentContentResponse(BaseModel):
+    id: UUID
+    filename: str
+    canonical_path: str
+    content: str
+
+
+class DocumentContentUpdateRequest(BaseModel):
+    content: str = Field(min_length=1, max_length=2_000_000)
+
+
+@router.get("/documents/{document_id}/content", response_model=DocumentContentResponse)
+def get_document_content(
+    document_id: UUID,
+    session: Annotated[Session, Depends(get_request_db_session)],
+) -> DocumentContentResponse:
+    document = session.get(Document, document_id)
+    if document is None:
+        raise HTTPException(status_code=404, detail="Document not found.")
+
+    canonical_path = Path(document.canonical_path)
+    if not canonical_path.exists():
+        raise HTTPException(status_code=404, detail="Canonical source file is missing.")
+
+    try:
+        content = canonical_path.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError) as error:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Source file could not be read: {error}",
+        ) from error
+
+    return DocumentContentResponse(
+        id=document.id,
+        filename=document.filename,
+        canonical_path=document.canonical_path,
+        content=content,
+    )
+
+
+@router.put("/documents/{document_id}/content", response_model=AdminDocumentResponse)
+def update_document_content(
+    document_id: UUID,
+    payload: DocumentContentUpdateRequest,
+    request: Request,
+) -> AdminDocumentResponse:
+    """Overwrite the canonical markdown file and reindex the document.
+
+    Designed for continuously updated sources (course announcements) so an
+    admin can edit content in place without re-uploading a file.
+    """
+    settings = get_app_settings(request)
+    session_factory = get_indexing_session_factory(request)
+
+    # Resolve the canonical path in a short-lived read, then run the reindex on
+    # a fresh session: IndexingService requires no active transaction.
+    with session_factory() as session:
+        document = session.get(Document, document_id)
+        if document is None:
+            raise HTTPException(status_code=404, detail="Document not found.")
+        canonical_path = Path(document.canonical_path)
+        docs_root = _docs_root_for_document(
+            canonical_path=canonical_path,
+            filename=document.filename,
+            fallback=Path(settings.docs_dir),
+        )
+
+    if not canonical_path.exists():
+        raise HTTPException(status_code=404, detail="Canonical source file is missing.")
+
+    previous_content = canonical_path.read_text(encoding="utf-8", errors="replace")
+    canonical_path.write_text(payload.content, encoding="utf-8")
+
+    with session_factory() as session:
+        try:
+            result = IndexingService(
+                session=session,
+                docs_dir=docs_root,
+                kb_dir=Path(settings.kb_dir),
+                embedding_provider=get_embedding_provider(request),
+                token_encoding=settings.token_encoding,
+            ).reindex_document(document_id)
+        except Exception as error:
+            # Reindex failed: restore the previous content so the file and the
+            # index stay consistent, then surface the error.
+            canonical_path.write_text(previous_content, encoding="utf-8")
+            raise HTTPException(
+                status_code=500,
+                detail=f"Content saved but reindex failed; file restored: {error}",
+            ) from error
+
+        document = session.get(Document, document_id)
+        if document is None:
+            raise HTTPException(status_code=404, detail="Document not found.")
+        response = admin_document_response(session, document)
+
+    record_audit_event(
+        request,
+        event_type="document.content_updated",
+        actor_type="admin",
+        outcome="success",
+        resource_type="document",
+        resource_id=str(document_id),
+        metadata={
+            "filename": response.filename,
+            "content_bytes": len(payload.content.encode("utf-8")),
+            "sections_indexed": result.sections_indexed,
+            "chunks_indexed": result.chunks_indexed,
+        },
+    )
+    return response
+
+
 @router.post("/documents/{document_id}/reindex", response_model=AdminDocumentResponse)
 def reindex_document(
     document_id: UUID,
@@ -201,6 +314,26 @@ def reindex_document(
         },
     )
     return response
+
+
+def _docs_root_for_document(
+    *,
+    canonical_path: Path,
+    filename: str,
+    fallback: Path,
+) -> Path:
+    """Derive the docs root a document was indexed from.
+
+    Documents may have been indexed from a docs dir other than the current
+    KB_DOCS_DIR (e.g. seeded course materials); the canonical path always ends
+    with the document's relative filename, so stripping it recovers the root.
+    """
+    canonical = canonical_path.as_posix()
+    if canonical.endswith(filename):
+        root = canonical[: -len(filename)].rstrip("/")
+        if root:
+            return Path(root)
+    return fallback
 
 
 def admin_document_response(

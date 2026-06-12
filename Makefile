@@ -6,7 +6,34 @@ export KB_POSTGRES_PORT
 
 UV := uv run --python 3.12
 COMPOSE ?= docker compose
-API_URL ?= http://localhost:8000
+
+# Local dev server port/host — override on the CLI, e.g. `make dev PORT=8010`.
+PORT ?= 8000
+HOST ?= 0.0.0.0
+# Docker app published port follows PORT unless KB_APP_PORT is set (.env or CLI).
+KB_APP_PORT ?= $(PORT)
+export KB_APP_PORT
+
+# Runtime settings for local app/worker/eval processes. `include .env` above turns
+# each .env key into a make variable; `?=` keeps the .env value when set and
+# otherwise uses a host-friendly default. Passed per-recipe via RUNTIME_ENV (never
+# exported globally) so `make test`/`make lint` stay isolated from .env runtime
+# settings such as the answer provider — see AGENTS.md.
+KB_DATABASE_URL ?= postgresql+psycopg://kb:kb@localhost:5432/kb
+KB_EMBEDDING_PROVIDER ?= fake
+KB_ANSWER_PROVIDER ?= fake
+KB_EMBEDDING_DIMENSION ?= 768
+KB_OPENAI_EMBEDDING_MODEL ?=
+KB_OPENAI_CHAT_MODEL ?=
+RUNTIME_ENV := \
+  KB_DATABASE_URL=$(KB_DATABASE_URL) \
+  KB_EMBEDDING_PROVIDER=$(KB_EMBEDDING_PROVIDER) \
+  KB_ANSWER_PROVIDER=$(KB_ANSWER_PROVIDER) \
+  KB_EMBEDDING_DIMENSION=$(KB_EMBEDDING_DIMENSION) \
+  KB_OPENAI_EMBEDDING_MODEL=$(KB_OPENAI_EMBEDDING_MODEL) \
+  KB_OPENAI_CHAT_MODEL=$(KB_OPENAI_CHAT_MODEL)
+
+API_URL ?= http://localhost:$(PORT)
 KB_ADMIN_API_KEY ?= local-admin-key
 KB_ADMIN_API_KEY := $(or $(KB_ADMIN_API_KEY),local-admin-key)
 KB_TEST_DATABASE_URL ?= postgresql+psycopg://kb:kb@postgres:5432/kb_test
@@ -95,7 +122,7 @@ deploy-check-ci:
 	$(UV) python -m scripts.validate_deploy_env
 
 dev:
-	$(UV) uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+	$(RUNTIME_ENV) $(UV) uvicorn app.main:app --reload --host $(HOST) --port $(PORT)
 
 test:
 	$(UV) pytest
@@ -118,31 +145,31 @@ format:
 	$(UV) ruff check . --fix
 
 migrate:
-	$(UV) alembic upgrade head
+	$(RUNTIME_ENV) $(UV) alembic upgrade head
 
 index:
 	curl -fsS -X POST "$(API_URL)/index"
 
 worker-once:
-	$(UV) python -m scripts.run_background_worker --once
+	$(RUNTIME_ENV) $(UV) python -m scripts.run_background_worker --once
 
 worker:
-	$(UV) python -m scripts.run_background_worker
+	$(RUNTIME_ENV) $(UV) python -m scripts.run_background_worker
 
 worker-status:
 	curl -fsS -H "X-KB-Admin-Key: $(KB_ADMIN_API_KEY)" "$(API_URL)/admin/jobs/runtime"
 
 graph-seed:
-	$(UV) python -m scripts.seed_concept_graph --file docs/plans/2026-06-11-concept-graph-seed.json
+	$(RUNTIME_ENV) $(UV) python -m scripts.seed_concept_graph --file docs/plans/2026-06-11-concept-graph-seed.json
 
 eval-seed:
-	$(UV) python -m scripts.seed_eval_cases
+	$(RUNTIME_ENV) $(UV) python -m scripts.seed_eval_cases
 
 eval-run:
-	$(UV) python -m scripts.run_evals --trigger scheduled
+	$(RUNTIME_ENV) $(UV) python -m scripts.run_evals --trigger scheduled
 
 eval-generate:
-	$(UV) python -m scripts.generate_eval_cases
+	$(RUNTIME_ENV) $(UV) python -m scripts.generate_eval_cases
 
 ops-check:
 	@echo "health:"

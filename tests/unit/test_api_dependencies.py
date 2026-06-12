@@ -61,7 +61,7 @@ def test_platform_dependency_blocks_configured_requests_without_session() -> Non
 
 
 def test_platform_dependency_allows_development_when_unconfigured() -> None:
-    client = _platform_dependency_client(Settings(app_env="development"))
+    client = _platform_dependency_client(_unconfigured_auth_settings(app_env="development"))
 
     response = client.get("/protected")
 
@@ -69,12 +69,24 @@ def test_platform_dependency_allows_development_when_unconfigured() -> None:
 
 
 def test_platform_dependency_fails_closed_in_production_when_unconfigured() -> None:
-    client = _platform_dependency_client(Settings(app_env="production"))
+    client = _platform_dependency_client(_unconfigured_auth_settings(app_env="production"))
 
     response = client.get("/protected")
 
     assert response.status_code == 503
     assert response.json()["detail"] == "Platform auth is required but not configured."
+
+
+def _unconfigured_auth_settings(*, app_env: str) -> Settings:
+    # Explicit Nones so a developer's populated .env can't flip these tests.
+    return Settings(
+        app_env=app_env,
+        auth_secret_key=None,
+        platform_username=None,
+        platform_password=None,
+        admin_username=None,
+        admin_password=None,
+    )
 
 
 def _platform_dependency_client(settings: Settings) -> TestClient:
