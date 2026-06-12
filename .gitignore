@@ -234,3 +234,11 @@ course-materials-raw/
 tmp/
 .DS_Store
 .superpowers/
+
+project-ideas.md
+.python-version
+sample-docs/
+
+tmp/
+# Session handoff notes (local only)
+handoff.md
