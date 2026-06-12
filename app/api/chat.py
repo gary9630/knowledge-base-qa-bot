@@ -41,8 +41,8 @@ from app.api.search import (
     candidate_response,
     retrieval_diagnostics_response,
 )
-from app.core.config import Settings
 from app.audit import record_audit_event
+from app.core.config import Settings
 from app.models.tables import Conversation, Message, ProviderCallLog, RetrievalEvent
 from app.observability.metrics import InMemoryMetrics
 from app.observability.middleware import mark_stream_error

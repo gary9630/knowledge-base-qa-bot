@@ -157,12 +157,15 @@ def get_system_status(
             else:
                 worker_status = "warning"
                 worker_detail = "無活躍 worker（背景任務不會執行）"
+            queue_detail = (
+                f"queued {queue.get('queued', 0)} · running {queue.get('running', 0)}"
+            )
             checks.append(
                 SystemCheck(
                     name="worker",
                     label="背景 Worker",
                     status=worker_status,
-                    detail=f"{worker_detail} · queued {queue.get('queued', 0)} · running {queue.get('running', 0)}",
+                    detail=f"{worker_detail} · {queue_detail}",
                 )
             )
         except Exception as error:

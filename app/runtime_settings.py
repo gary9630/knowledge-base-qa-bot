@@ -8,6 +8,8 @@ env-derived :class:`~app.core.config.Settings` at request time.
 
 from __future__ import annotations
 
+from typing import Any
+
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -42,7 +44,7 @@ def load_runtime_overrides(session: Session) -> dict[str, object]:
     return validate_runtime_overrides(raw)
 
 
-def validate_runtime_overrides(raw: dict[str, object]) -> dict[str, object]:
+def validate_runtime_overrides(raw: dict[str, Any]) -> dict[str, object]:
     """Return only the overrides that pass validation; raise on a fully invalid payload."""
     overrides = RuntimeOverrides(**raw)
     return {

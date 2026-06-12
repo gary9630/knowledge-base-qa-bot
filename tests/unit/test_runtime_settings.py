@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Any
+
 import pytest
 from fastapi.testclient import TestClient
 from pydantic import ValidationError
@@ -15,7 +17,7 @@ from app.runtime_settings import (
 
 
 def _settings(**kwargs: object) -> Settings:
-    base: dict[str, object] = {
+    base: dict[str, Any] = {
         "embedding_provider": "fake",
         "answer_provider": "fake",
         "auth_secret_key": None,
@@ -98,9 +100,9 @@ def _client_with_memory_store(
     return TestClient(app), store
 
 
-def _unusable_session_factory():  # pragma: no cover - sessions unused in these tests
+def _unusable_session_factory() -> Any:  # pragma: no cover - sessions unused in these tests
     class _Ctx:
-        def __enter__(self):
+        def __enter__(self) -> None:
             return None
 
         def __exit__(self, *args: object) -> None:

@@ -46,7 +46,7 @@ class _FakeClient:
 
 
 def _settings(**kwargs: object) -> Settings:
-    base: dict[str, object] = {
+    base: dict[str, Any] = {
         "embedding_provider": "fake",
         "answer_provider": "fake",
     }

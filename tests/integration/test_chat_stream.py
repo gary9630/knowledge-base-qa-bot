@@ -6,7 +6,7 @@ from collections.abc import Callable, Iterator, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
-from typing import cast
+from typing import Any, cast
 from uuid import UUID
 
 import pytest
@@ -33,7 +33,7 @@ def _settings_without_auth(**overrides: object) -> Settings:
     These tests exercise the chat pipeline, not authentication; without this a
     local .env with platform/admin credentials would turn every request 401.
     """
-    base: dict[str, object] = {
+    base: dict[str, Any] = {
         "embedding_provider": "fake",
         "answer_provider": "fake",
         "platform_username": None,

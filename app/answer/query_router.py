@@ -271,7 +271,10 @@ def _response_content(response: object) -> str:
         return ""
     first = choices[0]
     message = first.get("message") if isinstance(first, dict) else getattr(first, "message", None)
-    content = message.get("content") if isinstance(message, dict) else getattr(message, "content", None)
+    if isinstance(message, dict):
+        content = message.get("content")
+    else:
+        content = getattr(message, "content", None)
     return content if isinstance(content, str) else ""
 
 
